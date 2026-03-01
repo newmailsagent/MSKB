@@ -178,14 +178,32 @@ function isDesktop() {
 /* ─── ПОЛЬЗОВАТЕЛЬ ───────────────────────────────── */
 function initUser() {
   let tgUser = null;
-  try { if (window.Telegram?.WebApp?.initDataUnsafe?.user) tgUser = Telegram.WebApp.initDataUnsafe.user; } catch(e) {}
-  const saved = loadJSON('bs_user', null);
+  try {
+    if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
+      tgUser = Telegram.WebApp.initDataUnsafe.user;
+    }
+  } catch(e) {}
+
   if (tgUser) {
-    App.user = { id: String(tgUser.id), name: tgUser.first_name || 'Игрок', username: tgUser.username ? '@'+tgUser.username : '', photo: tgUser.photo_url || null, isGuest: false };
-  } else if (saved) {
-    App.user = saved;
+    // Внутри Telegram — берём данные из TG, isGuest всегда false
+    App.user = {
+      id:       String(tgUser.id),
+      name:     tgUser.first_name || 'Игрок',
+      username: tgUser.username ? '@' + tgUser.username : '',
+      photo:    tgUser.photo_url || null,
+      isGuest:  false,
+    };
   } else {
-    App.user = { id: 'guest_' + Date.now(), name: 'Гость', username: '', photo: null, isGuest: true };
+    // Не в TG — гость, всегда
+    const saved = loadJSON('bs_user', null);
+    if (saved && !saved.isGuest) {
+      // Старый кеш от TG-сессии — сбрасываем, это другой контекст
+      App.user = { id: 'guest_' + Date.now(), name: 'Гость', username: '', photo: null, isGuest: true };
+    } else if (saved?.isGuest) {
+      App.user = saved; // сохраняем guest_id чтобы не менялся каждый раз
+    } else {
+      App.user = { id: 'guest_' + Date.now(), name: 'Гость', username: '', photo: null, isGuest: true };
+    }
   }
   saveJSON('bs_user', App.user);
 }
@@ -200,7 +218,7 @@ function initSettings() {
         App.settings[id] = el.checked;
         saveJSON('bs_settings', App.settings);
         // Fix 7: hints контролирует промо баббл
-        if (id === 'hints') updatePromoHints();
+        if (id === 'hints') updatePromoBanner();
       });
     }
   });
@@ -235,30 +253,25 @@ function updateMenuStats() {
 
 /* ─── ПРОМО БАББЛ ────────────────────────────────── */
 function initPromoBanner() {
-  const dismissed  = loadJSON('bs_promo_dismissed', false);
-  const bannerMenu = document.getElementById('tg-promo-menu');
-  const bannerLb   = document.getElementById('tg-promo-lb');
-  const bannerSt   = document.getElementById('tg-promo-stats');
-  const isGuest    = !!App.user.isGuest;
-  const hintsOn    = App.settings.hints !== false;
-
-  // Баббл на главной: гостям у кого hints включены и не закрыт
-  const showMenu = isGuest && hintsOn && !dismissed;
-  if (bannerMenu) bannerMenu.classList.toggle('hidden', !showMenu);
-  if (bannerLb)   bannerLb.classList.toggle('hidden', !isGuest);
-  if (bannerSt)   bannerSt.classList.toggle('hidden', !isGuest);
-
+  updatePromoBanner();
   document.getElementById('tg-promo-close')?.addEventListener('click', () => {
     saveJSON('bs_promo_dismissed', true);
-    if (bannerMenu) bannerMenu.classList.add('hidden');
+    document.getElementById('tg-promo-menu')?.classList.add('hidden');
   });
 }
 
-function updatePromoHints() {
-  const bannerMenu = document.getElementById('tg-promo-menu');
-  if (!bannerMenu) return;
+function updatePromoBanner() {
+  const isGuest   = !!App.user.isGuest;
   const dismissed = loadJSON('bs_promo_dismissed', false);
-  bannerMenu.classList.toggle('hidden', !App.user.isGuest || dismissed || !App.settings.hints);
+  const hintsOn   = App.settings.hints !== false;
+
+  const bannerMenu = document.getElementById('tg-promo-menu');
+  const bannerLb   = document.getElementById('tg-promo-lb');
+  const bannerSt   = document.getElementById('tg-promo-stats');
+
+  if (bannerMenu) bannerMenu.classList.toggle('hidden', !isGuest || dismissed || !hintsOn);
+  if (bannerLb)   bannerLb.classList.toggle('hidden',   !isGuest);
+  if (bannerSt)   bannerSt.classList.toggle('hidden',   !isGuest);
 }
 
 /* ─── ЛИДЕРБОРД / СТАТИСТИКА ─────────────────────── */
@@ -319,10 +332,8 @@ function renderLeaderboardData(data) {
 
 function renderStatsScreen() {
   const isGuest = !!App.user.isGuest;
-  const bannerSt = document.getElementById('tg-promo-stats');
-  if (bannerSt) bannerSt.classList.toggle('hidden', !isGuest);
+  updatePromoBanner(); // обновляем баннеры
 
-  // Скрываем/показываем блоки статистики для гостей
   const statsGrid    = document.querySelector('.stats-grid');
   const statsProfile = document.querySelector('.stats-profile');
   const sectionTitle = document.querySelector('.section-title');

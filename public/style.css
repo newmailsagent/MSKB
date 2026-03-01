@@ -4,7 +4,7 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@400;500;600&display=swap');
 
-/* ─── ТЁМНАЯ ТЕМА (по умолчанию, везде) ─────────── */
+/* ─── ТЁМНАЯ ТЕМА (всегда, везде) ───────────────── */
 :root {
   --bg:          #111111;
   --bg2:         #1e1e1e;
@@ -35,38 +35,27 @@
   --cell-size: calc((100vw - 24px - var(--label-size) - 20px) / 10);
 }
 
-/* ─── TG ТЕМА: применяем переменные ТГ только внутри ТГ ── */
-body.tg-app {
-  --bg:          var(--tg-theme-bg-color,           #111111);
-  --bg2:         var(--tg-theme-secondary-bg-color, #1e1e1e);
-  --accent:      var(--tg-theme-button-color,        #e0e0e0);
-  --accent-text: var(--tg-theme-button-text-color,   #111111);
-  --text:        var(--tg-theme-text-color,           #e8e8e8);
-  --hint:        var(--tg-theme-hint-color,           #666666);
-  --link:        var(--tg-theme-link-color,           #aaaaaa);
-}
-
-/* ─── СВЕТЛАЯ ТЕМА (только в TG со светлой схемой) ── */
-body.tg-app.theme-light {
-  --bg:          #f4f4f4;
-  --bg2:         #e8e8e8;
-  --accent:      #444444;
+/* ─── СВЕТЛАЯ ТЕМА (только явный класс от JS) ───── */
+body.theme-light {
+  --bg:          #f0f0f0;
+  --bg2:         #e0e0e0;
+  --accent:      #333333;
   --accent-text: #ffffff;
   --text:        #1a1a1a;
-  --hint:        #888888;
-  --link:        #555555;
+  --hint:        #777777;
+  --link:        #444444;
 
-  --cell-empty:   #d8d8d8;
-  --cell-ship:    #909090;
-  --cell-miss:    #c8c8c8;
-  --cell-hover:   rgba(0,0,0,.12);
+  --cell-empty:   #d0d0d0;
+  --cell-ship:    #888888;
+  --cell-miss:    #c0c0c0;
+  --cell-hover:   rgba(0,0,0,.1);
   --cell-preview: rgba(0,0,0,.18);
   --cell-invalid: rgba(220,60,60,.3);
-  --cell-hit-bg:  #cccccc;
+  --cell-hit-bg:  #bbbbbb;
 
   --green:  #2e7d32;
   --yellow: #b8860b;
-  --blue:   #555555;
+  --blue:   #444444;
 }
 
 /* ─── СБРОС ──────────────────────────────────────── */
