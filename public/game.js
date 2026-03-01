@@ -383,26 +383,35 @@ const Placement = {
 
   _startDragTouch(e, ship, el) {
     const t = e.touches[0];
+    const startX = t.clientX, startY = t.clientY;
     this._drag = {
-      ship, el, startX: t.clientX, startY: t.clientY, _wasDrag: false,
+      ship, el, startX, startY, _wasDrag: false,
       _onMove: ev => {
-        ev.preventDefault();
         const tt = ev.touches[0];
-        if (!this._drag._wasDrag && Math.hypot(tt.clientX-this._drag.startX, tt.clientY-this._drag.startY) > 8) {
-          this._drag._wasDrag = true; this.selectShip(ship.id);
+        const dx = tt.clientX - startX, dy = tt.clientY - startY;
+        if (!this._drag._wasDrag && Math.hypot(dx, dy) > 6) {
+          this._drag._wasDrag = true;
+          this.selectShip(ship.id);
         }
-        if (this._drag._wasDrag) this._highlightCellUnder(tt.clientX, tt.clientY);
+        if (this._drag._wasDrag) {
+          ev.preventDefault(); // блокируем скролл только во время drag
+          this._highlightCellUnder(tt.clientX, tt.clientY);
+        }
       },
       _onEnd: ev => {
-        const tt = ev.changedTouches[0];
         document.removeEventListener('touchmove', this._drag._onMove);
         document.removeEventListener('touchend',  this._drag._onEnd);
-        if (this._drag._wasDrag) this._tryPlaceAt(tt.clientX, tt.clientY);
-        this._drag = null; this.clearPreview();
+        if (this._drag._wasDrag) {
+          const tt = ev.changedTouches[0];
+          this._tryPlaceAt(tt.clientX, tt.clientY);
+        }
+        this._drag = null;
+        this.clearPreview();
       },
     };
+    // passive:false нужен чтобы preventDefault работал внутри
     document.addEventListener('touchmove', this._drag._onMove, { passive: false });
-    document.addEventListener('touchend',  this._drag._onEnd);
+    document.addEventListener('touchend',  this._drag._onEnd,  { passive: true });
   },
 
   _highlightCellUnder(cx, cy) {
@@ -453,7 +462,14 @@ const Placement = {
         const cell = document.createElement('div');
         cell.className = 'cell'; cell.dataset.r = r; cell.dataset.c = c;
         if (this.board[r][c] === CELL_SHIP) cell.classList.add('ship');
-        cell.addEventListener('click', () => this.handleCellClick(r, c));
+
+        // Используем pointerup вместо click — работает и на touch и на mouse
+        // без конфликтов с drag
+        cell.addEventListener('pointerup', (e) => {
+          if (this._drag?._wasDrag) return;
+          e.preventDefault();
+          this.handleCellClick(r, c);
+        });
         cell.addEventListener('mouseenter', () => this.handleHover(r, c));
         cell.addEventListener('mouseleave', () => { if (!this._drag?._wasDrag) this.clearPreview(); });
         boardEl.appendChild(cell);
@@ -672,6 +688,14 @@ function playerShoot(r, c) {
   if (!Game.active || !Game.isMyTurn) return;
   if (Game.myShots[r][c] !== CELL_EMPTY) return;
 
+  // Онлайн: только отправляем, результат придёт через shot_result
+  if (Game.mode === 'online') {
+    Game.isMyTurn = false; // блокируем повторные клики пока ждём ответ
+    WS.sendShot(r, c);
+    return;
+  }
+
+  // Бот / одиночная игра: обрабатываем локально
   Game.shots++;
   const hit = Game.enemyBoard[r][c] === CELL_SHIP;
   Game.myShots[r][c]    = hit ? CELL_HIT  : CELL_MISS;
@@ -699,9 +723,6 @@ function playerShoot(r, c) {
     renderGameBoard();
     if (Game.mode.startsWith('bot')) setTimeout(botShoot, 800 + Math.random()*600);
   }
-
-  // Онлайн — отправляем выстрел
-  if (Game.mode === 'online') WS.sendShot(r, c);
 }
 
 /* ─── БОТ ────────────────────────────────────────── */
@@ -871,26 +892,44 @@ const WS = {
 
     // ── Результат выстрела ────────────────────────────
     this.socket.on('shot_result', ({ r, c, hit, sunk, shooter, gameOver, winner }) => {
-      if (shooter === App.user.id) {
-        // Наш выстрел
-        Game.myShots[r][c] = sunk ? CELL_SUNK : (hit ? CELL_HIT : CELL_MISS);
+      const isMine = shooter === App.user.id;
+
+      if (isMine) {
+        // Наш выстрел — обновляем карту выстрелов по врагу
+        Game.shots++;
         if (hit) {
+          Game.hits++;
+          Game.myShots[r][c] = sunk ? CELL_SUNK : CELL_HIT;
           Sound.hit(); vibrate([30,10,30]);
-          if (sunk) { Sound.sunk(); vibrate([50,20,50,20,50]); }
+          if (sunk) {
+            // Сервер потопил — синхронизируем периметр локально
+            Game.myShots[r][c] = CELL_SUNK;
+            Sound.sunk(); vibrate([50,20,50,20,50]);
+          }
+          // Попадание — ход остаётся у нас
+          Game.isMyTurn = true;
+          if (!isDesktop()) setShowingField(true);
         } else {
+          Game.myShots[r][c] = CELL_MISS;
           Sound.miss(); vibrate([10]);
           Game.isMyTurn = false;
           if (!isDesktop()) setShowingField(false);
         }
       } else {
-        // Выстрел соперника
-        Game.myBoard[r][c]    = sunk ? CELL_SUNK : (hit ? CELL_HIT : CELL_MISS);
-        Game.enemyShots[r][c] = Game.myBoard[r][c];
-        if (!hit) {
+        // Выстрел соперника по нам
+        if (hit) {
+          Game.myBoard[r][c]    = sunk ? CELL_SUNK : CELL_HIT;
+          Game.enemyShots[r][c] = Game.myBoard[r][c];
+          // Попадание — соперник продолжает, наш ход не меняется (мы ждём)
+        } else {
+          Game.myBoard[r][c]    = CELL_MISS;
+          Game.enemyShots[r][c] = CELL_MISS;
+          // Промах соперника — наш ход
           Game.isMyTurn = true;
           if (!isDesktop()) setShowingField(true);
         }
       }
+
       updateGameStatus();
       renderGameBoard();
       if (gameOver) endGame(winner === App.user.id ? 'win' : 'loss');
@@ -930,10 +969,11 @@ const WS = {
 
 /* ─── ОНЛАЙН ИГРА ────────────────────────────────── */
 async function startOnline(mode) {
-  showScreen('waiting');
+  // Очищаем экран ожидания до подключения
   setText('waiting-title', 'Подключение…');
-  setText('waiting-sub',   'Соединяемся с сервером');
+  setText('waiting-sub',   '');
   document.getElementById('invite-block')?.classList.add('hidden');
+  showScreen('waiting');
 
   const serverUrl = App.settings.server || window.location.origin;
   try {
