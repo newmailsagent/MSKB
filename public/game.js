@@ -760,17 +760,14 @@ function startTurnWarningUI(secondsLeft) {
 function clearTurnWarningUI() {
   if (Game._timerInterval) { clearInterval(Game._timerInterval); Game._timerInterval = null; }
   Game._timerSeconds = null;
-  // Восстанавливаем обычный статус
   updateGameStatus();
 }
 
-
+function updateGameStatus() {
   const el = document.getElementById('game-status');
   if (!el || !Game.active) return;
   el.textContent = Game.isMyTurn ? 'Твой ход' : 'Ход соперника';
   el.style.color = Game.isMyTurn ? 'var(--green)' : 'var(--hint)';
-
-  // На десктопе — подсветка полупрозрачностью через dimmed (уже в renderBoard)
 }
 
 function updateShipsLeft() {
