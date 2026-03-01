@@ -68,7 +68,12 @@ const Sound = (() => {
   return {
     hit:   () => { beep(180,'sawtooth',.25,.4); setTimeout(()=>beep(120,'square',.3,.3),80); },
     miss:  () => beep(300,'sine',.08,.2),
-    sunk:  () => { beep(80,'sawtooth',.5,.5); setTimeout(()=>beep(60,'sawtooth',.4,.4),200); },
+    // Оригинальный звук потопления — три нисходящих удара
+    sunk:  () => {
+      beep(120,'sawtooth',.4,.5);
+      setTimeout(()=>beep(90,'sawtooth',.4,.4),150);
+      setTimeout(()=>beep(60,'square',.6,.5),300);
+    },
     win:   () => [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,'sine',.3,.4),i*150)),
     lose:  () => [200,180,160].forEach((f,i)=>setTimeout(()=>beep(f,'sawtooth',.4,.3),i*200)),
     click: () => beep(600,'sine',.05,.15),
@@ -77,7 +82,9 @@ const Sound = (() => {
 })();
 
 function vibrate(p = [30]) {
-  if (App.settings.vibro && navigator.vibrate) navigator.vibrate(p);
+  // Fix 9: вибрация — работает только если явно включена в настройках
+  if (!App.settings.vibro) return;
+  try { if (navigator.vibrate) navigator.vibrate(p); } catch(e) {}
 }
 
 /* ─── УТИЛИТЫ ДОСКИ ──────────────────────────────── */
@@ -180,7 +187,7 @@ function initUser() {
 }
 
 function initSettings() {
-  App.settings = loadJSON('bs_settings', { sound: true, vibro: true, hints: true, anim: true, server: '' });
+  App.settings = loadJSON('bs_settings', { sound: true, vibro: true, hints: true, anim: true, server: '', showEnemyMoves: true });
   ['sound','vibro','hints','anim'].forEach(id => {
     const el = document.getElementById('setting-' + id);
     if (el) { el.checked = !!App.settings[id]; el.addEventListener('change', () => { App.settings[id] = el.checked; saveJSON('bs_settings', App.settings); }); }
@@ -236,7 +243,7 @@ function renderLeaderboard() {
     div.innerHTML = `
       <div class="lb-rank ${medals[i]||''}">${i < 3 ? ['🥇','🥈','🥉'][i] : i+1}</div>
       <div class="lb-avatar">${(entry.name||'?')[0].toUpperCase()}</div>
-      <div class="lb-info"><strong>${entry.name||'Игрок'}</strong>${entry.id===App.user.id?' <small>(вы)</small>':''}<br><small>${entry.username||''}</small></div>
+      <div class="lb-info"><strong>${entry.name||'Игрок'}</strong>${entry.id===App.user.id?' <small>(вы)</small>':''}</div>
       <div class="lb-wins">${entry.wins}</div>`;
     list.appendChild(div);
   });
@@ -600,22 +607,36 @@ function renderGameBoard() {
   // Поле врага (всегда рендерим)
   const enemyEl = document.getElementById('game-board');
   if (enemyEl) {
-    enemyEl.classList.add('enemy-board'); // для CSS — более приглушённые цвета
     const display = makeBoard();
     for (let r = 0; r < BOARD_SIZE; r++)
       for (let c = 0; c < BOARD_SIZE; c++) {
         const s = Game.myShots[r][c];
         if (s !== CELL_EMPTY) display[r][c] = s;
       }
-    renderBoard(enemyEl, display, {
-      clickable:   Game.isMyTurn,
-      showShips:   false,
-      onCellClick: (r, c) => playerShoot(r, c),
-      dimmed:      desktop && !Game.isMyTurn,
-    });
+
+    if (!desktop && !Game.showingEnemy) {
+      // Мобайл, показываем СВОЁ поле — рисуем его на том же элементе, без enemy-board класса
+      enemyEl.classList.remove('enemy-board');
+      const myDisplay = cloneBoard(Game.myBoard);
+      for (let r = 0; r < BOARD_SIZE; r++)
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          const s = Game.enemyShots[r][c];
+          if (s !== CELL_EMPTY) myDisplay[r][c] = s;
+        }
+      renderBoard(enemyEl, myDisplay, { clickable: false, showShips: true });
+    } else {
+      // Поле врага
+      enemyEl.classList.add('enemy-board');
+      renderBoard(enemyEl, display, {
+        clickable:   Game.isMyTurn,
+        showShips:   false,
+        onCellClick: (r, c) => playerShoot(r, c),
+        dimmed:      desktop && !Game.isMyTurn,
+      });
+    }
   }
 
-  // Наше поле (только на десктопе постоянно, на мобайле — по toggle)
+  // Наше поле (только на десктопе постоянно — my-board)
   const myEl = document.getElementById('my-board');
   if (myEl) {
     const display = cloneBoard(Game.myBoard);
@@ -629,20 +650,6 @@ function renderGameBoard() {
       showShips:  true,
       dimmed:     desktop && Game.isMyTurn,
     });
-  }
-
-  // Мобайл — одно поле, переключаемое
-  if (!desktop) {
-    const singleEl = document.getElementById('game-board');
-    if (!Game.showingEnemy) {
-      const display = cloneBoard(Game.myBoard);
-      for (let r = 0; r < BOARD_SIZE; r++)
-        for (let c = 0; c < BOARD_SIZE; c++) {
-          const s = Game.enemyShots[r][c];
-          if (s !== CELL_EMPTY) display[r][c] = s;
-        }
-      renderBoard(singleEl, display, { clickable: false, showShips: true });
-    }
   }
 
   updateShipsLeft();
@@ -849,15 +856,28 @@ const WS = {
     });
 
     // ── Комната для друга создана (только создателю) ──
-    this.socket.on('room_created', ({ roomId }) => {
+    this.socket.on('room_created', async ({ roomId }) => {
       this.roomId  = roomId;
       Game.roomId  = roomId;
-      const origin = App.settings.server || window.location.origin;
-      const link   = `${origin}/?room=${roomId}`;
       setText('waiting-title', 'Ждём друга…');
       setText('waiting-sub',   'Отправь ссылку другу');
       const block = document.getElementById('invite-block');
       if (block) block.classList.remove('hidden');
+
+      // Строим ссылку: tg://t.me/bot?start=room_ID или fallback на origin
+      let link;
+      try {
+        const cfg = await fetch('/api/config').then(r => r.json());
+        if (cfg.botUsername) {
+          // Telegram deep link: открывает бота и передаёт roomId как startapp параметр
+          link = `https://t.me/${cfg.botUsername}/battleship?startapp=room_${roomId}`;
+        } else {
+          link = `${window.location.origin}/?room=${roomId}`;
+        }
+      } catch(e) {
+        link = `${window.location.origin}/?room=${roomId}`;
+      }
+
       const linkEl = document.getElementById('invite-link-text');
       if (linkEl) linkEl.textContent = link;
     });
@@ -882,7 +902,14 @@ const WS = {
     // ── Оба готовы — игра началась ────────────────────
     this.socket.on('game_start', ({ isMyTurn }) => {
       const myShips = Placement.getShipsForGame();
-      startGame('online', Placement.board, myShips, makeBoard(), [], Game.opponent);
+      // Для онлайна создаём "виртуальный" флот врага из SHIP_DEFS
+      // (реальных позиций нет, но нам нужно отображать сколько осталось)
+      const enemyShips = [];
+      for (const def of SHIP_DEFS)
+        for (let k = 0; k < def.count; k++)
+          enemyShips.push({ cells: [], sunk: false, size: def.size });
+
+      startGame('online', Placement.board, myShips, makeBoard(), enemyShips, Game.opponent);
       Game.isMyTurn = isMyTurn;
       updateGameStatus();
       renderGameBoard();
@@ -898,8 +925,8 @@ const WS = {
           Game.hits++;
           Game.myShots[r][c] = CELL_HIT;
           if (sunk) {
-            // Находим все клетки этого корабля (связные CELL_HIT) и помечаем CELL_SUNK
             WS._sinkShipAt(Game.myShots, r, c);
+            WS._markEnemyShipSunk(Game.myShots, r, c);
             Sound.sunk(); vibrate([50,20,50,20,50]);
           } else {
             Sound.hit(); vibrate([30,10,30]);
@@ -910,7 +937,8 @@ const WS = {
           Game.myShots[r][c] = CELL_MISS;
           Sound.miss(); vibrate([10]);
           Game.isMyTurn = false;
-          if (!isDesktop()) setShowingField(false);
+          // Переключаем на поле противника только если включена настройка
+          if (!isDesktop() && App.settings.showEnemyMoves) setShowingField(false);
         }
       } else {
         if (hit) {
@@ -918,7 +946,6 @@ const WS = {
           Game.enemyShots[r][c] = CELL_HIT;
           if (sunk) {
             WS._sinkShipAt(Game.myBoard, r, c);
-            // синхронизируем enemyShots из myBoard
             for (let rr = 0; rr < BOARD_SIZE; rr++)
               for (let cc = 0; cc < BOARD_SIZE; cc++)
                 if (Game.myBoard[rr][cc] === CELL_SUNK || Game.myBoard[rr][cc] === CELL_MISS)
@@ -928,7 +955,8 @@ const WS = {
           Game.myBoard[r][c]    = CELL_MISS;
           Game.enemyShots[r][c] = CELL_MISS;
           Game.isMyTurn = true;
-          if (!isDesktop()) setShowingField(true);
+          // Переключаем обратно на поле врага только если включена настройка
+          if (!isDesktop() && App.settings.showEnemyMoves) setShowingField(true);
         }
       }
 
@@ -946,6 +974,15 @@ const WS = {
 
     this.socket.on('error_msg', ({ message }) => {
       showModal('Ошибка', message, [{ label: 'Ок', cls: 'btn-ghost', action: closeModal }]);
+    });
+
+    // ── Соперник сдался — нам победа немедленно ───────
+    this.socket.on('opponent_surrendered', () => {
+      endGame('win');
+    });
+    // ── Сдача подтверждена — показываем поражение ────
+    this.socket.on('surrender_confirmed', () => {
+      endGame('loss');
     });
   },
 
@@ -984,15 +1021,36 @@ const WS = {
           if (inBounds(nr, nc)) stack.push([nr, nc]);
       }
     }
-    // Помечаем все клетки корабля как потопленные
     for (const [r, c] of shipCells) board[r][c] = CELL_SUNK;
-    // Заполняем периметр промахами
     for (const [r, c] of shipCells)
       for (let dr = -1; dr <= 1; dr++)
         for (let dc = -1; dc <= 1; dc++) {
           const nr = r+dr, nc = c+dc;
           if (inBounds(nr, nc) && board[nr][nc] === CELL_EMPTY) board[nr][nc] = CELL_MISS;
         }
+    return shipCells;
+  },
+
+  // Помечает один незатопленный корабль нужного размера в Game.enemyShips как потопленный
+  _markEnemyShipSunk(myShots, r, c) {
+    // Считаем размер потопленного корабля через flood-fill по CELL_SUNK
+    const visited = new Set();
+    const stack   = [[r, c]];
+    let size = 0;
+    while (stack.length) {
+      const [cr, cc] = stack.pop();
+      const key = cr + ',' + cc;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      if (myShots[cr]?.[cc] === CELL_SUNK) {
+        size++;
+        for (const [nr, nc] of [[cr-1,cc],[cr+1,cc],[cr,cc-1],[cr,cc+1]])
+          if (inBounds(nr, nc)) stack.push([nr, nc]);
+      }
+    }
+    // Находим первый незатопленный корабль такого размера
+    const ship = Game.enemyShips.find(s => !s.sunk && s.size === size);
+    if (ship) ship.sunk = true;
   },
 };
 
@@ -1059,7 +1117,14 @@ function initBurger() {
     close();
     showModal('Сдаться?', 'Ты хочешь завершить игру?', [
       { label: 'Продолжить', cls: 'btn-ghost',  action: closeModal },
-      { label: 'Сдаться',   cls: 'btn-danger',  action: () => { closeModal(); endGame('loss'); }},
+      { label: 'Сдаться',   cls: 'btn-danger',  action: () => {
+        closeModal();
+        if (Game.mode === 'online' && WS.socket && WS.roomId) {
+          WS.socket.emit('surrender', { roomId: WS.roomId });
+        } else {
+          endGame('loss');
+        }
+      }},
     ]);
   });
 
@@ -1070,9 +1135,18 @@ function initBurger() {
     initSoundButton(); // обновляет иконку в шапке меню
   });
 
+  document.getElementById('burger-enemy-moves')?.addEventListener('click', () => {
+    App.settings.showEnemyMoves = !App.settings.showEnemyMoves;
+    saveJSON('bs_settings', App.settings);
+    updateBurgerEnemyMoves();
+  });
+
   document.getElementById('burger-stats-btn')?.addEventListener('click', () => {
     close();
     renderStatsScreen();
+    // Кнопка "Назад" ведёт в игру если она активна, иначе в меню
+    const statsBackBtn = document.getElementById('stats-back-btn');
+    if (statsBackBtn) statsBackBtn.dataset.screen = Game.active ? 'game' : 'menu';
     showScreen('stats');
   });
 }
@@ -1084,6 +1158,15 @@ function updateBurgerSound() {
   const muted = !App.settings.sound;
   if (icon) icon.textContent = muted ? '🔇' : '🔊';
   btn.classList.toggle('muted', muted);
+}
+
+function updateBurgerEnemyMoves() {
+  const btn  = document.getElementById('burger-enemy-moves');
+  const icon = document.getElementById('burger-enemy-moves-icon');
+  if (!btn) return;
+  const on = App.settings.showEnemyMoves !== false;
+  if (icon) icon.textContent = on ? '👁' : '🙈';
+  btn.classList.toggle('muted', !on);
 }
 
 /* ─── КНОПКА ЗВУКА В ШАПКЕ ───────────────────────── */
@@ -1180,7 +1263,15 @@ function bindNav() {
   document.getElementById('btn-surrender')?.addEventListener('click', () => {
     showModal('Сдаться?', 'Ты хочешь завершить игру?', [
       { label: 'Продолжить', cls: 'btn-ghost',  action: closeModal },
-      { label: 'Сдаться',   cls: 'btn-danger',  action: () => { closeModal(); endGame('loss'); }},
+      { label: 'Сдаться',   cls: 'btn-danger',  action: () => {
+        closeModal();
+        if (Game.mode === 'online' && WS.socket && WS.roomId) {
+          WS.socket.emit('surrender', { roomId: WS.roomId });
+          // Не вызываем endGame сразу — ждём surrender_confirmed от сервера
+        } else {
+          endGame('loss');
+        }
+      }},
     ]);
   });
 
@@ -1254,13 +1345,21 @@ window.addEventListener('DOMContentLoaded', async () => {
   bindNav();
   updateMenuUI();
   updateBurgerSound();
-
-  await new Promise(r => setTimeout(r, 1200));
+  updateBurgerEnemyMoves();
   showScreen('menu');
 
-  // Обработка ссылки-приглашения: /?room=<roomId>
+  // Обработка ссылки-приглашения: /?room=<roomId> или TG startapp=room_<roomId>
   const params = new URLSearchParams(window.location.search);
-  const room   = params.get('room');
+  let room = params.get('room');
+
+  // Telegram Mini App deep link: startapp параметр
+  if (!room) {
+    try {
+      const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
+      if (startParam?.startsWith('room_')) room = startParam.slice(5);
+    } catch(e) {}
+  }
+
   if (room) {
     setTimeout(() => {
       showModal('Приглашение в игру', `Тебя пригласили! Подключиться?`, [

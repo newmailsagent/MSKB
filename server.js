@@ -169,6 +169,22 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── СДАЧА ────────────────────────────────────────
+  socket.on('surrender', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room || room.over) return;
+    const surrenderer = getPlayer(room, socket.id);
+    const winner      = getOpponent(room, socket.id);
+    if (!surrenderer || !winner) return;
+    room.over = true;
+    // Победителю — победа немедленно
+    io.to(winner.socketId).emit('opponent_surrendered');
+    // Сдавшемуся — поражение (он сам это обработает)
+    io.to(surrenderer.socketId).emit('surrender_confirmed');
+    addWin(winner.playerId,      winner.shots,      winner.hits);
+    addLoss(surrenderer.playerId, surrenderer.shots, surrenderer.hits);
+  });
+
   // ── ВЫСТРЕЛ ──────────────────────────────────────
   socket.on('shoot', ({ roomId, r, c }) => {
     const room = rooms.get(roomId);
@@ -249,6 +265,11 @@ app.get('/api/leaderboard', (req, res) => {
 app.get('/api/stats/:id', (req, res) => {
   try   { res.json({ ok: true, data: getPlayerStats(req.params.id) || null }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+const bteship_bot = process.env.bteship_bot || ''; // e.g. 'my_battleship_bot'
+
+app.get('/api/config', (req, res) => {
+  res.json({ botUsername: bteship_bot });
 });
 app.get('/api/status', (req, res) => {
   res.json({ ok: true, rooms: rooms.size, waiting: waitingPool.length, uptime: process.uptime() });
