@@ -23,6 +23,12 @@
 
 <!-- ГЛАВНОЕ МЕНЮ -->
 <div id="screen-menu" class="screen">
+  <!-- Промо-баббл для гостей (скрывается если уже в TG или закрыт) -->
+  <div class="tg-promo-banner" id="tg-promo-menu">
+    Отслеживай статистику и соревнуйся с другими в Telegram!
+    <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
+    <button class="tg-promo-close" id="tg-promo-close">✕</button>
+  </div>
   <header class="menu-header">
     <div class="user-info">
       <div class="avatar" id="user-avatar">?</div>
@@ -220,6 +226,10 @@
     <button class="btn-back" data-screen="menu">← Назад</button>
     <h2>Лидерборд</h2>
   </div>
+  <div class="tg-promo-banner hidden" id="tg-promo-lb">
+    Войди через Telegram чтобы попасть в рейтинг!
+    <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
+  </div>
   <div class="leaderboard-list" id="leaderboard-list"><p class="empty-state">Загрузка…</p></div>
 </div>
 
@@ -228,6 +238,10 @@
   <div class="page-header">
     <button class="btn-back" id="stats-back-btn" data-screen="menu">← Назад</button>
     <h2>Статистика</h2>
+  </div>
+  <div class="tg-promo-banner hidden" id="tg-promo-stats">
+    Войди через Telegram чтобы сохранять статистику!
+    <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
   </div>
   <div class="stats-profile">
     <div class="stats-avatar" id="stats-avatar">?</div>
@@ -248,15 +262,14 @@
 <!-- НАСТРОЙКИ -->
 <div id="screen-settings" class="screen">
   <div class="page-header">
-    <button class="btn-back" data-screen="menu">← Назад</button>
+    <button class="btn-back" id="settings-back-btn" data-screen="menu">← Назад</button>
     <h2>Настройки</h2>
   </div>
   <div class="settings-list">
     <div class="setting-item"><span>Звуки</span><label class="toggle-switch"><input type="checkbox" id="setting-sound" checked/><span class="toggle-track"></span></label></div>
     <div class="setting-item"><span>Вибрация</span><label class="toggle-switch"><input type="checkbox" id="setting-vibro" checked/><span class="toggle-track"></span></label></div>
-    <div class="setting-item"><span>Подсказки</span><label class="toggle-switch"><input type="checkbox" id="setting-hints" checked/><span class="toggle-track"></span></label></div>
+    <div class="setting-item" id="hints-setting-item"><span>Подсказки (баббл)</span><label class="toggle-switch"><input type="checkbox" id="setting-hints" checked/><span class="toggle-track"></span></label></div>
     <div class="setting-item"><span>Анимации</span><label class="toggle-switch"><input type="checkbox" id="setting-anim" checked/><span class="toggle-track"></span></label></div>
-    <div class="setting-item"><span>Сервер</span><input type="text" id="setting-server" class="setting-input" placeholder="https://..." /></div>
     <button class="btn btn-danger btn-sm" id="btn-reset-stats">Сбросить статистику</button>
   </div>
 </div>
@@ -270,7 +283,7 @@
   </div>
 </div>
 
-<!-- БУРГЕР МЕНЮ (выезжает справа, только мобайл) -->
+<!-- БУРГЕР МЕНЮ (выезжает справа) -->
 <div id="burger-overlay" class="burger-overlay hidden"></div>
 <div id="burger-menu" class="burger-menu">
   <div class="burger-menu-header">Меню</div>
@@ -278,13 +291,18 @@
     <span id="burger-sound-icon">🔊</span>
     <span>Звук</span>
   </button>
-  <button class="burger-item" id="burger-enemy-moves">
+  <!-- Ходы противника — только мобайл -->
+  <button class="burger-item mobile-only" id="burger-enemy-moves">
     <span id="burger-enemy-moves-icon">👁</span>
     <span>Ходы противника</span>
   </button>
   <button class="burger-item" id="burger-stats-btn">
     <span>📊</span>
     <span>Статистика</span>
+  </button>
+  <button class="burger-item" id="burger-settings-btn">
+    <span>⚙️</span>
+    <span>Настройки</span>
   </button>
   <div class="burger-divider"></div>
   <button class="burger-item danger" id="burger-surrender">

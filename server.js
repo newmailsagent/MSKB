@@ -266,10 +266,10 @@ app.get('/api/stats/:id', (req, res) => {
   try   { res.json({ ok: true, data: getPlayerStats(req.params.id) || null }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
-const bteship_bot = process.env.bteship_bot || ''; // e.g. 'my_battleship_bot'
+const BOT_USERNAME = process.env.BOT_USERNAME || ''; // e.g. 'my_battleship_bot'
 
 app.get('/api/config', (req, res) => {
-  res.json({ botUsername: bteship_bot });
+  res.json({ botUsername: BOT_USERNAME });
 });
 app.get('/api/status', (req, res) => {
   res.json({ ok: true, rooms: rooms.size, waiting: waitingPool.length, uptime: process.uptime() });

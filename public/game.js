@@ -82,9 +82,10 @@ const Sound = (() => {
 })();
 
 function vibrate(p = [30]) {
-  // Fix 9: вибрация — работает только если явно включена в настройках
-  if (!App.settings.vibro) return;
-  try { if (navigator.vibrate) navigator.vibrate(p); } catch(e) {}
+  if (!App.settings?.vibro) return;
+  try {
+    if (navigator?.vibrate) navigator.vibrate(p);
+  } catch(e) {}
 }
 
 /* ─── УТИЛИТЫ ДОСКИ ──────────────────────────────── */
@@ -187,13 +188,19 @@ function initUser() {
 }
 
 function initSettings() {
-  App.settings = loadJSON('bs_settings', { sound: true, vibro: true, hints: true, anim: true, server: '', showEnemyMoves: true });
+  App.settings = loadJSON('bs_settings', { sound: true, vibro: true, hints: true, anim: true, showEnemyMoves: true });
   ['sound','vibro','hints','anim'].forEach(id => {
     const el = document.getElementById('setting-' + id);
-    if (el) { el.checked = !!App.settings[id]; el.addEventListener('change', () => { App.settings[id] = el.checked; saveJSON('bs_settings', App.settings); }); }
+    if (el) {
+      el.checked = !!App.settings[id];
+      el.addEventListener('change', () => {
+        App.settings[id] = el.checked;
+        saveJSON('bs_settings', App.settings);
+        // Fix 7: hints контролирует промо баббл
+        if (id === 'hints') updatePromoHints();
+      });
+    }
   });
-  const srv = document.getElementById('setting-server');
-  if (srv) { srv.value = App.settings.server || ''; srv.addEventListener('change', () => { App.settings.server = srv.value.trim(); saveJSON('bs_settings', App.settings); }); }
   document.getElementById('btn-reset-stats')?.addEventListener('click', () => {
     showModal('Сбросить статистику?', 'Все данные будут удалены.', [
       { label: 'Отмена',   cls: 'btn-ghost',  action: closeModal },
@@ -223,33 +230,94 @@ function updateMenuStats() {
   setText('stat-total', App.stats.wins + App.stats.losses + App.stats.draws);
 }
 
+/* ─── ПРОМО БАББЛ ────────────────────────────────── */
+function initPromoBanner() {
+  const dismissed = loadJSON('bs_promo_dismissed', false);
+  const bannerMenu = document.getElementById('tg-promo-menu');
+  const bannerLb   = document.getElementById('tg-promo-lb');
+  const bannerSt   = document.getElementById('tg-promo-stats');
+
+  // Показываем баббл только гостям (не через TG)
+  const showPromo = App.user.isGuest && !dismissed;
+
+  if (bannerMenu) bannerMenu.classList.toggle('hidden', !showPromo || !App.settings.hints);
+  if (bannerLb)   bannerLb.classList.toggle('hidden',   !App.user.isGuest);
+  if (bannerSt)   bannerSt.classList.toggle('hidden',   !App.user.isGuest);
+
+  document.getElementById('tg-promo-close')?.addEventListener('click', () => {
+    saveJSON('bs_promo_dismissed', true);
+    bannerMenu?.classList.add('hidden');
+  });
+}
+
+function updatePromoHints() {
+  const bannerMenu = document.getElementById('tg-promo-menu');
+  if (!bannerMenu) return;
+  const dismissed = loadJSON('bs_promo_dismissed', false);
+  bannerMenu.classList.toggle('hidden', !App.user.isGuest || dismissed || !App.settings.hints);
+}
+
 /* ─── ЛИДЕРБОРД / СТАТИСТИКА ─────────────────────── */
-function renderLeaderboard() {
+async function renderLeaderboard() {
   const list = document.getElementById('leaderboard-list');
   if (!list) return;
+
+  // Для гостей — только показываем промо
+  if (App.user.isGuest) {
+    list.innerHTML = '<p class="empty-state">Войди через Telegram чтобы видеть рейтинг</p>';
+    return;
+  }
+
+  list.innerHTML = '<p class="empty-state">Загрузка…</p>';
+
+  // Сначала добавляем свои данные локально и на сервер
+  try {
+    await fetch(`/api/stats/${App.user.id}`); // upsert через активность
+  } catch(e) {}
+
+  try {
+    // Грузим с сервера
+    const res = await fetch('/api/leaderboard');
+    const json = await res.json();
+    if (json.ok && json.data?.length) {
+      renderLeaderboardData(json.data);
+      return;
+    }
+  } catch(e) {}
+
+  // Fallback — локальный кеш
   let lb = loadJSON('bs_leaderboard', []);
   const me = { ...App.user, wins: App.stats.wins };
   const idx = lb.findIndex(e => e.id === App.user.id);
   if (idx >= 0) lb[idx] = me; else lb.push(me);
   lb.sort((a,b) => b.wins - a.wins);
-  lb = lb.slice(0, 10);
-  saveJSON('bs_leaderboard', lb);
+  renderLeaderboardData(lb.slice(0,10));
+}
+
+function renderLeaderboardData(data) {
+  const list = document.getElementById('leaderboard-list');
+  if (!list) return;
   const medals = ['gold','silver','bronze'];
   list.innerHTML = '';
-  if (!lb.length) { list.innerHTML = '<p class="empty-state">Пока никого нет</p>'; return; }
-  lb.forEach((entry, i) => {
+  if (!data.length) { list.innerHTML = '<p class="empty-state">Пока никого нет</p>'; return; }
+  data.forEach((entry, i) => {
     const div = document.createElement('div');
     div.className = 'lb-item';
+    const wins = entry.wins ?? 0;
     div.innerHTML = `
       <div class="lb-rank ${medals[i]||''}">${i < 3 ? ['🥇','🥈','🥉'][i] : i+1}</div>
       <div class="lb-avatar">${(entry.name||'?')[0].toUpperCase()}</div>
-      <div class="lb-info"><strong>${entry.name||'Игрок'}</strong>${entry.id===App.user.id?' <small>(вы)</small>':''}</div>
-      <div class="lb-wins">${entry.wins}</div>`;
+      <div class="lb-info"><strong>${entry.name||'Игрок'}</strong>${entry.id===App.user?.id?' <small>(вы)</small>':''}</div>
+      <div class="lb-wins">${wins}</div>`;
     list.appendChild(div);
   });
 }
 
 function renderStatsScreen() {
+  // Для гостей — показываем промо
+  const bannerSt = document.getElementById('tg-promo-stats');
+  if (bannerSt) bannerSt.classList.toggle('hidden', !App.user.isGuest);
+
   const s = App.stats, total = s.wins + s.losses + s.draws;
   setHTML('stats-avatar', (App.user.name[0]||'?').toUpperCase());
   setText('stats-name', App.user.name);
@@ -340,19 +408,20 @@ const Placement = {
     if (!dock) return;
     dock.innerHTML = '';
     this.ships.forEach(ship => {
+      // Fix 10: размещённые корабли не показываем в палитре
+      if (ship.placed) return;
       const wrap = document.createElement('div');
-      wrap.className = 'ship-piece'+(ship.placed?' placed':'')+(this.selected?.id===ship.id?' selected':'')+(ship.vertical?' vertical':'');
+      const isSelected = this.selected?.id === ship.id;
+      wrap.className = 'ship-piece' + (isSelected ? ' selected' : '') + (ship.vertical ? ' vertical' : '');
       wrap.dataset.id = ship.id;
       for (let i = 0; i < ship.size; i++) { const c = document.createElement('div'); c.className = 'ship-cell'; wrap.appendChild(c); }
-      if (!ship.placed) {
-        // Двойной тап — поворот
-        wrap.addEventListener('touchend', (e) => this._handleDoubleTap(e, ship.id));
-        wrap.addEventListener('dblclick', (e) => { e.preventDefault(); this.rotateSingleShip(ship.id); });
-        // Единый drag + tap через Pointer Events (работает везде включая TG WebApp)
-        wrap.addEventListener('pointerdown', (e) => this._startPointerDrag(e, ship, wrap));
-      }
+      wrap.addEventListener('touchend', (e) => this._handleDoubleTap(e, ship.id));
+      wrap.addEventListener('dblclick', (e) => { e.preventDefault(); this.rotateSingleShip(ship.id); });
+      wrap.addEventListener('pointerdown', (e) => this._startPointerDrag(e, ship, wrap));
       dock.appendChild(wrap);
     });
+    const ready = document.getElementById('btn-ready');
+    if (ready) ready.disabled = !this.allPlaced();
   },
 
   selectShip(id) { this.selected = this.ships.find(s => s.id === id) || null; Sound.click(); this.renderDock(); },
@@ -1144,10 +1213,17 @@ function initBurger() {
   document.getElementById('burger-stats-btn')?.addEventListener('click', () => {
     close();
     renderStatsScreen();
-    // Кнопка "Назад" ведёт в игру если она активна, иначе в меню
     const statsBackBtn = document.getElementById('stats-back-btn');
     if (statsBackBtn) statsBackBtn.dataset.screen = Game.active ? 'game' : 'menu';
     showScreen('stats');
+  });
+
+  document.getElementById('burger-settings-btn')?.addEventListener('click', () => {
+    close();
+    // Кнопка "Назад" ведёт в игру если она активна
+    const settingsBackBtn = document.getElementById('settings-back-btn');
+    if (settingsBackBtn) settingsBackBtn.dataset.screen = Game.active ? 'game' : 'menu';
+    showScreen('settings');
   });
 }
 
@@ -1201,10 +1277,25 @@ function initSoundButton() {
 function initTelegram() {
   try {
     if (!window.Telegram?.WebApp) return;
-    Telegram.WebApp.ready();
-    Telegram.WebApp.expand();
-    Telegram.WebApp.setHeaderColor('secondary_bg_color');
-    Telegram.WebApp.enableClosingConfirmation();
+    const tg = Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+    tg.setHeaderColor('secondary_bg_color');
+    tg.enableClosingConfirmation();
+
+    // Fix 2: определяем светлую тему
+    const bg = tg.themeParams?.bg_color || tg.backgroundColor || '';
+    if (bg) {
+      // Парсим hex и считаем яркость
+      const hex = bg.replace('#','');
+      const r = parseInt(hex.substr(0,2),16)||0;
+      const g = parseInt(hex.substr(2,2),16)||0;
+      const b = parseInt(hex.substr(4,2),16)||0;
+      const lum = (r*299 + g*587 + b*114) / 1000;
+      if (lum > 128) document.body.classList.add('theme-light');
+    }
+    // Также через colorScheme
+    if (tg.colorScheme === 'light') document.body.classList.add('theme-light');
   } catch(e) {}
 }
 
@@ -1344,6 +1435,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initBurger();
   bindNav();
   updateMenuUI();
+  initPromoBanner();
   updateBurgerSound();
   updateBurgerEnemyMoves();
   showScreen('menu');
