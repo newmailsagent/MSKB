@@ -17,7 +17,7 @@ const fs         = require('fs');
 const PORT        = process.env.PORT        || 3000;
 const DB_PATH     = process.env.DB_PATH     || './data/game.db';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
-const BOT_USERNAME = process.env.BOT_USERNAME || '';
+const bteship_bot = process.env.bteship_bot || '';
 
 const TURN_TIMEOUT_MS = 60000; // 60 сек на ход
 const MAX_TIMEOUTS    = 2;     // 2 просрочки = поражение
@@ -325,7 +325,7 @@ function checkSunkServer(field, hitR, hitC) {
   return ship.length > 0 && ship.every(([r, c]) => field[r][c] === 2);
 }
 
-app.get('/api/config',     (req, res) => res.json({ botUsername: BOT_USERNAME }));
+app.get('/api/config',     (req, res) => res.json({ botUsername: bteship_bot }));
 app.get('/api/leaderboard',(req, res) => { try { res.json({ ok: true, data: getLeaderboard() }); } catch(e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get('/api/stats/:id',  (req, res) => { try { res.json({ ok: true, data: getPlayerStats(req.params.id)||null }); } catch(e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get('/api/status',     (req, res) => res.json({ ok: true, rooms: rooms.size, waiting: waitingPool.length, uptime: process.uptime() }));
