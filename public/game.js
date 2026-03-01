@@ -43,6 +43,9 @@ const Game = {
   botQueue:     [],
   botLastHit:   null,
   botDirection: null,
+  // Таймер хода
+  _timerInterval: null,
+  _timerSeconds:  null,
 };
 
 /* ─── ЗВУКИ ──────────────────────────────────────── */
@@ -232,21 +235,23 @@ function updateMenuStats() {
 
 /* ─── ПРОМО БАББЛ ────────────────────────────────── */
 function initPromoBanner() {
-  const dismissed = loadJSON('bs_promo_dismissed', false);
+  const dismissed  = loadJSON('bs_promo_dismissed', false);
   const bannerMenu = document.getElementById('tg-promo-menu');
   const bannerLb   = document.getElementById('tg-promo-lb');
   const bannerSt   = document.getElementById('tg-promo-stats');
+  const isGuest    = !!App.user.isGuest;
 
-  // Показываем баббл только гостям (не через TG)
-  const showPromo = App.user.isGuest && !dismissed;
+  // Баббл на главной: только гостям, только если не закрыт, только если hints=on
+  const showMenu = isGuest && !dismissed && (App.settings.hints !== false);
+  if (bannerMenu) bannerMenu.classList.toggle('hidden', !showMenu);
 
-  if (bannerMenu) bannerMenu.classList.toggle('hidden', !showPromo || !App.settings.hints);
-  if (bannerLb)   bannerLb.classList.toggle('hidden',   !App.user.isGuest);
-  if (bannerSt)   bannerSt.classList.toggle('hidden',   !App.user.isGuest);
+  // На лидерборде и статистике — просто показываем гостям (без крестика)
+  if (bannerLb) bannerLb.classList.toggle('hidden', !isGuest);
+  if (bannerSt) bannerSt.classList.toggle('hidden', !isGuest);
 
   document.getElementById('tg-promo-close')?.addEventListener('click', () => {
     saveJSON('bs_promo_dismissed', true);
-    bannerMenu?.classList.add('hidden');
+    if (bannerMenu) bannerMenu.classList.add('hidden');
   });
 }
 
@@ -731,7 +736,35 @@ function setShowingField(showEnemy) {
   document.getElementById('btn-show-mine')?.classList.toggle('active',  !showEnemy);
 }
 
-function updateGameStatus() {
+/* ─── ТАЙМЕР ХОДА ────────────────────────────────── */
+function startTurnWarningUI(secondsLeft) {
+  clearTurnWarningUI();
+  const statusEl = document.getElementById('game-status');
+  if (!statusEl) return;
+
+  let secs = secondsLeft;
+  const update = () => {
+    if (!Game.active || !Game.isMyTurn) { clearTurnWarningUI(); return; }
+    const mm = String(Math.floor(secs/60)).padStart(2,'0');
+    const ss = String(secs % 60).padStart(2,'0');
+    statusEl.textContent = `Твой ход  ${mm}:${ss}`;
+    statusEl.style.color = secs <= 10 ? 'var(--red)' : 'var(--yellow)';
+    if (secs <= 0) { clearTurnWarningUI(); return; }
+    secs--;
+  };
+  update();
+  Game._timerInterval = setInterval(update, 1000);
+  Game._timerSeconds  = secs;
+}
+
+function clearTurnWarningUI() {
+  if (Game._timerInterval) { clearInterval(Game._timerInterval); Game._timerInterval = null; }
+  Game._timerSeconds = null;
+  // Восстанавливаем обычный статус
+  updateGameStatus();
+}
+
+
   const el = document.getElementById('game-status');
   if (!el || !Game.active) return;
   el.textContent = Game.isMyTurn ? 'Твой ход' : 'Ход соперника';
@@ -764,7 +797,8 @@ function playerShoot(r, c) {
 
   // Онлайн: только отправляем, результат придёт через shot_result
   if (Game.mode === 'online') {
-    Game.isMyTurn = false; // блокируем повторные клики пока ждём ответ
+    Game.isMyTurn = false; // блокируем повторные клики
+    clearTurnWarningUI();  // сбрасываем таймер
     WS.sendShot(r, c);
     return;
   }
@@ -876,6 +910,7 @@ const getNeighbors4 = (r,c) => [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].filter(([nr,nc]
 /* ─── КОНЕЦ ИГРЫ ─────────────────────────────────── */
 function endGame(result) {
   Game.active = false;
+  clearTurnWarningUI(); // сбрасываем таймер
   recordResult(result, Game.shots, Game.hits, Game.opponent?.name);
   updateMenuStats();
   const icons  = {win:'🏆', loss:'💀', draw:'🤝'};
@@ -1045,12 +1080,60 @@ const WS = {
       showModal('Ошибка', message, [{ label: 'Ок', cls: 'btn-ghost', action: closeModal }]);
     });
 
-    // ── Соперник сдался — нам победа немедленно ───────
+    // п.5: соперник закрыл вкладку/приложение — нам победа
+    this.socket.on('opponent_disconnected_win', () => {
+      clearTurnWarningUI();
+      showModal('Победа!', 'Соперник покинул игру. Тебе засчитана победа!', [
+        { label: 'Ок', cls: 'btn-primary', action: () => { closeModal(); endGame('win'); }},
+      ]);
+    });
+
+    // п.6: предупреждение — осталось 20 секунд
+    this.socket.on('turn_warning', ({ secondsLeft }) => {
+      if (Game.isMyTurn) startTurnWarningUI(secondsLeft);
+    });
+
+    // п.6: отмена предупреждения (после хода)
+    this.socket.on('turn_warning_cancel', () => {
+      clearTurnWarningUI();
+    });
+
+    // п.6: таймер истёк у кого-то
+    this.socket.on('turn_timeout', ({ playerId, timeouts }) => {
+      clearTurnWarningUI();
+      const isMine = playerId === App.user.id;
+      const msg = isMine
+        ? `Ты не успел сделать ход! (просрочка ${timeouts}/${2})`
+        : `Соперник не успел сделать ход!`;
+      // Кратко показываем уведомление в статусе
+      const statusEl = document.getElementById('game-status');
+      if (statusEl) { statusEl.textContent = msg; statusEl.style.color = 'var(--yellow)'; }
+      setTimeout(updateGameStatus, 2000);
+    });
+
+    // п.6: поражение из-за 2 просрочек
+    this.socket.on('game_over_timeout', ({ winner, loser }) => {
+      clearTurnWarningUI();
+      endGame(winner === App.user.id ? 'win' : 'loss');
+    });
+
+    // п.6: ход передан (от сервера при тайм-ауте)
+    this.socket.on('turn', ({ isMyTurn }) => {
+      Game.isMyTurn = isMyTurn;
+      clearTurnWarningUI();
+      updateGameStatus();
+      renderGameBoard();
+    });
+
+    // п.5: соперник сдался — нам победа немедленно
     this.socket.on('opponent_surrendered', () => {
+      clearTurnWarningUI();
       endGame('win');
     });
-    // ── Сдача подтверждена — показываем поражение ────
+
+    // п.5: сдача подтверждена — показываем поражение
     this.socket.on('surrender_confirmed', () => {
+      clearTurnWarningUI();
       endGame('loss');
     });
   },
