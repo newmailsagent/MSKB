@@ -56,6 +56,13 @@ db.exec(`
 `);
 
 // Добавляем новые колонки если их нет (миграция)
+try { db.exec(`ALTER TABLE players ADD COLUMN rating_active INTEGER DEFAULT 0`); } catch(e) {}
+try { db.exec(`ALTER TABLE players ADD COLUMN rating_since  INTEGER DEFAULT 0`); } catch(e) {}
+try { db.exec(`ALTER TABLE players ADD COLUMN rated_wins    INTEGER DEFAULT 0`); } catch(e) {}
+try { db.exec(`ALTER TABLE players ADD COLUMN rated_losses  INTEGER DEFAULT 0`); } catch(e) {}
+try { db.exec(`ALTER TABLE players ADD COLUMN rated_shots   INTEGER DEFAULT 0`); } catch(e) {}
+try { db.exec(`ALTER TABLE players ADD COLUMN rated_hits    INTEGER DEFAULT 0`); } catch(e) {}
+// Удаляем старые: (миграция — колонки уже есть)
 try { db.exec(`ALTER TABLE players ADD COLUMN online_wins    INTEGER DEFAULT 0`); } catch(e) {}
 try { db.exec(`ALTER TABLE players ADD COLUMN online_losses  INTEGER DEFAULT 0`); } catch(e) {}
 try { db.exec(`ALTER TABLE players ADD COLUMN online_shots   INTEGER DEFAULT 0`); } catch(e) {}
@@ -74,12 +81,15 @@ function upsertPlayer(id, name) {
 
 function addWin(id, shots, hits, isOnline = false) {
   if (id?.startsWith('guest_')) return;
+  const player = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
+  const isRated = isOnline && player?.rating_active === 1;
   if (isOnline) {
     db.prepare(`UPDATE players SET
       wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?,
       online_wins=online_wins+1, online_shots=online_shots+?, online_hits=online_hits+?,
+      rated_wins=rated_wins+${isRated?1:0}, rated_shots=rated_shots+${isRated?'?':0}, rated_hits=rated_hits+${isRated?'?':0},
       updated_at=strftime('%s','now') WHERE id=?
-    `).run(shots, hits, shots, hits, id);
+    `).run(shots, hits, shots, hits, ...(isRated ? [shots, hits] : []), id);
   } else {
     db.prepare(`UPDATE players SET wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?,
       updated_at=strftime('%s','now') WHERE id=?`).run(shots, hits, id);
@@ -88,41 +98,60 @@ function addWin(id, shots, hits, isOnline = false) {
 
 function addLoss(id, shots, hits, isOnline = false) {
   if (id?.startsWith('guest_')) return;
+  const player = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
+  const isRated = isOnline && player?.rating_active === 1;
   if (isOnline) {
     db.prepare(`UPDATE players SET
       losses=losses+1, total_shots=total_shots+?, total_hits=total_hits+?,
       online_losses=online_losses+1, online_shots=online_shots+?, online_hits=online_hits+?,
+      rated_losses=rated_losses+${isRated?1:0}, rated_shots=rated_shots+${isRated?'?':0}, rated_hits=rated_hits+${isRated?'?':0},
       updated_at=strftime('%s','now') WHERE id=?
-    `).run(shots, hits, shots, hits, id);
+    `).run(shots, hits, shots, hits, ...(isRated ? [shots, hits] : []), id);
   } else {
     db.prepare(`UPDATE players SET losses=losses+1, total_shots=total_shots+?, total_hits=total_hits+?,
       updated_at=strftime('%s','now') WHERE id=?`).run(shots, hits, id);
   }
 }
 
-// Рейтинг: только online_wins, точность < 60% (анти-бот фильтр)
-// Формула: очки = online_wins * (1 - max(0, acc - 0.6) * 5)
-// То есть: при acc ≤ 60% множитель = 1.0, при acc = 80% множитель = 0.0
+// Рейтинг: только rated_ (матчи когда игрок участвовал), анти-бот фильтр
 function getRating() {
   return db.prepare(`
-    SELECT id, name,
+    SELECT id, name, rating_active,
+      rated_wins, rated_losses, rated_shots, rated_hits,
       online_wins, online_losses, online_shots, online_hits,
       CASE
-        WHEN online_shots > 0 THEN ROUND(CAST(online_hits AS REAL) / online_shots, 3)
+        WHEN rated_shots > 0 THEN ROUND(CAST(rated_hits AS REAL) / rated_shots, 3)
         ELSE 0
       END AS accuracy,
       CASE
-        WHEN online_wins + online_losses < 3 THEN 0
-        WHEN online_shots > 0 THEN
-          CAST(online_wins AS REAL) *
-          MAX(0, 1.0 - MAX(0, CAST(online_hits AS REAL)/online_shots - 0.6) * 5.0)
+        WHEN rated_shots > 0 THEN
+          CAST(rated_wins AS REAL) *
+          MAX(0, 1.0 - MAX(0, CAST(rated_hits AS REAL)/rated_shots - 0.6) * 5.0)
         ELSE 0
       END AS rating_score
     FROM players
-    WHERE online_wins + online_losses >= 1
-    ORDER BY rating_score DESC, online_wins DESC
+    WHERE rating_active = 1 AND rated_wins + rated_losses >= 1
+    ORDER BY rating_score DESC, rated_wins DESC
     LIMIT 50
   `).all();
+}
+
+// Вступить в рейтинг
+function joinRating(id) {
+  if (id?.startsWith('guest_')) return { ok: false };
+  db.prepare(`UPDATE players SET rating_active=1, rating_since=strftime('%s','now'),
+    rated_wins=0, rated_losses=0, rated_shots=0, rated_hits=0
+    WHERE id=?`).run(id);
+  return { ok: true };
+}
+
+// Покинуть рейтинг
+function leaveRating(id) {
+  if (id?.startsWith('guest_')) return { ok: false };
+  db.prepare(`UPDATE players SET rating_active=0,
+    rated_wins=0, rated_losses=0, rated_shots=0, rated_hits=0
+    WHERE id=?`).run(id);
+  return { ok: true };
 }
 
 function getPlayerStats(id) {
@@ -382,6 +411,8 @@ function checkSunkServer(field, hitR, hitC) {
 app.get('/api/config',     (req, res) => res.json({ botUsername: BOT_USERNAME }));
 app.get('/api/leaderboard',(req, res) => { try { res.json({ ok: true, data: getRating() }); } catch(e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get('/api/rating',    (req, res) => { try { res.json({ ok: true, data: getRating() }); } catch(e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post('/api/rating/join',  (req, res) => { try { res.json(joinRating(req.body.id));  } catch(e) { res.status(500).json({ ok: false }); } });
+app.post('/api/rating/leave', (req, res) => { try { res.json(leaveRating(req.body.id)); } catch(e) { res.status(500).json({ ok: false }); } });
 app.get('/api/stats/:id',  (req, res) => { try { res.json({ ok: true, data: getPlayerStats(req.params.id)||null }); } catch(e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get('/api/status',     (req, res) => res.json({ ok: true, rooms: rooms.size, waiting: waitingPool.length, uptime: process.uptime() }));
 

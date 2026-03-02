@@ -237,7 +237,7 @@ function initSettings() {
   });
 }
 
-function defaultStats() { return { wins:0, losses:0, draws:0, totalShots:0, totalHits:0 }; }
+function defaultStats() { return { wins:0, losses:0, totalShots:0, totalHits:0 }; }
 
 function initStats() {
   App.stats   = loadJSON('bs_stats',   defaultStats());
@@ -245,7 +245,7 @@ function initStats() {
 }
 
 function recordResult(result, shots, hits, oppName) {
-  App.stats[result === 'win' ? 'wins' : result === 'loss' ? 'losses' : 'draws']++;
+  if(result==='win') App.stats.wins++; else if(result==='loss') App.stats.losses++;
   App.stats.totalShots += shots; App.stats.totalHits += hits;
   saveJSON('bs_stats', App.stats);
   App.history.unshift({ result, opponent: oppName || '?', shots, hits, date: Date.now() });
@@ -255,7 +255,7 @@ function recordResult(result, shots, hits, oppName) {
 
 function updateMenuStats() {
   setText('stat-wins',  App.stats.wins);
-  setText('stat-total', App.stats.wins + App.stats.losses + App.stats.draws);
+  setText('stat-total', App.stats.wins + App.stats.losses);
 }
 
 /* ─── ПРОМО БАББЛ ────────────────────────────────── */
@@ -269,6 +269,7 @@ function initPromoBanner() {
 
 function updatePromoBanner() {
   const isGuest   = !!App.user.isGuest;
+  const isTG      = document.body.classList.contains('tg-app');
   const dismissed = loadJSON('bs_promo_dismissed', false);
   const hintsOn   = App.settings.hints !== false;
 
@@ -276,7 +277,9 @@ function updatePromoBanner() {
   const bannerLb   = document.getElementById('tg-promo-lb');
   const bannerSt   = document.getElementById('tg-promo-stats');
 
-  if (bannerMenu) bannerMenu.classList.toggle('hidden', !isGuest || dismissed || !hintsOn);
+  // Fix 3: баббл на главной — только браузерным гостям (не в TG)
+  if (bannerMenu) bannerMenu.classList.toggle('hidden', !isGuest || isTG || dismissed || !hintsOn);
+  // На рейтинге и статистике — всем гостям (включая TG)
   if (bannerLb)   bannerLb.classList.toggle('hidden',   !isGuest);
   if (bannerSt)   bannerSt.classList.toggle('hidden',   !isGuest);
 }
@@ -286,6 +289,8 @@ async function renderLeaderboard() {
   const list = document.getElementById('leaderboard-list');
   const myCard = document.getElementById('my-record-card');
   const mySection = document.getElementById('my-record-section');
+  const btnJoin  = document.getElementById('btn-join-rating');
+  const btnLeave = document.getElementById('btn-leave-rating');
   updatePromoBanner();
 
   if (App.user.isGuest) {
@@ -297,71 +302,108 @@ async function renderLeaderboard() {
   if (mySection) mySection.style.display = '';
   if (list) list.innerHTML = '<p class="empty-state">Загрузка…</p>';
 
+  // Инфо-кнопка
+  const infoBtn = document.getElementById('rating-info-btn');
+  if (infoBtn && !infoBtn._bound) {
+    infoBtn._bound = true;
+    infoBtn.addEventListener('click', () => {
+      showModal('Как работает рейтинг', 'В рейтинге учитываются только сетевые бои со случайными соперниками.\n\nУчастие добровольное — нажми «Участвовать» и твои победы пойдут в зачёт.\n\nЕсли покинешь рейтинг и вернёшься — счёт обнуляется.\n\nМесто определяется по количеству побед.', [
+        { label: 'Понятно', cls: 'btn-primary', action: closeModal }
+      ]);
+    });
+  }
+
   try {
-    const res  = await fetch('/api/rating');
-    const json = await res.json();
-    if (!json.ok) throw new Error();
+    const [ratingRes, statsRes] = await Promise.all([
+      fetch('/api/rating'),
+      fetch('/api/stats/' + App.user.id),
+    ]);
+    const ratingJson = await ratingRes.json();
+    const statsJson  = await statsRes.json();
+    const data    = ratingJson.ok ? (ratingJson.data || []) : [];
+    const myStats = statsJson.ok ? statsJson.data : null;
+    const isParticipating = myStats?.rating_active === 1;
 
-    const data   = json.data || [];
-    const myData = data.find(e => e.id === App.user.id);
+    if (btnJoin)  { btnJoin.style.display  = isParticipating ? 'none' : ''; btnJoin.onclick  = () => doJoinRating(); }
+    if (btnLeave) { btnLeave.style.display = isParticipating ? '' : 'none';  btnLeave.onclick = () => doLeaveRating(); }
 
-    // Мой рекорд
     if (myCard) {
-      if (!myData || (myData.online_wins + myData.online_losses) === 0) {
-        myCard.innerHTML = '<p class="empty-state" style="margin:0;padding:8px 0">Сыграй хотя бы 1 сетевой бой!</p>';
+      const rw = myStats?.rated_wins   || 0;
+      const rl = myStats?.rated_losses || 0;
+      const rs = myStats?.rated_shots  || 0;
+      const rh = myStats?.rated_hits   || 0;
+      const rank = data.findIndex(e => e.id === App.user.id) + 1;
+
+      if (!isParticipating) {
+        myCard.innerHTML = '<p class="empty-state" style="margin:0;padding:8px 0">Ты не участвуешь в рейтинге</p>';
+      } else if (rw + rl === 0) {
+        myCard.innerHTML = '<p class="empty-state" style="margin:0;padding:8px 0">Сыграй сетевой бой чтобы появиться в рейтинге!</p>';
       } else {
-        const acc    = myData.online_shots > 0 ? Math.round(myData.online_hits / myData.online_shots * 100) : 0;
-        const total  = myData.online_wins + myData.online_losses;
-        const wr     = total ? Math.round(myData.online_wins / total * 100) : 0;
-        const score  = Math.round((myData.rating_score || 0) * 10) / 10;
-        const rank   = data.findIndex(e => e.id === App.user.id) + 1;
-        myCard.innerHTML = `
-          <div class="my-record-name">${App.user.name}
-            ${rank > 0 ? `<span class="rating-score-badge">#${rank}</span>` : ''}
-          </div>
-          <div class="my-record-grid">
-            <div><span class="my-record-val">${myData.online_wins}</span><span class="my-record-lbl">Победы</span></div>
-            <div><span class="my-record-val">${total}</span><span class="my-record-lbl">Боёв</span></div>
-            <div><span class="my-record-val">${wr}%</span><span class="my-record-lbl">Винрейт</span></div>
-            <div><span class="my-record-val">${acc}%</span><span class="my-record-lbl">Точность</span></div>
-          </div>`;
+        const acc = rs > 0 ? Math.round(rh/rs*100) : 0;
+        const tot = rw + rl;
+        const wr  = tot ? Math.round(rw/tot*100) : 0;
+        myCard.innerHTML =
+          '<div class="my-record-name">' + App.user.name +
+          (rank > 0 ? ' <span class="rating-score-badge">#' + rank + '</span>' : '') +
+          '</div>' +
+          '<div class="my-record-grid">' +
+          '<div><span class="my-record-val">' + rw + '</span><span class="my-record-lbl">Победы</span></div>' +
+          '<div><span class="my-record-val">' + tot + '</span><span class="my-record-lbl">Боёв</span></div>' +
+          '<div><span class="my-record-val">' + wr + '%</span><span class="my-record-lbl">Винрейт</span></div>' +
+          '<div><span class="my-record-val">' + acc + '%</span><span class="my-record-lbl">Точность</span></div>' +
+          '</div>';
       }
     }
 
-    // Общий рейтинг
     renderRatingList(data);
-
   } catch(e) {
     if (list) list.innerHTML = '<p class="empty-state">Ошибка загрузки</p>';
   }
 }
 
+async function doJoinRating() {
+  try {
+    await fetch('/api/rating/join', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id: App.user.id}) });
+    renderLeaderboard();
+  } catch(e) {}
+}
+
+async function doLeaveRating() {
+  showModal('Покинуть рейтинг?', 'Результаты обнулятся. При возвращении счёт начнётся с нуля.', [
+    { label: 'Отмена',   cls: 'btn-ghost',  action: closeModal },
+    { label: 'Покинуть', cls: 'btn-danger', action: async () => {
+      closeModal();
+      try {
+        await fetch('/api/rating/leave', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id: App.user.id}) });
+        renderLeaderboard();
+      } catch(e) {}
+    }},
+  ]);
+}
+
 function renderRatingList(data) {
   const list = document.getElementById('leaderboard-list');
   if (!list) return;
-  const medals = ['gold', 'silver', 'bronze'];
+  const medals = ['gold','silver','bronze'];
   list.innerHTML = '';
-
-  if (!data.length) {
-    list.innerHTML = '<p class="empty-state">Пока нет сетевых игроков</p>';
-    return;
-  }
-
+  if (!data.length) { list.innerHTML = '<p class="empty-state">Пока никто не участвует в рейтинге</p>'; return; }
   data.forEach((entry, i) => {
-    const acc   = entry.online_shots > 0 ? Math.round(entry.online_hits / entry.online_shots * 100) : 0;
-    const total = (entry.online_wins || 0) + (entry.online_losses || 0);
-    const wr    = total ? Math.round(entry.online_wins / total * 100) : 0;
-    const isMe  = entry.id === App.user?.id;
-    const div   = document.createElement('div');
+    const rw  = entry.rated_wins   || 0;
+    const rl  = entry.rated_losses || 0;
+    const rs  = entry.rated_shots  || 0;
+    const rh  = entry.rated_hits   || 0;
+    const acc = rs > 0 ? Math.round(rh/rs*100) : 0;
+    const tot = rw + rl;
+    const wr  = tot ? Math.round(rw/tot*100) : 0;
+    const isMe = entry.id === App.user?.id;
+    const div  = document.createElement('div');
     div.className = 'lb-item' + (isMe ? ' lb-item-me' : '');
-    div.innerHTML = `
-      <div class="lb-rank ${medals[i]||''}">${i < 3 ? ['🥇','🥈','🥉'][i] : i+1}</div>
-      <div class="lb-avatar">${(entry.name||'?')[0].toUpperCase()}</div>
-      <div class="lb-info">
-        <strong>${entry.name||'Игрок'}${isMe ? ' <small>(вы)</small>' : ''}</strong>
-        <small>${entry.online_wins}W · ${wr}% WR · ${acc}% ACC</small>
-      </div>
-      <div class="lb-wins">${entry.online_wins}</div>`;
+    div.innerHTML =
+      '<div class="lb-rank ' + (medals[i]||'') + '">' + (i < 3 ? ['🥇','🥈','🥉'][i] : i+1) + '</div>' +
+      '<div class="lb-avatar">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
+      '<div class="lb-info"><strong>' + (entry.name||'Игрок') + (isMe ? ' <small>(вы)</small>' : '') + '</strong>' +
+      '<small>' + rw + 'W · ' + wr + '% WR</small></div>' +
+      '<div class="lb-wins">' + rw + '</div>';
     list.appendChild(div);
   });
 }
@@ -499,7 +541,22 @@ const Placement = {
     const ship = this.ships.find(s => s.id === id);
     if (!ship || ship.placed) return;
     if (this.selected?.id !== id) this.selectShip(id);
-    this.vertical = !this.vertical; ship.vertical = this.vertical;
+    const newVertical = !this.vertical;
+    // Fix 4: проверяем можно ли повернуть — ищем любое место на поле
+    const hasSpace = (() => {
+      for (let r = 0; r < BOARD_SIZE; r++)
+        for (let c = 0; c < BOARD_SIZE; c++)
+          if (canPlace(this.board, r, c, ship.size, newVertical)) return true;
+      return false;
+    })();
+    if (!hasSpace) {
+      // Тряска — вибрация и CSS-анимация
+      vibrate([30,15,30,15,30]);
+      const el = document.querySelector(`[data-id="${id}"]`);
+      if (el) { el.classList.add('shake'); setTimeout(() => el.classList.remove('shake'), 400); }
+      return;
+    }
+    this.vertical = newVertical; ship.vertical = this.vertical;
     Sound.click(); vibrate([10]); this.renderDock();
   },
 
@@ -509,51 +566,77 @@ const Placement = {
     else this._lastTap[id] = now;
   },
 
-  _startDrag(e, ship, el) {}, // legacy, не используется
-  _moveDrag(cx, cy) {},
-  _endDrag(cx, cy) {},
-  _startDragTouch(e, ship, el) {}, // legacy, не используется
+  _startDrag(e, ship, el) {}, _moveDrag(cx, cy) {}, _endDrag(cx, cy) {}, _startDragTouch(e, ship, el) {},
 
-  // Единый обработчик drag через Pointer Events — работает на мышке, touch и в TG WebApp
   _startPointerDrag(e, ship, el) {
     e.preventDefault();
     e.stopPropagation();
 
     const startX = e.clientX, startY = e.clientY;
-    this._drag = { ship, el, _wasDrag: false };
+    this._drag = { ship, el, _wasDrag: false, _ghost: null };
 
     const onMove = (ev) => {
       const dx = ev.clientX - startX, dy = ev.clientY - startY;
       if (!this._drag._wasDrag && Math.hypot(dx, dy) > 6) {
         this._drag._wasDrag = true;
         this.selectShip(ship.id);
+        // Создаём ghost-элемент который следует за курсором
+        this._createGhost(ship, el, ev.clientX, ev.clientY);
       }
       if (this._drag._wasDrag) {
+        this._moveGhost(ev.clientX, ev.clientY);
         this._highlightCellUnder(ev.clientX, ev.clientY);
       }
     };
 
     const onUp = (ev) => {
-      el.releasePointerCapture(e.pointerId);
+      try { el.releasePointerCapture(e.pointerId); } catch(_) {}
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup',   onUp);
       document.removeEventListener('pointercancel', onUp);
+      this._removeGhost();
 
       if (this._drag._wasDrag) {
         this._tryPlaceAt(ev.clientX, ev.clientY);
       } else {
-        // Короткий тап — выбор корабля
         this.selectShip(ship.id);
       }
       this._drag = null;
       this.clearPreview();
     };
 
-    // setPointerCapture позволяет получать события даже когда палец/мышь ушли с элемента
     try { el.setPointerCapture(e.pointerId); } catch(_) {}
     document.addEventListener('pointermove',   onMove);
     document.addEventListener('pointerup',     onUp);
     document.addEventListener('pointercancel', onUp);
+  },
+
+  _createGhost(ship, sourceEl, cx, cy) {
+    const ghost = sourceEl.cloneNode(true);
+    ghost.style.cssText = `
+      position: fixed; z-index: 9999; pointer-events: none;
+      opacity: 0.75; transform: translate(-50%, -50%) scale(1.1);
+      transition: none; border-color: var(--accent);
+      border-style: dashed; border-width: 2px;
+      background: var(--bg2); border-radius: 5px; padding: 5px;
+    `;
+    ghost.style.left = cx + 'px';
+    ghost.style.top  = cy + 'px';
+    document.body.appendChild(ghost);
+    if (this._drag) this._drag._ghost = ghost;
+  },
+
+  _moveGhost(cx, cy) {
+    const ghost = this._drag?._ghost;
+    if (!ghost) return;
+    ghost.style.left = cx + 'px';
+    ghost.style.top  = cy + 'px';
+  },
+
+  _removeGhost() {
+    const ghost = this._drag?._ghost;
+    if (ghost) ghost.remove();
+    if (this._drag) this._drag._ghost = null;
   },
 
   _highlightCellUnder(cx, cy) {
@@ -591,7 +674,7 @@ const Placement = {
     this.selected.vertical = this.vertical;
     this.selected.cells  = placeShip(this.board, r, c, this.selected.size, this.vertical);
     this.selected.placed = true;
-    this.selected = this.ships.find(s => !s.placed) || null;
+    this.selected = null; // Fix 4: игрок сам берёт следующий корабль
     Sound.place(); vibrate([15]); this.renderDock(); this.renderBoard();
   },
 
@@ -735,7 +818,7 @@ function setupGameLayout() {
       row.remove();
     }
     myWrap.style.display = 'none';
-    setShowingField(true);
+    setShowingField(true); // default: show enemy board
   }
 }
 
@@ -921,22 +1004,24 @@ function playerShoot(r, c) {
       Sound.sunk(); vibrate([50,20,50,20,50]);
     }
     if (allSunk(Game.enemyShips)) { endGame('win'); return; }
-    if (!isDesktop()) setShowingField(true);
+    if (!isDesktop() && App.settings.showEnemyMoves) setShowingField(true);
     renderGameBoard();
   } else {
     Game.isMyTurn = false;
     updateGameStatus();
-    if (!isDesktop()) setShowingField(false);
+    if (!isDesktop() && App.settings.showEnemyMoves) setShowingField(false);
     renderGameBoard();
     if (Game.mode.startsWith('bot')) setTimeout(botShoot, 800 + Math.random()*600);
   }
 }
 
 /* ─── БОТ ────────────────────────────────────────── */
+/* ─── БОТ (2 сложности) ─────────────────────────── */
+// ЛЕГКО: рандом, но обязательно добивает раненых
+// СЛОЖНО: профессиональная тактика (пarity hunt + direction tracking)
+
 function botGetDifficulty() {
-  if (Game.mode === 'bot-easy')   return 'easy';
-  if (Game.mode === 'bot-medium') return 'medium';
-  return 'hard';
+  return (Game.mode === 'bot-easy') ? 'easy' : 'hard';
 }
 
 function botShoot() {
@@ -945,40 +1030,70 @@ function botShoot() {
   let r, c;
 
   if (diff === 'easy') {
-    const e = getEmptyCells(Game.enemyShots); if (!e.length) return;
-    [r, c] = e[Math.floor(Math.random()*e.length)];
-  } else if (diff === 'medium') {
+    // Если есть раненый корабль — добиваем (случайный сосед)
     if (Game.botQueue.length) {
       [r, c] = Game.botQueue.shift();
-      while (Game.enemyShots[r][c] !== CELL_EMPTY) {
-        if (!Game.botQueue.length) { [r, c] = randomEmpty(Game.enemyShots); break; }
+      while (Game.botQueue.length && Game.enemyShots[r][c] !== CELL_EMPTY)
         [r, c] = Game.botQueue.shift();
-      }
-    } else { [r, c] = randomEmpty(Game.enemyShots); }
+      if (Game.enemyShots[r][c] !== CELL_EMPTY) [r, c] = randomEmpty(Game.enemyShots);
+    } else {
+      [r, c] = randomEmpty(Game.enemyShots);
+    }
   } else {
+    // HARD: шахматный паттерн + направленное добивание
+    // Лучшая известная тактика: охота по чётным клеткам (parity 2),
+    // после попадания — добивание по направлению
     if (Game.botQueue.length) {
       [r, c] = Game.botQueue.shift();
-      while (Game.botQueue.length && Game.enemyShots[r][c] !== CELL_EMPTY) [r, c] = Game.botQueue.shift();
-      if (Game.enemyShots[r][c] !== CELL_EMPTY) [r, c] = huntChessEmpty(Game.enemyShots);
-    } else { [r, c] = huntChessEmpty(Game.enemyShots); }
+      while (Game.botQueue.length && Game.enemyShots[r][c] !== CELL_EMPTY)
+        [r, c] = Game.botQueue.shift();
+      if (Game.enemyShots[r][c] !== CELL_EMPTY) [r, c] = huntParity(Game.enemyShots);
+    } else {
+      [r, c] = huntParity(Game.enemyShots);
+    }
   }
 
-  if (r === undefined) return;
+  if (r === undefined || c === undefined) return;
 
   const hit = Game.myBoard[r][c] === CELL_SHIP;
   Game.enemyShots[r][c] = hit ? CELL_HIT : CELL_MISS;
 
   if (hit) {
-    Game.myBoard[r][c] = CELL_HIT; Game.botLastHit = {r, c};
-    if (diff !== 'easy') {
+    Game.myBoard[r][c] = CELL_HIT;
+    Game.botLastHit = {r, c};
+
+    if (diff === 'easy') {
+      // Easy: просто добавляем всех соседей
       const nb = getNeighbors4(r, c).filter(([nr,nc]) => Game.enemyShots[nr][nc] === CELL_EMPTY);
-      if (diff === 'hard' && Game.botDirection) {
-        const [dr,dc] = Game.botDirection;
+      Game.botQueue.push(...nb);
+    } else {
+      // Hard: умное добивание с определением направления
+      if (Game.botDirection) {
+        const [dr, dc] = Game.botDirection;
         Game.botQueue = [];
-        if (inBounds(r+dr,c+dc) && Game.enemyShots[r+dr][c+dc]===CELL_EMPTY) Game.botQueue.push([r+dr,c+dc]);
-        if (inBounds(r-dr,c-dc) && Game.enemyShots[r-dr][c-dc]===CELL_EMPTY) Game.botQueue.push([r-dr,c-dc]);
-      } else { Game.botQueue.push(...nb); }
+        const fwd = [r+dr, c+dc], bwd = [r-dr, c-dc];
+        if (inBounds(fwd[0],fwd[1]) && Game.enemyShots[fwd[0]][fwd[1]] === CELL_EMPTY)
+          Game.botQueue.unshift(fwd);
+        if (inBounds(bwd[0],bwd[1]) && Game.enemyShots[bwd[0]][bwd[1]] === CELL_EMPTY)
+          Game.botQueue.push(bwd);
+      } else {
+        const nb = getNeighbors4(r, c).filter(([nr,nc]) => Game.enemyShots[nr][nc] === CELL_EMPTY);
+        // Определяем направление если есть 2 соседних попадания
+        if (Game.botLastHit) {
+          const dr = r - Game.botLastHit.r, dc = c - Game.botLastHit.c;
+          if (Math.abs(dr) + Math.abs(dc) === 1) Game.botDirection = [dr, dc];
+        }
+        Game.botQueue = [];
+        if (Game.botDirection) {
+          const [dr, dc] = Game.botDirection;
+          if (inBounds(r+dr,c+dc) && Game.enemyShots[r+dr][c+dc]===CELL_EMPTY) Game.botQueue.push([r+dr,c+dc]);
+          if (inBounds(r-dr,c-dc) && Game.enemyShots[r-dr][c-dc]===CELL_EMPTY) Game.botQueue.push([r-dr,c-dc]);
+        } else {
+          Game.botQueue.push(...nb);
+        }
+      }
     }
+
     const sunk = checkSunk(Game.myBoard, Game.myShips, r, c);
     if (sunk) {
       for (let rr = 0; rr < BOARD_SIZE; rr++)
@@ -987,23 +1102,35 @@ function botShoot() {
             Game.enemyShots[rr][cc] = Game.myBoard[rr][cc];
       Game.botQueue = []; Game.botLastHit = null; Game.botDirection = null;
     }
+
     if (allSunk(Game.myShips)) { renderGameBoard(); endGame('loss'); return; }
     renderGameBoard();
     setTimeout(botShoot, 700 + Math.random()*500);
   } else {
     Game.isMyTurn = true; updateGameStatus();
-    if (!isDesktop()) setShowingField(true);
+    if (!isDesktop() && App.settings.showEnemyMoves) setShowingField(true);
     renderGameBoard();
   }
 }
 
-const getEmptyCells = board => { const r = []; for (let i=0;i<BOARD_SIZE;i++) for (let j=0;j<BOARD_SIZE;j++) if(board[i][j]===CELL_EMPTY) r.push([i,j]); return r; };
-const randomEmpty   = board => { const e=getEmptyCells(board); return e[Math.floor(Math.random()*e.length)]||[0,0]; };
-function huntChessEmpty(board) {
-  const c = [];
-  for (let r=0;r<BOARD_SIZE;r++) for (let cc=0;cc<BOARD_SIZE;cc++) if((r+cc)%2===0&&board[r][cc]===CELL_EMPTY) c.push([r,cc]);
-  return c.length ? c[Math.floor(Math.random()*c.length)] : randomEmpty(board);
+const getEmptyCells = board => {
+  const res = [];
+  for (let r=0;r<BOARD_SIZE;r++) for (let c=0;c<BOARD_SIZE;c++) if(board[r][c]===CELL_EMPTY) res.push([r,c]);
+  return res;
+};
+const randomEmpty = board => { const e=getEmptyCells(board); return e[Math.floor(Math.random()*e.length)]||[0,0]; };
+
+// Охота по паритету (чётность r+c) — оптимальная тактика поиска кораблей
+// Корабли размером >=2 всегда занимают клетку чётного паритета при клетке 2
+function huntParity(board) {
+  // Приоритет 1: паритет 2 (r%2===c%2, шахматная раскраска)
+  const p2 = [];
+  for (let r=0;r<BOARD_SIZE;r++) for (let c=0;c<BOARD_SIZE;c++)
+    if ((r+c)%2===0 && board[r][c]===CELL_EMPTY) p2.push([r,c]);
+  if (p2.length) return p2[Math.floor(Math.random()*p2.length)];
+  return randomEmpty(board);
 }
+
 const getNeighbors4 = (r,c) => [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].filter(([nr,nc])=>inBounds(nr,nc));
 
 /* ─── КОНЕЦ ИГРЫ ─────────────────────────────────── */
@@ -1333,7 +1460,7 @@ async function startOnline(mode) {
     }
   } catch(e) {
     showModal('Нет сервера', 'Онлайн недоступен. Сыграть с ботом?', [
-      { label: 'С ботом',  cls: 'btn-primary', action: () => { closeModal(); startBotGame('bot-medium'); }},
+      { label: 'С ботом',  cls: 'btn-primary', action: () => { closeModal(); startBotGame('bot-easy'); }},
       { label: 'В меню',   cls: 'btn-ghost',   action: () => { closeModal(); showScreen('menu'); }},
     ]);
   }
@@ -1474,12 +1601,16 @@ function initTelegram() {
 
 /* ─── НАВИГАЦИЯ ──────────────────────────────────── */
 function updateMenuUI() {
+  const isGuest = !!App.user.isGuest;
   setText('user-name', App.user.name);
-  setText('user-tag', App.user.username || (App.user.isGuest ? 'гость' : ''));
+  setText('user-tag', App.user.username || (isGuest ? 'гость' : ''));
   const av = document.getElementById('user-avatar');
   if (av) {
     av.innerHTML = App.user.photo ? `<img src="${App.user.photo}" alt="" />` : (App.user.name[0]||'?').toUpperCase();
   }
+  // Fix 1: скрываем статистику в шапке для гостей
+  const statsMini = document.querySelector('.stats-mini');
+  if (statsMini) statsMini.style.display = isGuest ? 'none' : '';
   updateMenuStats();
 }
 
@@ -1495,7 +1626,6 @@ function bindNav() {
   });
 
   document.getElementById('mode-bot-easy')?.addEventListener('click',   () => startBotGame('bot-easy'));
-  document.getElementById('mode-bot-medium')?.addEventListener('click', () => startBotGame('bot-medium'));
   document.getElementById('mode-bot-hard')?.addEventListener('click',   () => startBotGame('bot-hard'));
   document.getElementById('mode-random')?.addEventListener('click',     () => startOnline('random'));
   document.getElementById('mode-friend')?.addEventListener('click',     () => startOnline('friend'));
@@ -1542,7 +1672,7 @@ function bindNav() {
   // Реванш
   document.getElementById('btn-rematch')?.addEventListener('click', () => {
     Sound.click();
-    const mode = pendingGameMode || 'bot-medium';
+    const mode = pendingGameMode || 'bot-easy';
     if (mode === 'online') {
       // Онлайн реванш — заново ищем соперника
       WS.disconnect();

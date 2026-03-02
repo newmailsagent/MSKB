@@ -5,19 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Морской бой</title>
   <link rel="stylesheet" href="style.css" />
-  <!-- Yandex.Metrika counter -->
-<script type="text/javascript">
-    (function(m,e,t,r,i,k,a){
-        m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-        m[i].l=1*new Date();
-        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
-        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-    })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=107062883', 'ym');
-
-    ym(107062883, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
-</script>
-<noscript><div><img src="https://mc.yandex.ru/watch/107062883" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
-<!-- /Yandex.Metrika counter -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script>
     // Сразу после загрузки TG скрипта — сбрасываем все его CSS переменные
@@ -115,15 +102,11 @@
       <div class="mode-info"><strong>С другом</strong><span>Пригласить по ссылке</span></div>
     </button>
     <button class="mode-card" id="mode-bot-easy">
-      <div class="mode-info"><strong>Против бота</strong><span>Лёгкая сложность</span></div>
+      <div class="mode-info"><strong>Против бота</strong><span>Обычная сложность</span></div>
       <div class="mode-badge">ЛЕГКО</div>
     </button>
-    <button class="mode-card" id="mode-bot-medium">
-      <div class="mode-info"><strong>Против бота</strong><span>Средняя сложность</span></div>
-      <div class="mode-badge medium">СРЕДНЕ</div>
-    </button>
     <button class="mode-card" id="mode-bot-hard">
-      <div class="mode-info"><strong>Против бота</strong><span>Сложно — ИИ-охота</span></div>
+      <div class="mode-info"><strong>Против бота</strong><span>Тяжёлая сложность — тактический ИИ</span></div>
       <div class="mode-badge hard">СЛОЖНО</div>
     </button>
   </div>
@@ -261,6 +244,7 @@
   <div class="page-header">
     <button class="btn-back" data-screen="menu">← Назад</button>
     <h2>Рейтинг</h2>
+    <button class="rating-info-btn" id="rating-info-btn" title="Как работает рейтинг">?</button>
   </div>
   <div class="tg-promo-banner hidden" id="tg-promo-lb">
     Войди через Telegram чтобы попасть в рейтинг!
@@ -273,13 +257,16 @@
     <div id="my-record-card" class="my-record-card">
       <p class="empty-state">Нет данных</p>
     </div>
+    <!-- Кнопки участия -->
+    <div style="padding: 0 16px 8px; display:flex; gap:8px;">
+      <button class="btn btn-primary btn-sm" id="btn-join-rating" style="display:none">Участвовать в рейтинге</button>
+      <button class="btn btn-ghost btn-sm"   id="btn-leave-rating" style="display:none">Покинуть рейтинг</button>
+    </div>
   </div>
 
   <!-- Общий рейтинг -->
   <div class="rating-section">
-    <div class="rating-section-title">Общий рейтинг
-      <span class="rating-hint">по сетевым боям · точность &lt;60%</span>
-    </div>
+    <div class="rating-section-title">Топ игроков</div>
     <div class="leaderboard-list" id="leaderboard-list"><p class="empty-state">Загрузка…</p></div>
   </div>
 </div>
@@ -301,7 +288,6 @@
   <div class="stats-grid">
     <div class="stat-card green"><span id="st-wins">0</span><small>Победы</small></div>
     <div class="stat-card red"><span id="st-losses">0</span><small>Поражения</small></div>
-    <div class="stat-card yellow"><span id="st-draws">0</span><small>Ничьи</small></div>
     <div class="stat-card blue"><span id="st-total">0</span><small>Всего боёв</small></div>
     <div class="stat-card"><span id="st-acc">0%</span><small>Точность</small></div>
     <div class="stat-card"><span id="st-winrate">0%</span><small>Винрейт</small></div>
