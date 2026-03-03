@@ -16,7 +16,7 @@ BOT_TOKEN  = os.environ.get("BOT_TOKEN")
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://pobesedka.ru")
 
 GAME_SHARE_TEXT = "Приглашаю тебя поиграть в Морской бой со мной прямо в Telegram:"
-GAME_SHARE_URL  = "https://pobesedka.ru"  # или другая ссылка, если нужно
+GAME_SHARE_URL  = "https://t.me/bteship_bot/bteship"  # или другая ссылка, если нужно
 
 if not BOT_TOKEN:
     raise RuntimeError("Не задана переменная окружения BOT_TOKEN")
