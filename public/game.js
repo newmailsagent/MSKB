@@ -285,66 +285,74 @@ function updatePromoBanner() {
 
 /* ─── РЕЙТИНГ ────────────────────────────────────── */
 async function renderLeaderboard() {
-  const list = document.getElementById('leaderboard-list');
-  const myCard = document.getElementById('my-record-card');
+  const list      = document.getElementById('leaderboard-list');
+  const myCard    = document.getElementById('my-record-card');
   const mySection = document.getElementById('my-record-section');
-  const btnJoin  = document.getElementById('btn-join-rating');
-  const btnLeave = document.getElementById('btn-leave-rating');
+  const btnJoin   = document.getElementById('btn-join-rating');
+  const btnLeave  = document.getElementById('btn-leave-rating');
   updatePromoBanner();
 
   if (App.user.isGuest) {
-    if (list) list.innerHTML = '<p class="empty-state">Войди через Telegram чтобы видеть рейтинг</p>';
+    if (list)      list.innerHTML = '<p class="empty-state">Войди через Telegram чтобы видеть рейтинг</p>';
     if (mySection) mySection.style.display = 'none';
     return;
   }
 
   if (mySection) mySection.style.display = '';
-  if (list) list.innerHTML = '<p class="empty-state">Загрузка…</p>';
+  if (list)      list.innerHTML = '<p class="empty-state">Загрузка…</p>';
 
-  // Инфо-кнопка
+  // Инфо-кнопка — подписываем один раз
   const infoBtn = document.getElementById('rating-info-btn');
   if (infoBtn && !infoBtn._bound) {
     infoBtn._bound = true;
     infoBtn.addEventListener('click', () => {
-      showModal('Как работает рейтинг', 'В рейтинге учитываются только сетевые бои со случайными соперниками.\n\nУчастие добровольное — нажми «Участвовать» и твои победы пойдут в зачёт.\n\nЕсли покинешь рейтинг и вернёшься — счёт обнуляется.\n\nМесто определяется по количеству побед.', [
-        { label: 'Понятно', cls: 'btn-primary', action: closeModal }
-      ]);
+      showModal('Как работает рейтинг',
+        'В рейтинге учитываются только сетевые бои со случайными соперниками.\n\n' +
+        'Участие добровольное — нажми «Участвовать» и твои победы пойдут в зачёт.\n\n' +
+        'Если покинешь рейтинг и вернёшься — счёт обнуляется.\n\n' +
+        'Место определяется по количеству побед.',
+        [{ label: 'Понятно', cls: 'btn-primary', action: closeModal }]
+      );
     });
   }
 
   try {
+    // Fix 3: ensure запись в БД существует
+    await fetch('/api/ensure/' + encodeURIComponent(App.user.id) + '?name=' + encodeURIComponent(App.user.name));
+
     const [ratingRes, statsRes] = await Promise.all([
       fetch('/api/rating'),
       fetch('/api/stats/' + App.user.id),
     ]);
     const ratingJson = await ratingRes.json();
     const statsJson  = await statsRes.json();
-    const data    = ratingJson.ok ? (ratingJson.data || []) : [];
-    const myStats = statsJson.ok ? statsJson.data : null;
+    const data       = ratingJson.ok ? (ratingJson.data || []) : [];
+    const myStats    = statsJson.ok  ? statsJson.data : null;
     const isParticipating = myStats?.rating_active === 1;
 
-    if (btnJoin)  { btnJoin.style.display  = isParticipating ? 'none' : ''; btnJoin.onclick  = () => doJoinRating(); }
-    if (btnLeave) { btnLeave.style.display = isParticipating ? '' : 'none';  btnLeave.onclick = () => doLeaveRating(); }
+    // Кнопки участия
+    if (btnJoin)  { btnJoin.style.display  = isParticipating ? 'none' : 'inline-flex'; btnJoin.onclick  = () => doJoinRating(); }
+    if (btnLeave) { btnLeave.style.display = isParticipating ? 'inline-flex' : 'none'; btnLeave.onclick = () => doLeaveRating(); }
 
+    // Карточка "мой рекорд"
     if (myCard) {
-      const rw = myStats?.rated_wins   || 0;
-      const rl = myStats?.rated_losses || 0;
-      const rs = myStats?.rated_shots  || 0;
-      const rh = myStats?.rated_hits   || 0;
+      const rw   = myStats?.rated_wins   || 0;
+      const rl   = myStats?.rated_losses || 0;
+      const rs   = myStats?.rated_shots  || 0;
+      const rh   = myStats?.rated_hits   || 0;
       const rank = data.findIndex(e => e.id === App.user.id) + 1;
 
       if (!isParticipating) {
-        myCard.innerHTML = '<p class="empty-state" style="margin:0;padding:8px 0">Ты не участвуешь в рейтинге</p>';
+        myCard.innerHTML = '<p class="empty-state" style="margin:0;padding:8px 0">Нажми «Участвовать» чтобы попасть в рейтинг</p>';
       } else if (rw + rl === 0) {
-        myCard.innerHTML = '<p class="empty-state" style="margin:0;padding:8px 0">Сыграй сетевой бой чтобы появиться в рейтинге!</p>';
+        myCard.innerHTML = '<p class="empty-state" style="margin:0;padding:8px 0">Сыграй сетевой бой чтобы появиться в таблице!</p>';
       } else {
         const acc = rs > 0 ? Math.round(rh/rs*100) : 0;
         const tot = rw + rl;
         const wr  = tot ? Math.round(rw/tot*100) : 0;
         myCard.innerHTML =
           '<div class="my-record-name">' + App.user.name +
-          (rank > 0 ? ' <span class="rating-score-badge">#' + rank + '</span>' : '') +
-          '</div>' +
+          (rank > 0 ? ' <span class="rating-score-badge">#' + rank + '</span>' : '') + '</div>' +
           '<div class="my-record-grid">' +
           '<div><span class="my-record-val">' + rw + '</span><span class="my-record-lbl">Победы</span></div>' +
           '<div><span class="my-record-val">' + tot + '</span><span class="my-record-lbl">Боёв</span></div>' +
@@ -356,7 +364,11 @@ async function renderLeaderboard() {
 
     renderRatingList(data);
   } catch(e) {
-    if (list) list.innerHTML = '<p class="empty-state">Ошибка загрузки</p>';
+    console.error('Rating load error:', e);
+    if (list) list.innerHTML = '<p class="empty-state">Ошибка загрузки. Проверь соединение.</p>';
+    // Показываем кнопки даже при ошибке
+    if (btnJoin)  btnJoin.style.display  = 'inline-flex';
+    if (btnLeave) btnLeave.style.display = 'none';
   }
 }
 
@@ -407,9 +419,9 @@ function renderRatingList(data) {
   });
 }
 
-function renderStatsScreen() {
+async function renderStatsScreen() {
   const isGuest = !!App.user.isGuest;
-  updatePromoBanner(); // обновляем баннеры
+  updatePromoBanner();
 
   const statsGrid    = document.querySelector('.stats-grid');
   const statsProfile = document.querySelector('.stats-profile');
@@ -428,7 +440,7 @@ function renderStatsScreen() {
   if (statsProfile) statsProfile.style.display = '';
   if (sectionTitle) sectionTitle.style.display = '';
 
-  const s = App.stats, total = s.wins + s.losses + s.draws;
+  // Аватар
   const statsAvatar = document.getElementById('stats-avatar');
   if (statsAvatar) {
     if (App.user.photo) {
@@ -438,22 +450,47 @@ function renderStatsScreen() {
     }
   }
   setText('stats-name', App.user.name);
-  setText('st-wins', s.wins); setText('st-losses', s.losses); setText('st-draws', s.draws);
-  setText('st-total', total);
-  setText('st-acc',     s.totalShots ? Math.round(s.totalHits/s.totalShots*100)+'%' : '0%');
-  setText('st-winrate', total        ? Math.round(s.wins/total*100)+'%' : '0%');
 
+  // Fix 1: для TG-юзеров грузим статистику с сервера (одинакова на всех устройствах)
+  let wins = App.stats.wins, losses = App.stats.losses;
+  let totalShots = App.stats.totalShots, totalHits = App.stats.totalHits;
+  try {
+    const res  = await fetch('/api/stats/' + App.user.id);
+    const json = await res.json();
+    if (json.ok && json.data) {
+      wins       = json.data.wins        || 0;
+      losses     = json.data.losses      || 0;
+      totalShots = json.data.total_shots || 0;
+      totalHits  = json.data.total_hits  || 0;
+      // Синхронизируем локальный кеш
+      App.stats.wins        = wins;
+      App.stats.losses      = losses;
+      App.stats.totalShots  = totalShots;
+      App.stats.totalHits   = totalHits;
+      saveJSON('bs_stats', App.stats);
+      updateMenuStats();
+    }
+  } catch(e) {} // если нет сети — используем локальный кеш
+
+  const total = wins + losses;
+  setText('st-wins',    String(wins));
+  setText('st-losses',  String(losses));
+  setText('st-total',   String(total));
+  setText('st-acc',     totalShots ? Math.round(totalHits/totalShots*100)+'%' : '0%');
+  setText('st-winrate', total      ? Math.round(wins/total*100)+'%' : '0%');
+
+  // История — только локальная (содержит детали матчей)
   if (!historyList) return;
   historyList.innerHTML = '';
   if (!App.history.length) { historyList.innerHTML = '<p class="empty-state">Нет боёв</p>'; return; }
   App.history.slice(0,20).forEach(h => {
     const div = document.createElement('div');
     div.className = 'history-item';
-    const icons  = {win:'✅', loss:'❌', draw:'🤝'};
-    const labels = {win:'Победа', loss:'Поражение', draw:'Ничья'};
+    const icons  = {win:'✅', loss:'❌'};
+    const labels = {win:'Победа', loss:'Поражение'};
     const d = new Date(h.date);
     const dateStr = d.toLocaleDateString('ru',{day:'2-digit',month:'2-digit'}) + ' ' + d.toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
-    div.innerHTML = `<div class="history-icon">${icons[h.result]}</div><div class="history-info">${labels[h.result]} vs ${h.opponent}<span>${h.shots} выстрелов, ${h.hits} попаданий</span></div><div class="history-time">${dateStr}</div>`;
+    div.innerHTML = `<div class="history-icon">${icons[h.result]||'🤝'}</div><div class="history-info">${labels[h.result]||'Ничья'} vs ${h.opponent}<span>${h.shots} выстрелов · ${h.hits} попаданий</span></div><div class="history-time">${dateStr}</div>`;
     historyList.appendChild(div);
   });
 }
@@ -534,8 +571,7 @@ const Placement = {
       wrap.className = 'ship-piece' + (isSelected ? ' selected' : '') + (ship.vertical ? ' vertical' : '');
       wrap.dataset.id = ship.id;
       for (let i = 0; i < ship.size; i++) { const c = document.createElement('div'); c.className = 'ship-cell'; wrap.appendChild(c); }
-      wrap.addEventListener('touchend', (e) => this._handleDoubleTap(e, ship.id));
-      wrap.addEventListener('dblclick', (e) => { e.preventDefault(); this.rotateSingleShip(ship.id); });
+      // Только drag + тап для выбора (поворот — кнопкой или двойным тапом на поле)
       wrap.addEventListener('pointerdown', (e) => this._startPointerDrag(e, ship, wrap));
       dock.appendChild(wrap);
     });

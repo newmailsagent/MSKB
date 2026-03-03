@@ -403,6 +403,15 @@ function checkSunkServer(field, hitR, hitC) {
 }
 
 app.get('/api/config',     (req, res) => res.json({ botUsername: BOT_USERNAME }));
+app.get('/api/ensure/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const name = req.query.name || 'Игрок';
+    if (!id || id.startsWith('guest_')) { res.json({ ok: false }); return; }
+    upsertPlayer(id, name);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ ok: false }); }
+});
 app.get('/api/leaderboard',(req, res) => { try { res.json({ ok: true, data: getRating() }); } catch(e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get('/api/rating',    (req, res) => { try { res.json({ ok: true, data: getRating() }); } catch(e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.post('/api/rating/join',  (req, res) => { try { res.json(joinRating(req.body.id));  } catch(e) { res.status(500).json({ ok: false }); } });
