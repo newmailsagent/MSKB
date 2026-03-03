@@ -327,10 +327,14 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .game-status { flex: 1; text-align: center; font-family: var(--font-hd); font-size: 13px; letter-spacing: 1px; color: var(--accent); }
 
 .ships-left { display: none; }
-/* Поле противника — попадания приглушены чтобы не путать с полем игрока */
-.enemy-board .cell.hit::after  { opacity: .42; }
-.enemy-board .cell.sunk        { background: rgba(217,83,79,.5); }
+/* Fix 5: поле врага (куда МЫ бьём) — яркое, это наши атаки */
+.enemy-board .cell.hit::after  { opacity: .85; }
+.enemy-board .cell.sunk        { background: var(--red); }
 .enemy-board .cell.sunk::after { display: none; }
+/* Наше поле (куда бьёт противник) — приглушённое */
+#my-board .cell.hit::after     { opacity: .42; }
+#my-board .cell.sunk           { background: rgba(217,83,79,.5); }
+#my-board .cell.sunk::after    { display: none; }
 
 .shot-feedback { display: none !important; }
 

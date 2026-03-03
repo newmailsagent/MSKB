@@ -71,11 +71,10 @@ const Sound = (() => {
   return {
     hit:   () => { beep(180,'sawtooth',.25,.4); setTimeout(()=>beep(120,'square',.3,.3),80); },
     miss:  () => beep(300,'sine',.08,.2),
-    // Оригинальный звук потопления — три нисходящих удара
+    // Потопление — две низкие ноты
     sunk:  () => {
-      beep(120,'sawtooth',.4,.5);
-      setTimeout(()=>beep(90,'sawtooth',.4,.4),150);
-      setTimeout(()=>beep(60,'square',.6,.5),300);
+      beep(90,'sawtooth',.5,.5);
+      setTimeout(()=>beep(55,'sawtooth',.7,.5),220);
     },
     win:   () => [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,'sine',.3,.4),i*150)),
     lose:  () => [200,180,160].forEach((f,i)=>setTimeout(()=>beep(f,'sawtooth',.4,.3),i*200)),
@@ -85,10 +84,10 @@ const Sound = (() => {
 })();
 
 function vibrate(p = [30]) {
+  // Fix 10: только на мобайл (touch-устройства), десктоп игнорирует
   if (!App.settings?.vibro) return;
-  try {
-    if (navigator?.vibrate) navigator.vibrate(p);
-  } catch(e) {}
+  if (!('ontouchstart' in window) && !navigator.maxTouchPoints) return;
+  try { if (navigator?.vibrate) navigator.vibrate(p); } catch(e) {}
 }
 
 /* ─── УТИЛИТЫ ДОСКИ ──────────────────────────────── */
@@ -430,7 +429,14 @@ function renderStatsScreen() {
   if (sectionTitle) sectionTitle.style.display = '';
 
   const s = App.stats, total = s.wins + s.losses + s.draws;
-  setHTML('stats-avatar', (App.user.name[0]||'?').toUpperCase());
+  const statsAvatar = document.getElementById('stats-avatar');
+  if (statsAvatar) {
+    if (App.user.photo) {
+      statsAvatar.innerHTML = `<img src="${App.user.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+    } else {
+      statsAvatar.textContent = (App.user.name[0]||'?').toUpperCase();
+    }
+  }
   setText('stats-name', App.user.name);
   setText('st-wins', s.wins); setText('st-losses', s.losses); setText('st-draws', s.draws);
   setText('st-total', total);
@@ -445,7 +451,9 @@ function renderStatsScreen() {
     div.className = 'history-item';
     const icons  = {win:'✅', loss:'❌', draw:'🤝'};
     const labels = {win:'Победа', loss:'Поражение', draw:'Ничья'};
-    div.innerHTML = `<div class="history-icon">${icons[h.result]}</div><div class="history-info">${labels[h.result]} vs ${h.opponent}<span>${h.shots} выстрелов, ${h.hits} попаданий</span></div><div class="history-time">${new Date(h.date).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})}</div>`;
+    const d = new Date(h.date);
+    const dateStr = d.toLocaleDateString('ru',{day:'2-digit',month:'2-digit'}) + ' ' + d.toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+    div.innerHTML = `<div class="history-icon">${icons[h.result]}</div><div class="history-info">${labels[h.result]} vs ${h.opponent}<span>${h.shots} выстрелов, ${h.hits} попаданий</span></div><div class="history-time">${dateStr}</div>`;
     historyList.appendChild(div);
   });
 }
@@ -682,19 +690,36 @@ const Placement = {
     const boardEl = document.getElementById('placement-board');
     if (!boardEl) return;
     boardEl.innerHTML = '';
+    // Строим карту: ячейка -> id корабля (для двойного тапа по полю)
+    const cellShipMap = {};
+    this.ships.forEach(ship => {
+      if (ship.placed) ship.cells.forEach(({r, c}) => { cellShipMap[r+','+c] = ship.id; });
+    });
+
     for (let r = 0; r < BOARD_SIZE; r++) {
       for (let c = 0; c < BOARD_SIZE; c++) {
         const cell = document.createElement('div');
         cell.className = 'cell'; cell.dataset.r = r; cell.dataset.c = c;
         if (this.board[r][c] === CELL_SHIP) cell.classList.add('ship');
 
-        // Используем pointerup вместо click — работает и на touch и на mouse
-        // без конфликтов с drag
-        cell.addEventListener('pointerup', (e) => {
-          if (this._drag?._wasDrag) return;
-          e.preventDefault();
-          this.handleCellClick(r, c);
-        });
+        // Fix 2: двойной клик/тап по размещённому кораблю — убрать и повернуть
+        const shipId = cellShipMap[r+','+c];
+        if (shipId !== undefined) {
+          let lastTap = 0;
+          const handleDoubleTap = () => {
+            const now = Date.now();
+            if (now - lastTap < 350) {
+              lastTap = 0;
+              this._removePlacedShip(shipId);
+              this.rotateSingleShip(shipId);
+            } else { lastTap = now; }
+          };
+          cell.addEventListener('pointerup', (e) => { if (!this._drag?._wasDrag) { e.preventDefault(); handleDoubleTap(); } });
+          cell.addEventListener('dblclick',  (e) => { e.preventDefault(); this._removePlacedShip(shipId); this.rotateSingleShip(shipId); });
+        } else {
+          cell.addEventListener('pointerup', (e) => { if (this._drag?._wasDrag) return; e.preventDefault(); this.handleCellClick(r, c); });
+        }
+
         cell.addEventListener('mouseenter', () => this.handleHover(r, c));
         cell.addEventListener('mouseleave', () => { if (!this._drag?._wasDrag) this.clearPreview(); });
         boardEl.appendChild(cell);
@@ -702,6 +727,16 @@ const Placement = {
     }
     const ready = document.getElementById('btn-ready');
     if (ready) ready.disabled = !this.allPlaced();
+  },
+
+  // Убрать размещённый корабль с поля (для повторной расстановки)
+  _removePlacedShip(shipId) {
+    const ship = this.ships.find(s => s.id === shipId);
+    if (!ship || !ship.placed) return;
+    // Очищаем клетки на доске
+    ship.cells.forEach(({r, c}) => { this.board[r][c] = CELL_EMPTY; });
+    ship.placed = false; ship.cells = [];
+    this.selected = ship;
   },
 
   handleHover(r, c) {
@@ -1060,15 +1095,17 @@ function botShoot() {
 
   if (hit) {
     Game.myBoard[r][c] = CELL_HIT;
+    const prevHit = Game.botLastHit; // Fix 4: сохраняем предыдущее попадание ДО обновления
     Game.botLastHit = {r, c};
 
     if (diff === 'easy') {
-      // Easy: просто добавляем всех соседей
+      // Easy: добавляем всех доступных соседей (добивает раненых)
       const nb = getNeighbors4(r, c).filter(([nr,nc]) => Game.enemyShots[nr][nc] === CELL_EMPTY);
       Game.botQueue.push(...nb);
     } else {
       // Hard: умное добивание с определением направления
       if (Game.botDirection) {
+        // Уже знаем направление — продолжаем в том же направлении
         const [dr, dc] = Game.botDirection;
         Game.botQueue = [];
         const fwd = [r+dr, c+dc], bwd = [r-dr, c-dc];
@@ -1077,10 +1114,9 @@ function botShoot() {
         if (inBounds(bwd[0],bwd[1]) && Game.enemyShots[bwd[0]][bwd[1]] === CELL_EMPTY)
           Game.botQueue.push(bwd);
       } else {
-        const nb = getNeighbors4(r, c).filter(([nr,nc]) => Game.enemyShots[nr][nc] === CELL_EMPTY);
-        // Определяем направление если есть 2 соседних попадания
-        if (Game.botLastHit) {
-          const dr = r - Game.botLastHit.r, dc = c - Game.botLastHit.c;
+        // Определяем направление по предыдущему попаданию (до обновления botLastHit)
+        if (prevHit) {
+          const dr = r - prevHit.r, dc = c - prevHit.c;
           if (Math.abs(dr) + Math.abs(dc) === 1) Game.botDirection = [dr, dc];
         }
         Game.botQueue = [];
@@ -1089,6 +1125,7 @@ function botShoot() {
           if (inBounds(r+dr,c+dc) && Game.enemyShots[r+dr][c+dc]===CELL_EMPTY) Game.botQueue.push([r+dr,c+dc]);
           if (inBounds(r-dr,c-dc) && Game.enemyShots[r-dr][c-dc]===CELL_EMPTY) Game.botQueue.push([r-dr,c-dc]);
         } else {
+          const nb = getNeighbors4(r, c).filter(([nr,nc]) => Game.enemyShots[nr][nc] === CELL_EMPTY);
           Game.botQueue.push(...nb);
         }
       }

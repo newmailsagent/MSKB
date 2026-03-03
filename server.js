@@ -81,35 +81,29 @@ function upsertPlayer(id, name) {
 
 function addWin(id, shots, hits, isOnline = false) {
   if (id?.startsWith('guest_')) return;
-  const player = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
-  const isRated = isOnline && player?.rating_active === 1;
-  if (isOnline) {
-    db.prepare(`UPDATE players SET
-      wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?,
-      online_wins=online_wins+1, online_shots=online_shots+?, online_hits=online_hits+?,
-      rated_wins=rated_wins+${isRated?1:0}, rated_shots=rated_shots+${isRated?'?':0}, rated_hits=rated_hits+${isRated?'?':0},
-      updated_at=strftime('%s','now') WHERE id=?
-    `).run(shots, hits, shots, hits, ...(isRated ? [shots, hits] : []), id);
-  } else {
-    db.prepare(`UPDATE players SET wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?,
-      updated_at=strftime('%s','now') WHERE id=?`).run(shots, hits, id);
+  db.prepare(`UPDATE players SET wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?,
+    updated_at=strftime('%s','now') WHERE id=?`).run(shots, hits, id);
+  if (!isOnline) return;
+  db.prepare(`UPDATE players SET online_wins=online_wins+1,
+    online_shots=online_shots+?, online_hits=online_hits+? WHERE id=?`).run(shots, hits, id);
+  const p = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
+  if (p?.rating_active === 1) {
+    db.prepare(`UPDATE players SET rated_wins=rated_wins+1,
+      rated_shots=rated_shots+?, rated_hits=rated_hits+? WHERE id=?`).run(shots, hits, id);
   }
 }
 
 function addLoss(id, shots, hits, isOnline = false) {
   if (id?.startsWith('guest_')) return;
-  const player = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
-  const isRated = isOnline && player?.rating_active === 1;
-  if (isOnline) {
-    db.prepare(`UPDATE players SET
-      losses=losses+1, total_shots=total_shots+?, total_hits=total_hits+?,
-      online_losses=online_losses+1, online_shots=online_shots+?, online_hits=online_hits+?,
-      rated_losses=rated_losses+${isRated?1:0}, rated_shots=rated_shots+${isRated?'?':0}, rated_hits=rated_hits+${isRated?'?':0},
-      updated_at=strftime('%s','now') WHERE id=?
-    `).run(shots, hits, shots, hits, ...(isRated ? [shots, hits] : []), id);
-  } else {
-    db.prepare(`UPDATE players SET losses=losses+1, total_shots=total_shots+?, total_hits=total_hits+?,
-      updated_at=strftime('%s','now') WHERE id=?`).run(shots, hits, id);
+  db.prepare(`UPDATE players SET losses=losses+1, total_shots=total_shots+?, total_hits=total_hits+?,
+    updated_at=strftime('%s','now') WHERE id=?`).run(shots, hits, id);
+  if (!isOnline) return;
+  db.prepare(`UPDATE players SET online_losses=online_losses+1,
+    online_shots=online_shots+?, online_hits=online_hits+? WHERE id=?`).run(shots, hits, id);
+  const p = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
+  if (p?.rating_active === 1) {
+    db.prepare(`UPDATE players SET rated_losses=rated_losses+1,
+      rated_shots=rated_shots+?, rated_hits=rated_hits+? WHERE id=?`).run(shots, hits, id);
   }
 }
 
