@@ -77,14 +77,36 @@ html, body {
   position: fixed; inset: 0;
   display: flex; flex-direction: column;
   padding: env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0) 0;
-  opacity: 0; pointer-events: none;
-  transition: opacity .25s;
+  pointer-events: none;
   overflow-y: auto; overflow-x: hidden;
+  /* Слои по умолчанию — скрыты за правым краем */
+  transform: translateX(100%);
+  transition: transform .32s cubic-bezier(.4,0,.2,1), opacity .32s;
+  opacity: 0;
+  will-change: transform;
 }
-.screen.active { opacity: 1; pointer-events: all; }
-
-/* ─── ЗАГРУЗКА ───────────────────────────────────── */
-#screen-loading { align-items: center; justify-content: center; }
+.screen.active {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: all;
+}
+/* Экран "позади" — сдвинут влево (как в iOS) */
+.screen.screen-behind {
+  transform: translateX(-28%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+/* Во время свайпа — отключаем transition для плавного следования за пальцем */
+.screen.swiping {
+  transition: none !important;
+}
+/* Загрузочный экран — без анимации */
+#screen-loading {
+  transform: none;
+  opacity: 1;
+  align-items: center;
+  justify-content: center;
+}
 .loading-inner { text-align: center; }
 .loading-grid {
   display: grid; grid-template-columns: repeat(3, 18px); gap: 6px;

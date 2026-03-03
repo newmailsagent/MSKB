@@ -165,10 +165,46 @@ const allSunk = ships => ships.every(s => s.sunk);
 
 /* ─── НАВИГАЦИЯ ──────────────────────────────────── */
 let currentScreen = 'loading';
-function showScreen(name) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  const el = document.getElementById('screen-' + name);
-  if (el) el.classList.add('active');
+let _prevScreen   = null;
+
+function showScreen(name, opts = {}) {
+  const prev = document.getElementById('screen-' + currentScreen);
+  const next = document.getElementById('screen-' + name);
+  if (!next) return;
+
+  const isBack = opts.isBack || false;
+
+  // Убираем behind со всех
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.remove('active', 'screen-behind', 'swiping');
+  });
+
+  if (isBack) {
+    // Назад: текущий уезжает вправо, предыдущий выезжает слева
+    if (prev && prev !== next) {
+      prev.classList.add('active', 'swiping');
+      // Форсируем reflow
+      prev.getBoundingClientRect();
+      prev.classList.remove('swiping');
+      prev.style.transform = 'translateX(100%)';
+      prev.style.opacity   = '0';
+      setTimeout(() => { prev.style.transform = ''; prev.style.opacity = ''; }, 350);
+    }
+    next.style.transform = 'translateX(-28%)';
+    next.style.opacity   = '0.6';
+    next.getBoundingClientRect();
+    next.classList.add('active');
+    next.style.transform = '';
+    next.style.opacity   = '';
+  } else {
+    // Вперёд: новый приезжает справа
+    if (prev && prev !== next) {
+      prev.classList.add('screen-behind');
+    }
+    next.classList.add('active');
+  }
+
+  _prevScreen   = currentScreen;
   currentScreen = name;
 }
 
@@ -1922,11 +1958,12 @@ function bindNav() {
   document.addEventListener('click', e => {
     const btn = e.target.closest('[data-screen]');
     if (!btn) return;
-    const scr = btn.dataset.screen;
+    const scr    = btn.dataset.screen;
+    const isBack = btn.classList.contains('btn-back');
     Sound.click();
     if (scr === 'leaderboard') renderLeaderboard();
     if (scr === 'stats')       renderStatsScreen();
-    showScreen(scr);
+    showScreen(scr, { isBack });
   });
 
   document.getElementById('mode-bot-easy')?.addEventListener('click',   () => startBotGame('bot-easy'));
@@ -2060,43 +2097,93 @@ function initOnlineCounter() {
   setInterval(poll, 20000);
 }
 
-/* ─── СВАЙП НАЗАД (от 2/3 экрана) ───────────────── */
+/* ─── СВАЙП НАЗАД (от 1/3 экрана) ───────────────── */
 function initSwipeBack() {
   let touchStartX = null, touchStartY = null;
-  const EDGE_START  = 0.33; // начиная с 1/3 ширины (не с самого края)
-  const SWIPE_MIN   = 80;   // минимум пикселей вправо
+  let isSwiping = false;
+  const EDGE_START = 0.33;
+  const SWIPE_MIN  = 80;
 
   document.addEventListener('touchstart', (e) => {
     const t = e.touches[0];
     touchStartX = t.clientX;
     touchStartY = t.clientY;
+    isSwiping   = false;
   }, { passive: true });
 
-  document.addEventListener('touchend', (e) => {
+  document.addEventListener('touchmove', (e) => {
     if (touchStartX === null) return;
-    const t = e.changedTouches[0];
+    if (['game','waiting'].includes(currentScreen)) return;
+    const t  = e.touches[0];
     const dx = t.clientX - touchStartX;
     const dy = t.clientY - touchStartY;
     const startFraction = touchStartX / window.innerWidth;
 
-    // Свайп вправо, начатый примерно с 1/3 экрана (не с края и не с правого края)
-    if (startFraction >= EDGE_START && startFraction <= 0.66 && dx > SWIPE_MIN && Math.abs(dy) < Math.abs(dx)) {
+    if (!isSwiping && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) && startFraction >= EDGE_START && startFraction <= 0.66 && dx > 0) {
+      isSwiping = true;
+    }
+    if (!isSwiping) return;
+
+    // Тянем текущий экран за пальцем
+    const cur = document.getElementById('screen-' + currentScreen);
+    const beh = document.getElementById('screen-' + _prevBackTarget());
+    const progress = Math.max(0, Math.min(1, dx / window.innerWidth));
+    if (cur) {
+      cur.classList.add('swiping');
+      cur.style.transform = `translateX(${dx}px)`;
+      cur.style.opacity   = String(1 - progress * 0.3);
+    }
+    if (beh) {
+      beh.classList.remove('active');
+      beh.classList.add('swiping', 'screen-behind');
+      // Параллакс: выезжает из -28% до 0
+      const behX = -28 + progress * 28;
+      beh.style.transform = `translateX(${behX}%)`;
+      beh.style.opacity   = String(0.6 + progress * 0.4);
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (!isSwiping) { touchStartX = null; touchStartY = null; return; }
+    const t  = e.changedTouches[0];
+    const dx = t.clientX - touchStartX;
+    touchStartX = null; touchStartY = null; isSwiping = false;
+
+    const cur = document.getElementById('screen-' + currentScreen);
+    const beh = document.getElementById('screen-' + _prevBackTarget());
+
+    // Сбрасываем swiping чтобы transition снова работал
+    if (cur) { cur.classList.remove('swiping'); cur.style.transform = ''; cur.style.opacity = ''; }
+    if (beh) { beh.classList.remove('swiping'); beh.style.transform = ''; beh.style.opacity = ''; }
+
+    if (dx > SWIPE_MIN) {
+      Sound.click();
       handleSwipeBack();
     }
-    touchStartX = null; touchStartY = null;
   }, { passive: true });
 }
 
-function handleSwipeBack() {
-  Sound.click();
+function _prevBackTarget() {
   switch (currentScreen) {
-    case 'mode':        showScreen('menu'); break;
-    case 'placement':   showScreen('mode'); break;
-    case 'leaderboard': showScreen('menu'); break;
-    case 'stats':       showScreen(document.getElementById('stats-back-btn')?.dataset.screen || 'menu'); break;
-    case 'settings':    showScreen(document.getElementById('settings-back-btn')?.dataset.screen || 'menu'); break;
-    case 'gameover':    showScreen('menu'); break;
-    // game, waiting — не свайпаем назад (чтобы случайно не выйти)
+    case 'mode':        return 'menu';
+    case 'placement':   return 'mode';
+    case 'leaderboard': return 'menu';
+    case 'stats':       return document.getElementById('stats-back-btn')?.dataset.screen || 'menu';
+    case 'settings':    return document.getElementById('settings-back-btn')?.dataset.screen || 'menu';
+    case 'gameover':    return 'menu';
+    default:            return 'menu';
+  }
+}
+
+function handleSwipeBack() {
+  const target = _prevBackTarget();
+  switch (currentScreen) {
+    case 'mode':        showScreen('menu',        { isBack: true }); break;
+    case 'placement':   showScreen('mode',        { isBack: true }); break;
+    case 'leaderboard': showScreen('menu',        { isBack: true }); break;
+    case 'stats':       showScreen(target,        { isBack: true }); break;
+    case 'settings':    showScreen(target,        { isBack: true }); break;
+    case 'gameover':    showScreen('menu',        { isBack: true }); break;
   }
 }
 
