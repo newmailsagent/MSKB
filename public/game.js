@@ -173,29 +173,32 @@ function showScreen(name, opts = {}) {
   const next   = document.getElementById('screen-' + name);
   if (!next || currentScreen === name) return;
 
-  // Снимаем все классы анимации
-  document.querySelectorAll('.screen').forEach(s => {
+  // Лоадер убираем насовсем через display:none
+  const loader = document.getElementById('screen-loading');
+  if (loader && currentScreen === 'loading') {
+    loader.style.display = 'none';
+  }
+
+  // Снимаем классы анимации (но не трогаем лоадер)
+  document.querySelectorAll('.screen:not(#screen-loading)').forEach(s => {
     s.classList.remove('active', 'slide-back-enter');
     s.style.cssText = '';
   });
 
   if (isBack) {
-    // Назад: новый экран приезжает слева (-30%), текущий уезжает вправо
     next.classList.add('slide-back-enter');
-    next.getBoundingClientRect(); // reflow
+    next.getBoundingClientRect();
     next.classList.add('active');
     next.classList.remove('slide-back-enter');
-    // Текущий уезжает вправо через inline style
-    if (prev) {
+    if (prev && prev !== loader) {
       prev.style.transition = 'transform .3s cubic-bezier(.4,0,.2,1), opacity .3s';
       prev.style.transform  = 'translateX(100%)';
       prev.style.opacity    = '0';
       setTimeout(() => { if (prev) prev.style.cssText = ''; }, 320);
     }
   } else {
-    // Вперёд: новый экран приезжает справа (стандарт)
     next.classList.add('active');
-    if (prev) {
+    if (prev && prev !== loader) {
       prev.style.transition = 'transform .3s cubic-bezier(.4,0,.2,1), opacity .3s';
       prev.style.transform  = 'translateX(-30%)';
       prev.style.opacity    = '0';
