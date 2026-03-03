@@ -262,15 +262,15 @@ async function syncStatsFromServer() {
       App.stats.totalShots = statsJson.data.total_shots || 0;
       App.stats.totalHits  = statsJson.data.total_hits  || 0;
       saveJSON('bs_stats', App.stats);
-      updateMenuStats();
+      updateMenuStats(); // обновляем цифры в шапке главной
     }
-    if (histJson.ok && Array.isArray(histJson.data)) {
+    if (histJson.ok && Array.isArray(histJson.data) && histJson.data.length > 0) {
       App.history = histJson.data.map(h => ({
         result:   h.result,
         opponent: h.opponent,
         shots:    h.shots,
         hits:     h.hits,
-        date:     h.date * 1000, // сервер хранит в секундах
+        date:     h.date * 1000,
       }));
       saveJSON('bs_history', App.history);
     }
@@ -284,13 +284,14 @@ function recordResult(result, shots, hits, oppName) {
   App.history.unshift({ result, opponent: oppName || '?', shots, hits, date: Date.now() });
   if (App.history.length > 50) App.history.pop();
   saveJSON('bs_history', App.history);
-  // Сохраняем историю на сервере (только для TG-юзеров)
+  updateMenuStats();
+  // Сохраняем на сервере и потом синхронизируем назад
   if (!App.user.isGuest) {
     fetch('/api/history', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ id: App.user.id, result, opponent: oppName || '?', shots, hits }),
-    }).catch(() => {});
+    }).then(() => syncStatsFromServer()).catch(() => {});
   }
 }
 
@@ -351,21 +352,24 @@ async function renderLeaderboard() {
       showModal('Как работает рейтинг',
         'В рейтинге учитываются только сетевые бои со случайными соперниками.\n\n' +
         'Участие добровольное — нажми «Участвовать» и твои победы пойдут в зачёт.\n\n' +
-        'Если покинешь рейтинг и вернёшься — счёт обнуляется.\n\n' +
+        'Если покинешь рейтинг и вернёшься — счёт обнулится.\n\n' +
         'Место определяется по количеству побед.',
         [{ label: 'Понятно', cls: 'btn-primary', action: closeModal }]
       );
     });
   }
 
-  try {
-    // Fix 3: ensure запись в БД существует
-    await fetch('/api/ensure/' + encodeURIComponent(App.user.id) + '?name=' + encodeURIComponent(App.user.name));
+  // ensure — неблокирующий, не ждём результата
+  fetch('/api/ensure/' + encodeURIComponent(App.user.id) + '?name=' + encodeURIComponent(App.user.name)).catch(() => {});
 
+  try {
     const [ratingRes, statsRes] = await Promise.all([
       fetch('/api/rating'),
       fetch('/api/stats/' + App.user.id),
     ]);
+
+    if (!ratingRes.ok) throw new Error('rating ' + ratingRes.status);
+
     const ratingJson = await ratingRes.json();
     const statsJson  = await statsRes.json();
     const data       = ratingJson.ok ? (ratingJson.data || []) : [];
@@ -407,10 +411,9 @@ async function renderLeaderboard() {
     renderRatingList(data);
   } catch(e) {
     console.error('Rating load error:', e);
-    if (list) list.innerHTML = '<p class="empty-state">Ошибка загрузки. Проверь соединение.</p>';
-    // Показываем кнопки даже при ошибке
-    if (btnJoin)  btnJoin.style.display  = 'inline-flex';
-    if (btnLeave) btnLeave.style.display = 'none';
+    if (list) list.innerHTML = '<p class="empty-state">Не удалось загрузить рейтинг. Попробуй позже.</p>';
+    if (btnJoin)  { btnJoin.style.display = 'inline-flex'; btnJoin.onclick = () => doJoinRating(); }
+    if (btnLeave) { btnLeave.style.display = 'none'; }
   }
 }
 
@@ -610,10 +613,10 @@ const Placement = {
       if (ship.placed) return;
       const wrap = document.createElement('div');
       const isSelected = this.selected?.id === ship.id;
-      wrap.className = 'ship-piece' + (isSelected ? ' selected' : '') + (ship.vertical ? ' vertical' : '');
+      // В доке корабли ВСЕГДА горизонтальные — vertical не показываем
+      wrap.className = 'ship-piece' + (isSelected ? ' selected' : '');
       wrap.dataset.id = ship.id;
       for (let i = 0; i < ship.size; i++) { const c = document.createElement('div'); c.className = 'ship-cell'; wrap.appendChild(c); }
-      // Drag + тап для выбора
       wrap.addEventListener('pointerdown', (e) => this._startPointerDrag(e, ship, wrap));
       dock.appendChild(wrap);
     });
@@ -1956,15 +1959,28 @@ function initOnlineCounter() {
     document.querySelectorAll('.online-count-val').forEach(el => el.textContent = count);
   };
 
+  // Сразу подключаемся лёгким сокетом только для счётчика
+  const loadIO = () => new Promise(resolve => {
+    if (window.io) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = window.location.origin + '/socket.io/socket.io.js';
+    s.onload = resolve; s.onerror = resolve;
+    document.head.appendChild(s);
+  });
+
+  loadIO().then(() => {
+    if (!window.io) return;
+    try {
+      const sock = io(window.location.origin, { transports: ['websocket','polling'] });
+      sock.on('online_count', ({ count }) => update(count));
+      sock.on('connect_error', () => {});
+    } catch(e) {}
+  });
+
+  // Резервный HTTP-поллинг
   const poll = () => fetch('/api/online').then(r => r.json()).then(d => update(d.count)).catch(() => {});
   poll();
-  setInterval(poll, 15000);
-
-  const origInit = WS._init.bind(WS);
-  WS._init = function(serverUrl, resolve, reject) {
-    origInit(serverUrl, resolve, reject);
-    this.socket.on('online_count', ({ count }) => update(count));
-  };
+  setInterval(poll, 20000);
 }
 
 /* ─── СВАЙП НАЗАД (от 2/3 экрана) ───────────────── */
