@@ -1951,21 +1951,15 @@ function setText(id, val) { const el = document.getElementById(id); if(el) el.te
 function setHTML(id, val) { const el = document.getElementById(id); if(el) el.innerHTML = val; }
 
 /* ─── СЧЁТЧИК ОНЛАЙНА ────────────────────────────── */
-let _onlineSocket = null;
-
 function initOnlineCounter() {
-  // Используем уже существующий WS-сокет или создаём лёгкий
   const update = (count) => {
-    const el = document.getElementById('online-count');
-    if (el) el.textContent = count;
+    document.querySelectorAll('.online-count-val').forEach(el => el.textContent = count);
   };
 
-  // Периодически опрашиваем через HTTP если нет сокета
   const poll = () => fetch('/api/online').then(r => r.json()).then(d => update(d.count)).catch(() => {});
   poll();
   setInterval(poll, 15000);
 
-  // Также слушаем через WS если подключены
   const origInit = WS._init.bind(WS);
   WS._init = function(serverUrl, resolve, reject) {
     origInit(serverUrl, resolve, reject);
@@ -2020,6 +2014,9 @@ function renderOpponentAvatar(name, isBot) {
   const letter = isBot ? 'Б' : (name ? name[0].toUpperCase() : '?');
   info.innerHTML = `<div class="opp-avatar">${letter}</div><span id="opp-name">${name || (isBot ? 'Бот' : 'Соперник')}</span>`;
 }
+
+/* ─── СТАРТ ──────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', async () => {
   initTelegram();
   initUser();
   initSettings();
@@ -2035,13 +2032,11 @@ function renderOpponentAvatar(name, isBot) {
   updateBurgerSound();
   updateBurgerEnemyMoves();
   initSwipeBack();
+  initOnlineCounter();
   showScreen('menu');
 
   // Синхронизируем статистику сразу при запуске
   syncStatsFromServer().catch(() => {});
-
-  // Подключаемся к сокету для счётчика онлайна
-  initOnlineCounter();
 
   // Обработка ссылки-приглашения: /?room=<roomId> или TG startapp=room_<roomId>
   const params = new URLSearchParams(window.location.search);
