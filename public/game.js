@@ -168,40 +168,39 @@ let currentScreen = 'loading';
 let _prevScreen   = null;
 
 function showScreen(name, opts = {}) {
-  const prev = document.getElementById('screen-' + currentScreen);
-  const next = document.getElementById('screen-' + name);
-  if (!next) return;
-
   const isBack = opts.isBack || false;
+  const prev   = document.getElementById('screen-' + currentScreen);
+  const next   = document.getElementById('screen-' + name);
+  if (!next || currentScreen === name) return;
 
-  // Убираем behind со всех
+  // Снимаем все классы анимации
   document.querySelectorAll('.screen').forEach(s => {
-    s.classList.remove('active', 'screen-behind', 'swiping');
+    s.classList.remove('active', 'slide-back-enter');
+    s.style.cssText = '';
   });
 
   if (isBack) {
-    // Назад: текущий уезжает вправо, предыдущий выезжает слева
-    if (prev && prev !== next) {
-      prev.classList.add('active', 'swiping');
-      // Форсируем reflow
-      prev.getBoundingClientRect();
-      prev.classList.remove('swiping');
-      prev.style.transform = 'translateX(100%)';
-      prev.style.opacity   = '0';
-      setTimeout(() => { prev.style.transform = ''; prev.style.opacity = ''; }, 350);
-    }
-    next.style.transform = 'translateX(-28%)';
-    next.style.opacity   = '0.6';
-    next.getBoundingClientRect();
+    // Назад: новый экран приезжает слева (-30%), текущий уезжает вправо
+    next.classList.add('slide-back-enter');
+    next.getBoundingClientRect(); // reflow
     next.classList.add('active');
-    next.style.transform = '';
-    next.style.opacity   = '';
+    next.classList.remove('slide-back-enter');
+    // Текущий уезжает вправо через inline style
+    if (prev) {
+      prev.style.transition = 'transform .3s cubic-bezier(.4,0,.2,1), opacity .3s';
+      prev.style.transform  = 'translateX(100%)';
+      prev.style.opacity    = '0';
+      setTimeout(() => { if (prev) prev.style.cssText = ''; }, 320);
+    }
   } else {
-    // Вперёд: новый приезжает справа
-    if (prev && prev !== next) {
-      prev.classList.add('screen-behind');
-    }
+    // Вперёд: новый экран приезжает справа (стандарт)
     next.classList.add('active');
+    if (prev) {
+      prev.style.transition = 'transform .3s cubic-bezier(.4,0,.2,1), opacity .3s';
+      prev.style.transform  = 'translateX(-30%)';
+      prev.style.opacity    = '0';
+      setTimeout(() => { if (prev) prev.style.cssText = ''; }, 320);
+    }
   }
 
   _prevScreen   = currentScreen;
@@ -2100,7 +2099,6 @@ function initOnlineCounter() {
 /* ─── СВАЙП НАЗАД (от 1/3 экрана) ───────────────── */
 function initSwipeBack() {
   let touchStartX = null, touchStartY = null;
-  let isSwiping = false;
   const EDGE_START = 0.33;
   const SWIPE_MIN  = 80;
 
@@ -2108,55 +2106,18 @@ function initSwipeBack() {
     const t = e.touches[0];
     touchStartX = t.clientX;
     touchStartY = t.clientY;
-    isSwiping   = false;
-  }, { passive: true });
-
-  document.addEventListener('touchmove', (e) => {
-    if (touchStartX === null) return;
-    if (['game','waiting'].includes(currentScreen)) return;
-    const t  = e.touches[0];
-    const dx = t.clientX - touchStartX;
-    const dy = t.clientY - touchStartY;
-    const startFraction = touchStartX / window.innerWidth;
-
-    if (!isSwiping && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) && startFraction >= EDGE_START && startFraction <= 0.66 && dx > 0) {
-      isSwiping = true;
-    }
-    if (!isSwiping) return;
-
-    // Тянем текущий экран за пальцем
-    const cur = document.getElementById('screen-' + currentScreen);
-    const beh = document.getElementById('screen-' + _prevBackTarget());
-    const progress = Math.max(0, Math.min(1, dx / window.innerWidth));
-    if (cur) {
-      cur.classList.add('swiping');
-      cur.style.transform = `translateX(${dx}px)`;
-      cur.style.opacity   = String(1 - progress * 0.3);
-    }
-    if (beh) {
-      beh.classList.remove('active');
-      beh.classList.add('swiping', 'screen-behind');
-      // Параллакс: выезжает из -28% до 0
-      const behX = -28 + progress * 28;
-      beh.style.transform = `translateX(${behX}%)`;
-      beh.style.opacity   = String(0.6 + progress * 0.4);
-    }
   }, { passive: true });
 
   document.addEventListener('touchend', (e) => {
-    if (!isSwiping) { touchStartX = null; touchStartY = null; return; }
+    if (touchStartX === null) return;
     const t  = e.changedTouches[0];
     const dx = t.clientX - touchStartX;
-    touchStartX = null; touchStartY = null; isSwiping = false;
+    const dy = t.clientY - touchStartY;
+    const startFraction = touchStartX / window.innerWidth;
+    touchStartX = null; touchStartY = null;
 
-    const cur = document.getElementById('screen-' + currentScreen);
-    const beh = document.getElementById('screen-' + _prevBackTarget());
-
-    // Сбрасываем swiping чтобы transition снова работал
-    if (cur) { cur.classList.remove('swiping'); cur.style.transform = ''; cur.style.opacity = ''; }
-    if (beh) { beh.classList.remove('swiping'); beh.style.transform = ''; beh.style.opacity = ''; }
-
-    if (dx > SWIPE_MIN) {
+    if (['game','waiting'].includes(currentScreen)) return;
+    if (startFraction >= EDGE_START && startFraction <= 0.66 && dx > SWIPE_MIN && Math.abs(dy) < Math.abs(dx)) {
       Sound.click();
       handleSwipeBack();
     }
@@ -2176,15 +2137,7 @@ function _prevBackTarget() {
 }
 
 function handleSwipeBack() {
-  const target = _prevBackTarget();
-  switch (currentScreen) {
-    case 'mode':        showScreen('menu',        { isBack: true }); break;
-    case 'placement':   showScreen('mode',        { isBack: true }); break;
-    case 'leaderboard': showScreen('menu',        { isBack: true }); break;
-    case 'stats':       showScreen(target,        { isBack: true }); break;
-    case 'settings':    showScreen(target,        { isBack: true }); break;
-    case 'gameover':    showScreen('menu',        { isBack: true }); break;
-  }
+  showScreen(_prevBackTarget(), { isBack: true });
 }
 
 /* ─── АВАТАР В БОЕВОМ ЭКРАНЕ ─────────────────────── */

@@ -79,10 +79,9 @@ html, body {
   padding: env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0) 0;
   pointer-events: none;
   overflow-y: auto; overflow-x: hidden;
-  /* Слои по умолчанию — скрыты за правым краем */
-  transform: translateX(100%);
-  transition: transform .32s cubic-bezier(.4,0,.2,1), opacity .32s;
   opacity: 0;
+  transform: translateX(100%);
+  transition: transform .3s cubic-bezier(.4,0,.2,1), opacity .3s;
   will-change: transform;
 }
 .screen.active {
@@ -90,20 +89,13 @@ html, body {
   opacity: 1;
   pointer-events: all;
 }
-/* Экран "позади" — сдвинут влево (как в iOS) */
-.screen.screen-behind {
-  transform: translateX(-28%);
-  opacity: 0.6;
-  pointer-events: none;
+.screen.slide-back-enter {
+  transform: translateX(-30%);
+  opacity: 0;
 }
-/* Во время свайпа — отключаем transition для плавного следования за пальцем */
-.screen.swiping {
-  transition: none !important;
-}
-/* Загрузочный экран — без анимации */
 #screen-loading {
-  transform: none;
-  opacity: 1;
+  transform: none !important;
+  opacity: 1 !important;
   align-items: center;
   justify-content: center;
 }
