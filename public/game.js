@@ -186,10 +186,14 @@ function showScreen(name, opts = {}) {
   });
 
   if (isBack) {
-    next.classList.add('slide-back-enter');
-    next.getBoundingClientRect();
+    // Отключаем transition, ставим начальную позицию слева
+    next.style.transition = 'none';
+    next.style.transform  = 'translateX(-30%)';
+    next.style.opacity    = '0';
+    next.getBoundingClientRect(); // reflow — без этого браузер склеит оба изменения
+    // Включаем transition и анимируем к центру
+    next.style.transition = '';
     next.classList.add('active');
-    next.classList.remove('slide-back-enter');
     if (prev && prev !== loader) {
       prev.style.transition = 'transform .3s cubic-bezier(.4,0,.2,1), opacity .3s';
       prev.style.transform  = 'translateX(100%)';
