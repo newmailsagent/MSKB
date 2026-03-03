@@ -45,13 +45,12 @@ def play_button():
 
 def share_button():
     """Кнопка «Поделиться игрой» — открывает окно выбора чата."""
-    share_url = GAME_SHARE_URL
-    share_text = GAME_SHARE_TEXT
+    share_text = f"{GAME_SHARE_TEXT} {GAME_SHARE_URL}"
     return InlineKeyboardMarkup([[
         InlineKeyboardButton(
-            "📤 Поделиться игрой",
-            url=f"https://t.me/share/url?url={share_url}&text={share_text}"
-        )
+    "📤 Поделиться игрой",
+    url=f"https://t.me/share/url?text={share_text}"
+)
     ]])
 
 
