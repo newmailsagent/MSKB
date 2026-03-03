@@ -22,6 +22,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Подавляем httpx чтобы токен не светился в логах URL запросов
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 # ── КНОПКА ИГРЫ ────────────────────────────────────
 def play_button():
     return InlineKeyboardMarkup([[
