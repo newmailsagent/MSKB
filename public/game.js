@@ -84,10 +84,13 @@ const Sound = (() => {
 })();
 
 function vibrate(p = [30]) {
-  // Fix 10: только на мобайл (touch-устройства), десктоп игнорирует
   if (!App.settings?.vibro) return;
-  if (!('ontouchstart' in window) && !navigator.maxTouchPoints) return;
-  try { if (navigator?.vibrate) navigator.vibrate(p); } catch(e) {}
+  try {
+    // Пробуем navigator.vibrate напрямую (работает на Android Chrome, Telegram Android)
+    if (navigator.vibrate) {
+      navigator.vibrate(p);
+    }
+  } catch(e) {}
 }
 
 /* ─── УТИЛИТЫ ДОСКИ ──────────────────────────────── */
@@ -243,6 +246,37 @@ function initStats() {
   App.history = loadJSON('bs_history', []);
 }
 
+// Синхронизация статистики и истории с сервером
+async function syncStatsFromServer() {
+  if (App.user.isGuest) return;
+  try {
+    const [statsRes, histRes] = await Promise.all([
+      fetch('/api/stats/' + App.user.id),
+      fetch('/api/history/' + App.user.id),
+    ]);
+    const statsJson = await statsRes.json();
+    const histJson  = await histRes.json();
+    if (statsJson.ok && statsJson.data) {
+      App.stats.wins       = statsJson.data.wins        || 0;
+      App.stats.losses     = statsJson.data.losses      || 0;
+      App.stats.totalShots = statsJson.data.total_shots || 0;
+      App.stats.totalHits  = statsJson.data.total_hits  || 0;
+      saveJSON('bs_stats', App.stats);
+      updateMenuStats();
+    }
+    if (histJson.ok && Array.isArray(histJson.data)) {
+      App.history = histJson.data.map(h => ({
+        result:   h.result,
+        opponent: h.opponent,
+        shots:    h.shots,
+        hits:     h.hits,
+        date:     h.date * 1000, // сервер хранит в секундах
+      }));
+      saveJSON('bs_history', App.history);
+    }
+  } catch(e) {}
+}
+
 function recordResult(result, shots, hits, oppName) {
   if(result==='win') App.stats.wins++; else if(result==='loss') App.stats.losses++;
   App.stats.totalShots += shots; App.stats.totalHits += hits;
@@ -250,6 +284,14 @@ function recordResult(result, shots, hits, oppName) {
   App.history.unshift({ result, opponent: oppName || '?', shots, hits, date: Date.now() });
   if (App.history.length > 50) App.history.pop();
   saveJSON('bs_history', App.history);
+  // Сохраняем историю на сервере (только для TG-юзеров)
+  if (!App.user.isGuest) {
+    fetch('/api/history', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ id: App.user.id, result, opponent: oppName || '?', shots, hits }),
+    }).catch(() => {});
+  }
 }
 
 function updateMenuStats() {
@@ -479,11 +521,12 @@ async function renderStatsScreen() {
   setText('st-acc',     totalShots ? Math.round(totalHits/totalShots*100)+'%' : '0%');
   setText('st-winrate', total      ? Math.round(wins/total*100)+'%' : '0%');
 
-  // История — только локальная (содержит детали матчей)
+  // История — с сервера (если TG-юзер) или локальная
   if (!historyList) return;
   historyList.innerHTML = '';
-  if (!App.history.length) { historyList.innerHTML = '<p class="empty-state">Нет боёв</p>'; return; }
-  App.history.slice(0,20).forEach(h => {
+  const histToShow = App.history.slice(0, 30);
+  if (!histToShow.length) { historyList.innerHTML = '<p class="empty-state">Нет боёв</p>'; return; }
+  histToShow.forEach(h => {
     const div = document.createElement('div');
     div.className = 'history-item';
     const icons  = {win:'✅', loss:'❌'};
@@ -564,14 +607,13 @@ const Placement = {
     if (!dock) return;
     dock.innerHTML = '';
     this.ships.forEach(ship => {
-      // Fix 10: размещённые корабли не показываем в палитре
       if (ship.placed) return;
       const wrap = document.createElement('div');
       const isSelected = this.selected?.id === ship.id;
       wrap.className = 'ship-piece' + (isSelected ? ' selected' : '') + (ship.vertical ? ' vertical' : '');
       wrap.dataset.id = ship.id;
       for (let i = 0; i < ship.size; i++) { const c = document.createElement('div'); c.className = 'ship-cell'; wrap.appendChild(c); }
-      // Только drag + тап для выбора (поворот — кнопкой или двойным тапом на поле)
+      // Drag + тап для выбора
       wrap.addEventListener('pointerdown', (e) => this._startPointerDrag(e, ship, wrap));
       dock.appendChild(wrap);
     });
@@ -726,7 +768,7 @@ const Placement = {
     const boardEl = document.getElementById('placement-board');
     if (!boardEl) return;
     boardEl.innerHTML = '';
-    // Строим карту: ячейка -> id корабля (для двойного тапа по полю)
+    // Строим карту: ячейка -> id корабля
     const cellShipMap = {};
     this.ships.forEach(ship => {
       if (ship.placed) ship.cells.forEach(({r, c}) => { cellShipMap[r+','+c] = ship.id; });
@@ -738,20 +780,45 @@ const Placement = {
         cell.className = 'cell'; cell.dataset.r = r; cell.dataset.c = c;
         if (this.board[r][c] === CELL_SHIP) cell.classList.add('ship');
 
-        // Fix 2: двойной клик/тап по размещённому кораблю — убрать и повернуть
         const shipId = cellShipMap[r+','+c];
         if (shipId !== undefined) {
+          // Двойной тап/клик → поворот корабля на месте
           let lastTap = 0;
-          const handleDoubleTap = () => {
+          let longPressTimer = null;
+
+          const handleDoubleTap = (e) => {
+            if (this._drag?._wasDrag) return;
             const now = Date.now();
             if (now - lastTap < 350) {
               lastTap = 0;
-              this._removePlacedShip(shipId);
-              this.rotateSingleShip(shipId);
+              e.preventDefault();
+              this._rotatePlacedShip(shipId);
             } else { lastTap = now; }
           };
-          cell.addEventListener('pointerup', (e) => { if (!this._drag?._wasDrag) { e.preventDefault(); handleDoubleTap(); } });
-          cell.addEventListener('dblclick',  (e) => { e.preventDefault(); this._removePlacedShip(shipId); this.rotateSingleShip(shipId); });
+
+          // Долгое зажатие (500мс) → вернуть в dok
+          cell.addEventListener('pointerdown', (e) => {
+            longPressTimer = setTimeout(() => {
+              longPressTimer = null;
+              this._removePlacedShip(shipId);
+              vibrate([30,15,30]);
+              Sound.click();
+            }, 500);
+          });
+          cell.addEventListener('pointerup', (e) => {
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+            if (!this._drag?._wasDrag) { e.preventDefault(); handleDoubleTap(e); }
+          });
+          cell.addEventListener('pointercancel', () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } });
+          cell.addEventListener('dblclick', (e) => { e.preventDefault(); this._rotatePlacedShip(shipId); });
+
+          // Перетаскивание уже размещённого корабля (чтобы переставить)
+          cell.addEventListener('pointerdown', (e) => {
+            // запускаем drag для размещённого корабля
+            const ship = this.ships.find(s => s.id === shipId);
+            if (!ship || !ship.placed) return;
+            this._startPointerDragFromField(e, ship, cell);
+          });
         } else {
           cell.addEventListener('pointerup', (e) => { if (this._drag?._wasDrag) return; e.preventDefault(); this.handleCellClick(r, c); });
         }
@@ -769,10 +836,93 @@ const Placement = {
   _removePlacedShip(shipId) {
     const ship = this.ships.find(s => s.id === shipId);
     if (!ship || !ship.placed) return;
-    // Очищаем клетки на доске
     ship.cells.forEach(({r, c}) => { this.board[r][c] = CELL_EMPTY; });
     ship.placed = false; ship.cells = [];
     this.selected = ship;
+    this.renderDock(); this.renderBoard();
+  },
+
+  // Повернуть уже размещённый корабль на поле
+  _rotatePlacedShip(shipId) {
+    const ship = this.ships.find(s => s.id === shipId);
+    if (!ship || !ship.placed || ship.cells.length === 0) return;
+    const newVertical = !ship.vertical;
+    const anchorR = ship.cells[0].r, anchorC = ship.cells[0].c;
+    // Временно убираем корабль
+    ship.cells.forEach(({r, c}) => { this.board[r][c] = CELL_EMPTY; });
+    // Пробуем поставить повёрнутым
+    if (canPlace(this.board, anchorR, anchorC, ship.size, newVertical)) {
+      ship.cells = placeShip(this.board, anchorR, anchorC, ship.size, newVertical);
+      ship.vertical = newVertical;
+      Sound.click(); vibrate([15]);
+    } else {
+      // Пробуем другие позиции рядом
+      let placed = false;
+      for (let dr = -ship.size; dr <= ship.size && !placed; dr++) {
+        for (let dc = -ship.size; dc <= ship.size && !placed; dc++) {
+          const nr = anchorR + dr, nc = anchorC + dc;
+          if (inBounds(nr, nc) && canPlace(this.board, nr, nc, ship.size, newVertical)) {
+            ship.cells = placeShip(this.board, nr, nc, ship.size, newVertical);
+            ship.vertical = newVertical;
+            placed = true;
+            Sound.click(); vibrate([15]);
+          }
+        }
+      }
+      if (!placed) {
+        // Нельзя повернуть — возвращаем как было
+        ship.cells = placeShip(this.board, anchorR, anchorC, ship.size, ship.vertical);
+        vibrate([30,15,30,15,30]);
+        const cells = document.querySelectorAll('#placement-board .ship');
+        cells.forEach(c => { c.classList.add('shake'); setTimeout(() => c.classList.remove('shake'), 400); });
+      }
+    }
+    this.renderBoard();
+  },
+
+  // Drag уже размещённого корабля с поля
+  _startPointerDragFromField(e, ship, cell) {
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY;
+    this._drag = { ship, el: cell, _wasDrag: false, _ghost: null };
+
+    const onMove = (ev) => {
+      const dx = ev.clientX - startX, dy = ev.clientY - startY;
+      if (!this._drag._wasDrag && Math.hypot(dx, dy) > 8) {
+        this._drag._wasDrag = true;
+        // Убираем корабль с поля
+        ship.cells.forEach(({r, c}) => { this.board[r][c] = CELL_EMPTY; });
+        ship.placed = false; ship.cells = [];
+        this.selected = ship;
+        this.vertical = ship.vertical;
+        this._createGhost(ship, cell, ev.clientX, ev.clientY);
+        this.renderBoard(); this.renderDock();
+      }
+      if (this._drag._wasDrag) {
+        this._moveGhost(ev.clientX, ev.clientY);
+        this._highlightCellUnder(ev.clientX, ev.clientY);
+      }
+    };
+
+    const onUp = (ev) => {
+      try { cell.releasePointerCapture(e.pointerId); } catch(_) {}
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+      this._removeGhost();
+      if (this._drag._wasDrag) {
+        this._tryPlaceAt(ev.clientX, ev.clientY);
+        // Если не удалось разместить — корабль остаётся в доке
+        if (!ship.placed) { this.renderDock(); this.renderBoard(); }
+      }
+      this._drag = null;
+      this.clearPreview();
+    };
+
+    try { cell.setPointerCapture(e.pointerId); } catch(_) {}
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
   },
 
   handleHover(r, c) {
@@ -837,6 +987,7 @@ function startGame(mode, myBoard, myShips, enemyBoard, enemyShips, opponent) {
   Game.botMode = 'hunt'; Game.botQueue = []; Game.botLastHit = null; Game.botDirection = null;
 
   setText('opp-name', opponent?.name || 'Бот');
+  renderOpponentAvatar(opponent?.name || 'Бот', !opponent || opponent.name === 'Бот');
   setupGameLayout();
   renderGameBoard();
   updateEnemyFleet();
@@ -1799,8 +1950,76 @@ function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val
 function setText(id, val) { const el = document.getElementById(id); if(el) el.textContent = val; }
 function setHTML(id, val) { const el = document.getElementById(id); if(el) el.innerHTML = val; }
 
-/* ─── СТАРТ ──────────────────────────────────────── */
-window.addEventListener('DOMContentLoaded', async () => {
+/* ─── СЧЁТЧИК ОНЛАЙНА ────────────────────────────── */
+let _onlineSocket = null;
+
+function initOnlineCounter() {
+  // Используем уже существующий WS-сокет или создаём лёгкий
+  const update = (count) => {
+    const el = document.getElementById('online-count');
+    if (el) el.textContent = count;
+  };
+
+  // Периодически опрашиваем через HTTP если нет сокета
+  const poll = () => fetch('/api/online').then(r => r.json()).then(d => update(d.count)).catch(() => {});
+  poll();
+  setInterval(poll, 15000);
+
+  // Также слушаем через WS если подключены
+  const origInit = WS._init.bind(WS);
+  WS._init = function(serverUrl, resolve, reject) {
+    origInit(serverUrl, resolve, reject);
+    this.socket.on('online_count', ({ count }) => update(count));
+  };
+}
+
+/* ─── СВАЙП НАЗАД (от 2/3 экрана) ───────────────── */
+function initSwipeBack() {
+  let touchStartX = null, touchStartY = null;
+  const EDGE_START  = 0.33; // начиная с 1/3 ширины (не с самого края)
+  const SWIPE_MIN   = 80;   // минимум пикселей вправо
+
+  document.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (touchStartX === null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartX;
+    const dy = t.clientY - touchStartY;
+    const startFraction = touchStartX / window.innerWidth;
+
+    // Свайп вправо, начатый примерно с 1/3 экрана (не с края и не с правого края)
+    if (startFraction >= EDGE_START && startFraction <= 0.66 && dx > SWIPE_MIN && Math.abs(dy) < Math.abs(dx)) {
+      handleSwipeBack();
+    }
+    touchStartX = null; touchStartY = null;
+  }, { passive: true });
+}
+
+function handleSwipeBack() {
+  Sound.click();
+  switch (currentScreen) {
+    case 'mode':        showScreen('menu'); break;
+    case 'placement':   showScreen('mode'); break;
+    case 'leaderboard': showScreen('menu'); break;
+    case 'stats':       showScreen(document.getElementById('stats-back-btn')?.dataset.screen || 'menu'); break;
+    case 'settings':    showScreen(document.getElementById('settings-back-btn')?.dataset.screen || 'menu'); break;
+    case 'gameover':    showScreen('menu'); break;
+    // game, waiting — не свайпаем назад (чтобы случайно не выйти)
+  }
+}
+
+/* ─── АВАТАР В БОЕВОМ ЭКРАНЕ ─────────────────────── */
+function renderOpponentAvatar(name, isBot) {
+  const info = document.getElementById('opponent-info');
+  if (!info) return;
+  const letter = isBot ? 'Б' : (name ? name[0].toUpperCase() : '?');
+  info.innerHTML = `<div class="opp-avatar">${letter}</div><span id="opp-name">${name || (isBot ? 'Бот' : 'Соперник')}</span>`;
+}
   initTelegram();
   initUser();
   initSettings();
@@ -1815,7 +2034,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   initPromoBanner();
   updateBurgerSound();
   updateBurgerEnemyMoves();
+  initSwipeBack();
   showScreen('menu');
+
+  // Синхронизируем статистику сразу при запуске
+  syncStatsFromServer().catch(() => {});
+
+  // Подключаемся к сокету для счётчика онлайна
+  initOnlineCounter();
 
   // Обработка ссылки-приглашения: /?room=<roomId> или TG startapp=room_<roomId>
   const params = new URLSearchParams(window.location.search);

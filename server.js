@@ -68,8 +68,27 @@ try { db.exec(`ALTER TABLE players ADD COLUMN online_losses  INTEGER DEFAULT 0`)
 try { db.exec(`ALTER TABLE players ADD COLUMN online_shots   INTEGER DEFAULT 0`); } catch(e) {}
 try { db.exec(`ALTER TABLE players ADD COLUMN online_hits    INTEGER DEFAULT 0`); } catch(e) {}
 
+// Таблица истории боёв
+db.exec(`
+  CREATE TABLE IF NOT EXISTS battle_history (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id  TEXT NOT NULL,
+    result     TEXT NOT NULL,
+    opponent   TEXT,
+    shots      INTEGER DEFAULT 0,
+    hits       INTEGER DEFAULT 0,
+    date       INTEGER DEFAULT (strftime('%s','now'))
+  );
+`);
+
 // Чистим гостей
 try { db.prepare(`DELETE FROM players WHERE id LIKE 'guest_%'`).run(); } catch(e) {}
+
+// Онлайн-игроки: socketId -> {playerId, name, connectedAt}
+const onlineSessions = new Map();
+
+function getOnlineCount() { return onlineSessions.size; }
+function broadcastOnlineCount() { io.emit('online_count', { count: getOnlineCount() }); }
 
 function upsertPlayer(id, name) {
   if (id?.startsWith('guest_')) return;
@@ -77,6 +96,16 @@ function upsertPlayer(id, name) {
     INSERT INTO players (id, name) VALUES (?, ?)
     ON CONFLICT(id) DO UPDATE SET name=excluded.name, updated_at=strftime('%s','now')
   `).run(id, name || 'Игрок');
+}
+
+function addBattleHistory(id, result, opponentName, shots, hits) {
+  if (id?.startsWith('guest_')) return;
+  db.prepare(`INSERT INTO battle_history (player_id, result, opponent, shots, hits) VALUES (?,?,?,?,?)`)
+    .run(id, result, opponentName || '?', shots, hits);
+}
+
+function getBattleHistory(id, limit = 30) {
+  return db.prepare(`SELECT * FROM battle_history WHERE player_id=? ORDER BY date DESC LIMIT ?`).all(id, limit);
 }
 
 function addWin(id, shots, hits, isOnline = false) {
@@ -234,10 +263,16 @@ function clearTurnTimer(room) {
 io.on('connection', (socket) => {
   console.log(`[+] ${socket.id}`);
 
+  // Регистрируем сессию как онлайн (даже без matchmake)
+  onlineSessions.set(socket.id, { playerId: null, name: null, connectedAt: Date.now() });
+  broadcastOnlineCount();
+
   socket.on('matchmake', ({ mode, roomId: friendRoomId, playerId, playerName }) => {
     if (!playerId) return;
     socket.data.playerId = playerId;
     upsertPlayer(playerId, playerName);
+    // Обновляем онлайн-сессию
+    onlineSessions.set(socket.id, { playerId, name: playerName, connectedAt: Date.now() });
 
     const info = { socketId: socket.id, playerId, name: playerName };
 
@@ -355,6 +390,8 @@ io.on('connection', (socket) => {
   // п.5: отключение во время игры = победа оставшемуся
   socket.on('disconnect', () => {
     console.log(`[-] ${socket.id}`);
+    onlineSessions.delete(socket.id);
+    broadcastOnlineCount();
     const idx = waitingPool.findIndex(p => p.socketId === socket.id);
     if (idx >= 0) waitingPool.splice(idx, 1);
 
@@ -403,6 +440,9 @@ function checkSunkServer(field, hitR, hitC) {
 }
 
 app.get('/api/config',     (req, res) => res.json({ botUsername: BOT_USERNAME }));
+app.get('/api/online',     (req, res) => res.json({ count: getOnlineCount() }));
+app.get('/api/history/:id',(req, res) => { try { res.json({ ok: true, data: getBattleHistory(req.params.id, 30) }); } catch(e) { res.status(500).json({ ok: false }); } });
+app.post('/api/history',   (req, res) => { try { const { id, result, opponent, shots, hits } = req.body; addBattleHistory(id, result, opponent, shots, hits); res.json({ ok: true }); } catch(e) { res.status(500).json({ ok: false }); } });
 app.get('/api/ensure/:id', (req, res) => {
   try {
     const { id } = req.params;
