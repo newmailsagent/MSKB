@@ -48,10 +48,23 @@ def share_button():
     share_text = f"{GAME_SHARE_TEXT} {GAME_SHARE_URL}"
     return InlineKeyboardMarkup([[
         InlineKeyboardButton(
-    "📤 Поделиться игрой",
-    url=f"https://t.me/share/url?text={share_text}"
-)
+            "📤 Поделиться игрой",
+            url=f"https://t.me/share/url?text={share_text}"
+        )
     ]])
+
+
+def share_and_play_buttons():
+    """Две кнопки рядом: «Играть» и «Поделиться игрой»."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⚓ Играть", web_app=WebAppInfo(url=WEBAPP_URL)),
+            InlineKeyboardButton(
+                "📤 Поделиться игрой",
+                url=f"https://t.me/share/url?text={GAME_SHARE_TEXT}+{GAME_SHARE_URL}"
+            ),
+        ]
+    ])
 
 
 # ── КОМАНДЫ ────────────────────────────────────────
@@ -63,10 +76,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [InlineKeyboardButton("⚓ Играть", web_app=WebAppInfo(url=WEBAPP_URL))],
         [InlineKeyboardButton(
             "📤 Поделиться игрой",
-            url=f"https://t.me/share/url?url={GAME_SHARE_URL}&text={GAME_SHARE_TEXT}"
+            url=f"https://t.me/share/url?text={GAME_SHARE_TEXT}+{GAME_SHARE_URL}"
         )],
     ]
-    markup = InlineKeyboardMarkup(keyboard)
+    markup = InlineKeyboardMarkup([
+    [InlineKeyboardButton("⚓ Играть", web_app=WebAppInfo(url=WEBAPP_URL))],
+    share_button().inline_keyboard[0]  # или просто share_button()
+])
 
     await update.message.reply_text(
         f"Привет, {name}! ⚓\n\n"
@@ -102,7 +118,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             [InlineKeyboardButton("⚓ Играть", web_app=WebAppInfo(url=WEBAPP_URL))],
             [InlineKeyboardButton(
                 "📤 Поделиться игрой",
-                url=f"https://t.me/share/url?url={GAME_SHARE_URL}&text={GAME_SHARE_TEXT}"
+                url=f"https://t.me/share/url?text={GAME_SHARE_TEXT}+{GAME_SHARE_URL}"
             )]
         ])
     )
