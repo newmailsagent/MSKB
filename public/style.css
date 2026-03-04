@@ -152,6 +152,7 @@ html, body {
 /* Hero-сетка занимает весь экран меню под шапкой */
 #screen-menu { position: relative; overflow: hidden; }
 
+/* Фоновая сетка — absolute на весь экран, не влияет на flow */
 .menu-hero {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -170,53 +171,65 @@ html, body {
   border-radius: 4px;
   transition: opacity .4s;
   position: relative;
+  overflow: hidden;
 }
+/* Промах — точка по центру */
 .hero-grid-cell.active::after {
   content: '';
   position: absolute; inset: 0; margin: auto;
-  width: 30%; height: 30%;
+  width: 32%; height: 32%;
   background: var(--hint);
   border-radius: 50%;
 }
-.hero-grid-cell.hit { background: transparent; opacity: 1; }
-.hero-grid-cell.hit::before,
+/* Попадание — штриховка как на игровом поле */
+.hero-grid-cell.hit {
+  background: var(--cell-empty);
+  opacity: 1;
+}
 .hero-grid-cell.hit::after {
   content: '';
-  position: absolute; top: 50%; left: 50%;
-  width: 120%; height: 2px;
-  background: var(--red); border-radius: 1px; transform-origin: center;
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--red) 0px, var(--red) 2px,
+    transparent 2px, transparent 6px
+  );
+  opacity: .85;
 }
-.hero-grid-cell.hit::before { transform: translate(-50%,-50%) rotate(45deg); }
-.hero-grid-cell.hit::after  { transform: translate(-50%,-50%) rotate(-45deg); }
 
+/* Заголовок — в нормальном потоке, центрируется flex'ом родителя */
 .hero-title {
   font-family: var(--font-hd); font-size: clamp(26px,8vw,40px); font-weight: 900;
   letter-spacing: 4px; text-align: center; line-height: 1.15;
-  position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%);
-  z-index: 1; pointer-events: none; width: 100%;
+  position: relative; z-index: 1; pointer-events: none;
+}
+
+/* Спейсер растягивается и центрирует заголовок, кнопки прибиты к низу */
+.menu-spacer {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; z-index: 1;
 }
 
 .menu-nav {
-  padding: 0 16px 32px;
+  padding: 16px 16px 32px;
   display: flex; flex-direction: column; gap: 10px;
   position: relative; z-index: 2;
-  margin-top: auto;
-  /* лёгкий градиент снизу чтобы кнопки читались поверх сетки */
-  background: linear-gradient(to bottom, transparent 0%, rgba(17,17,17,0.7) 30%, rgba(17,17,17,0.92) 100%);
-  padding-top: 40px;
+  /* градиент чтобы кнопки читались поверх сетки */
+  background: linear-gradient(to bottom, transparent 0%, rgba(17,17,17,0.75) 25%, rgba(17,17,17,0.95) 100%);
 }
 
 /* Кнопка НОВАЯ ИГРА — матовое стекло */
 .btn-primary.btn-large {
-  background: rgba(255, 255, 255, 0.07) !important;
+  background: rgba(255,255,255,0.07) !important;
   backdrop-filter: blur(20px) saturate(1.5);
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border: 1px solid rgba(255,255,255,0.16) !important;
   color: rgba(255,255,255,0.92) !important;
   box-shadow: 0 2px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
 }
 .btn-primary.btn-large:active {
-  background: rgba(255, 255, 255, 0.13) !important;
+  background: rgba(255,255,255,0.13) !important;
 }
 
 
