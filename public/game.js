@@ -753,10 +753,12 @@ const Placement = {
   _startDockDrag(e, ship, el) {
     e.preventDefault(); e.stopPropagation();
     const startX = e.clientX, startY = e.clientY;
+    const startTime = Date.now();
     this._drag = { ship, _wasDrag: false, _ghost: null };
+
     const onMove = (ev) => {
       const dx = ev.clientX - startX, dy = ev.clientY - startY;
-      if (!this._drag._wasDrag && Math.hypot(dx, dy) > 6) {
+      if (!this._drag._wasDrag && Math.hypot(dx, dy) > 8) {
         this._drag._wasDrag = true;
         this.selected = ship;
         this._createGhost(ship, ev.clientX, ev.clientY);
@@ -769,7 +771,20 @@ const Placement = {
       document.removeEventListener('pointerup', onUp);
       document.removeEventListener('pointercancel', onUp);
       this._removeGhost(); this.clearPreview();
-      if (this._drag._wasDrag) this._tryPlaceAt(ev.clientX, ev.clientY);
+      if (this._drag._wasDrag) {
+        this._tryPlaceAt(ev.clientX, ev.clientY);
+      } else {
+        // Короткий тап — двойной тап меняет ориентацию для следующего размещения
+        const now = Date.now();
+        const last = el._lastTap || 0;
+        if (now - last < 350) {
+          this.vertical = !this.vertical;
+          vibrate([10]); Sound.click();
+          el._lastTap = 0;
+        } else {
+          el._lastTap = now;
+        }
+      }
       this._drag = null;
     };
     try { el.setPointerCapture(e.pointerId); } catch(_) {}
@@ -887,26 +902,56 @@ const Placement = {
   },
 
   _bindFieldCell(cell, shipId) {
-    let lastTap = 0, longPressTimer = null, dragActive = false;
+    let lastTap = 0;
+    let longPressTimer = null;
+    let dragStarted = false;
+    let pointerMoved = false;
+
     cell.addEventListener('pointerdown', (e) => {
-      dragActive = false;
+      dragStarted = false;
+      pointerMoved = false;
       const ship = this.ships.find(s => s.id === shipId);
       if (!ship || !ship.placed) return;
-      this._startFieldDrag(e, ship, cell, () => { dragActive = true; });
+
+      this._startFieldDrag(e, ship, cell,
+        // onDragStart: вызывается когда палец реально сдвинулся
+        () => {
+          dragStarted = true;
+          pointerMoved = true;
+          // Отменяем long-press — это drag, не удаление
+          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        }
+      );
+
+      // Long-press запускаем только если нет движения
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
-        if (!dragActive) { this._removeShipFromField(shipId); vibrate([30,15,30]); Sound.click(); }
-      }, 500);
+        if (!dragStarted && !pointerMoved) {
+          this._removeShipFromField(shipId);
+          vibrate([30,15,30]); Sound.click();
+        }
+      }, 600);
     });
+
+    cell.addEventListener('pointermove', () => { pointerMoved = true; });
+
     cell.addEventListener('pointerup', (e) => {
       if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-      if (!dragActive) {
+      // Двойной тап = поворот (только если не был drag)
+      if (!dragStarted) {
         const now = Date.now();
-        if (now - lastTap < 350) { lastTap = 0; e.preventDefault(); this._rotateFieldShip(shipId); }
-        else lastTap = now;
+        if (now - lastTap < 350) {
+          lastTap = 0; e.preventDefault();
+          this._rotateFieldShip(shipId);
+        } else { lastTap = now; }
       }
+      dragStarted = false;
     });
-    cell.addEventListener('pointercancel', () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } });
+
+    cell.addEventListener('pointercancel', () => {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      dragStarted = false;
+    });
   },
 
   _removeShipFromField(shipId) {
@@ -914,7 +959,9 @@ const Placement = {
     if (!ship || !ship.placed) return;
     ship.cells.forEach(({ r, c }) => { this.board[r][c] = CELL_EMPTY; });
     ship.placed = false; ship.cells = []; ship.vertical = false;
-    this.selected = null; this.renderDock(); this.renderBoard();
+    this.selected = null;
+    this.vertical = false; // сбрасываем глобальную ориентацию — следующий корабль горизонтальный
+    this.renderDock(); this.renderBoard();
   },
 
   _rotateFieldShip(shipId) {
@@ -941,19 +988,23 @@ const Placement = {
     const startX = e.clientX, startY = e.clientY;
     this._drag = { ship, _wasDrag: false, _ghost: null };
     const savedVertical = ship.vertical;
+
     const onMove = (ev) => {
       const dx = ev.clientX - startX, dy = ev.clientY - startY;
       if (!this._drag._wasDrag && Math.hypot(dx, dy) > 8) {
         this._drag._wasDrag = true;
         if (onDragStart) onDragStart();
+        // Снимаем с поля
         ship.cells.forEach(({ r, c }) => { this.board[r][c] = CELL_EMPTY; });
         ship.placed = false; ship.cells = [];
-        this.selected = ship; this.vertical = savedVertical;
+        this.selected = ship;
+        this.vertical = savedVertical; // сохраняем ориентацию корабля при перетаскивании
         this._createGhost(ship, ev.clientX, ev.clientY);
         this.renderBoard(); this.renderDock();
       }
       if (this._drag._wasDrag) { this._moveGhost(ev.clientX, ev.clientY); this._highlightCellUnder(ev.clientX, ev.clientY); }
     };
+
     const onUp = (ev) => {
       try { cell.releasePointerCapture(e.pointerId); } catch(_) {}
       document.removeEventListener('pointermove', onMove);
@@ -962,10 +1013,17 @@ const Placement = {
       this._removeGhost(); this.clearPreview();
       if (this._drag?._wasDrag) {
         this._tryPlaceAt(ev.clientX, ev.clientY);
-        if (!ship.placed) { this.selected = null; this.renderDock(); this.renderBoard(); }
+        // Не удалось разместить — корабль возвращается в dok горизонтально
+        if (!ship.placed) {
+          ship.vertical = false;
+          this.vertical = false;
+          this.selected = null;
+          this.renderDock(); this.renderBoard();
+        }
       }
       this._drag = null;
     };
+
     try { cell.setPointerCapture(e.pointerId); } catch(_) {}
     document.addEventListener('pointermove', onMove);
     document.addEventListener('pointerup', onUp);

@@ -73,7 +73,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Две кнопки: играть и поделиться
     keyboard = [
-        [InlineKeyboardButton("⚓ Играть", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [InlineKeyboardButton("Играть", web_app=WebAppInfo(url=WEBAPP_URL))],
         [InlineKeyboardButton(
             "📤 Поделиться игрой",
             url=f"https://t.me/share/url?text={GAME_SHARE_TEXT}+{GAME_SHARE_URL}"
@@ -82,7 +82,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     markup = share_and_play_buttons()
 
     await update.message.reply_text(
-        f"Привет, {name}! ⚓\n\n"
+        f"Привет, {name}!\n\n"
         f"<b>Морской бой</b> — классическая игра прямо в Telegram.\n\n"
         f"🔹 Играй против бота или с друзьями онлайн\n"
         f"🔹 Отслеживай свою статистику\n"
