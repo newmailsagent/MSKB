@@ -186,14 +186,19 @@ function showScreen(name, opts = {}) {
   });
 
   if (isBack) {
-    // Отключаем transition, ставим начальную позицию слева
+    // Шаг 1: без transition ставим начальную позицию слева (вне экрана)
     next.style.transition = 'none';
     next.style.transform  = 'translateX(-30%)';
-    next.style.opacity    = '0';
-    next.getBoundingClientRect(); // reflow — без этого браузер склеит оба изменения
-    // Включаем transition и анимируем к центру
-    next.style.transition = '';
+    next.style.opacity    = '0.01';
     next.classList.add('active');
+    // Шаг 2: в следующем кадре включаем transition и анимируем к центру
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        next.style.transition = '';
+        next.style.transform  = '';
+        next.style.opacity    = '';
+      });
+    });
     if (prev && prev !== loader) {
       prev.style.transition = 'transform .3s cubic-bezier(.4,0,.2,1), opacity .3s';
       prev.style.transform  = 'translateX(100%)';
