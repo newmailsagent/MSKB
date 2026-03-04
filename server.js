@@ -186,6 +186,8 @@ function getDuelStats(myId, opponentId) {
   const theirWins = myId === a ? row.b_wins : row.a_wins;
   return { myWins, theirWins };
 }
+
+function addWin(id, shots, hits, isOnline = false) {
   id = normalizeId(id);
   if (!id || id.startsWith('guest_')) return;
   db.prepare(`UPDATE players SET wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?,
