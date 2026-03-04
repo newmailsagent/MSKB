@@ -153,7 +153,39 @@ function getBattleHistory(id, limit = 30, mode = null) {
   return db.prepare(`SELECT * FROM battle_history WHERE player_id=? ORDER BY date DESC LIMIT ?`).all(id, limit);
 }
 
-function addWin(id, shots, hits, isOnline = false) {
+// Таблица дуэлей (счёт между двумя конкретными игроками)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS duels (
+    player_a  TEXT NOT NULL,
+    player_b  TEXT NOT NULL,
+    a_wins    INTEGER DEFAULT 0,
+    b_wins    INTEGER DEFAULT 0,
+    PRIMARY KEY (player_a, player_b)
+  );
+`);
+
+function recordDuelResult(winnerId, loserId) {
+  winnerId = normalizeId(winnerId); loserId = normalizeId(loserId);
+  if (!winnerId || !loserId || winnerId.startsWith('guest_') || loserId.startsWith('guest_')) return;
+  // Нормализуем порядок: player_a < player_b (лексикографически)
+  const [a, b] = winnerId < loserId ? [winnerId, loserId] : [loserId, winnerId];
+  const isWinnerA = winnerId === a;
+  db.prepare(`INSERT INTO duels (player_a, player_b, a_wins, b_wins) VALUES (?,?,?,?)
+    ON CONFLICT(player_a, player_b) DO UPDATE SET
+    a_wins = a_wins + ?, b_wins = b_wins + ?`)
+    .run(a, b, isWinnerA ? 1 : 0, isWinnerA ? 0 : 1, isWinnerA ? 1 : 0, isWinnerA ? 0 : 1);
+}
+
+function getDuelStats(myId, opponentId) {
+  myId = normalizeId(myId); opponentId = normalizeId(opponentId);
+  if (!myId || !opponentId) return null;
+  const [a, b] = myId < opponentId ? [myId, opponentId] : [opponentId, myId];
+  const row = db.prepare(`SELECT * FROM duels WHERE player_a=? AND player_b=?`).get(a, b);
+  if (!row) return { myWins: 0, theirWins: 0 };
+  const myWins    = myId === a ? row.a_wins : row.b_wins;
+  const theirWins = myId === a ? row.b_wins : row.a_wins;
+  return { myWins, theirWins };
+}
   id = normalizeId(id);
   if (!id || id.startsWith('guest_')) return;
   db.prepare(`UPDATE players SET wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?,
@@ -415,6 +447,7 @@ io.on('connection', (socket) => {
       room.over = true;
       addWin(shooter.playerId,  shooter.shots, shooter.hits, true);
       addLoss(target.playerId,  target.shots,  target.hits,  true);
+      recordDuelResult(shooter.playerId, target.playerId);
     } else {
       if (!hit) room.turn = target.playerId;
       // Запускаем таймер для следующего хода
@@ -435,6 +468,7 @@ io.on('connection', (socket) => {
     io.to(surrenderer.socketId).emit('surrender_confirmed');
     addWin(winner.playerId,      winner.shots,      winner.hits,      true);
     addLoss(surrenderer.playerId, surrenderer.shots, surrenderer.hits, true);
+    recordDuelResult(winner.playerId, surrenderer.playerId);
   });
 
   // п.5: отключение во время игры = победа оставшемуся
@@ -459,6 +493,7 @@ io.on('connection', (socket) => {
           io.to(stayer.socketId).emit('opponent_disconnected_win');
           addWin(stayer.playerId,  stayer.shots,  stayer.hits,  true);
           addLoss(leaver.playerId, leaver.shots,  leaver.hits,  true);
+          recordDuelResult(stayer.playerId, leaver.playerId);
         } else {
           // Игра ещё не началась — просто уведомляем
           if (stayer?.socketId) io.to(stayer.socketId).emit('opponent_left');
@@ -523,6 +558,10 @@ app.get('/api/rating',    (req, res) => { try { res.json({ ok: true, data: getRa
 app.post('/api/rating/join',  (req, res) => { try { res.json(joinRating(req.body.id));  } catch(e) { res.status(500).json({ ok: false }); } });
 app.post('/api/rating/leave', (req, res) => { try { res.json(leaveRating(req.body.id)); } catch(e) { res.status(500).json({ ok: false }); } });
 app.get('/api/stats/:id',  (req, res) => { try { res.json({ ok: true, data: getPlayerStats(req.params.id)||null }); } catch(e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get('/api/duel/:myId/:theirId', (req, res) => {
+  try { res.json({ ok: true, data: getDuelStats(req.params.myId, req.params.theirId) }); }
+  catch(e) { res.status(500).json({ ok: false }); }
+});
 app.get('/api/status',     (req, res) => res.json({ ok: true, rooms: rooms.size, waiting: waitingPool.length, uptime: process.uptime() }));
 
 // Фронтенд — обязательно В САМОМ КОНЦЕ, после всех API
