@@ -152,19 +152,23 @@ html, body {
 /* Hero-сетка занимает весь экран меню под шапкой */
 #screen-menu { position: relative; overflow: hidden; }
 
-/* Фоновая сетка — абсолют на весь экран, не влияет на layout */
-.menu-hero-bg {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  pointer-events: none;
-  z-index: 0;
+/* hero занимает всё место между шапкой и кнопками */
+.menu-hero {
+  flex: 1;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  z-index: 1;
 }
+
+/* сетка — абсолютная внутри hero, не влияет на размер блока */
 .hero-grid {
   position: absolute; inset: 0;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
   grid-template-rows: repeat(10, 1fr);
   gap: 3px; opacity: .18;
+  z-index: 0;
 }
 .hero-grid-cell {
   background: var(--cell-empty);
@@ -173,7 +177,6 @@ html, body {
   position: relative;
   overflow: hidden;
 }
-/* Промах — точка */
 .hero-grid-cell.active::after {
   content: '';
   position: absolute; inset: 0; margin: auto;
@@ -181,7 +184,6 @@ html, body {
   background: var(--hint);
   border-radius: 50%;
 }
-/* Попадание — штриховка как на поле */
 .hero-grid-cell.hit { background: var(--cell-empty); opacity: 1; }
 .hero-grid-cell.hit::after {
   content: '';
@@ -193,36 +195,30 @@ html, body {
   opacity: .85;
 }
 
-/* Блок с заголовком — участвует в flex-потоке, как было раньше */
-.menu-hero {
-  position: relative; flex: 1;
-  display: flex; align-items: center; justify-content: center;
-  min-height: 160px;
-  z-index: 1; pointer-events: none;
-}
 .hero-title {
   font-family: var(--font-hd); font-size: clamp(26px,8vw,40px); font-weight: 900;
   letter-spacing: 4px; text-align: center; line-height: 1.15;
+  position: relative; z-index: 1;
 }
 
-/* Nav — как было, только z-index чтобы быть поверх фона */
+/* nav — без изменений, просто поверх */
 .menu-nav {
   padding: 0 16px 24px;
   display: flex; flex-direction: column; gap: 10px;
   position: relative; z-index: 2;
 }
 
-/* Кнопка НОВАЯ ИГРА — матовое стекло */
+/* Кнопка НОВАЯ ИГРА — матовое стекло, больше прозрачности */
 .btn-primary.btn-large {
-  background: rgba(255,255,255,0.07) !important;
+  background: rgba(255,255,255,0.04) !important;
   backdrop-filter: blur(20px) saturate(1.5);
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
-  border: 1px solid rgba(255,255,255,0.16) !important;
-  color: rgba(255,255,255,0.92) !important;
-  box-shadow: 0 2px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  color: rgba(255,255,255,0.85) !important;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.08);
 }
 .btn-primary.btn-large:active {
-  background: rgba(255,255,255,0.13) !important;
+  background: rgba(255,255,255,0.10) !important;
 }
 
 
