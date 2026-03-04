@@ -150,25 +150,13 @@ html, body {
 
 /* ─── ГЛАВНЫЙ ЭКРАН — HERO ───────────────────────── */
 /* Hero-сетка занимает весь экран меню под шапкой */
-#screen-menu { position: relative; overflow: hidden; }
-
-/* hero занимает всё место между шапкой и кнопками */
-.menu-hero {
-  flex: 1;
-  position: relative;
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden;
-  z-index: 1;
-}
-
-/* сетка — абсолютная внутри hero, не влияет на размер блока */
+.menu-hero { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 160px; overflow: hidden; }
 .hero-grid {
   position: absolute; inset: 0;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
-  grid-template-rows: repeat(10, 1fr);
-  gap: 3px; opacity: .18;
-  z-index: 0;
+  grid-template-rows: repeat(6, 1fr);
+  gap: 2px; opacity: .15;
 }
 .hero-grid-cell {
   background: var(--cell-empty);
@@ -195,18 +183,9 @@ html, body {
   opacity: .85;
 }
 
-.hero-title {
-  font-family: var(--font-hd); font-size: clamp(26px,8vw,40px); font-weight: 900;
-  letter-spacing: 4px; text-align: center; line-height: 1.15;
-  position: relative; z-index: 1;
-}
+.hero-title { font-family: var(--font-hd); font-size: clamp(26px,8vw,40px); font-weight: 900; letter-spacing: 4px; text-align: center; line-height: 1.15; position: relative; z-index: 1; }
 
-/* nav — без изменений, просто поверх */
-.menu-nav {
-  padding: 0 16px 24px;
-  display: flex; flex-direction: column; gap: 10px;
-  position: relative; z-index: 2;
-}
+.menu-nav { padding: 0 16px 24px; display: flex; flex-direction: column; gap: 10px; }
 
 /* Кнопка НОВАЯ ИГРА — матовое стекло, больше прозрачности */
 .btn-primary.btn-large {
