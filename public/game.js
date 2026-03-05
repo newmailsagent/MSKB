@@ -1679,6 +1679,35 @@ const WS = {
       ]);
     });
 
+    this.socket.on('room_expired', () => {
+      WS.disconnect();
+      // Показываем экран с уведомлением и обратным отсчётом
+      showScreen('waiting');
+      const titleEl = document.getElementById('waiting-title');
+      const subEl   = document.getElementById('waiting-sub');
+      const block   = document.getElementById('invite-block');
+      if (block) block.classList.add('hidden');
+      if (titleEl) titleEl.textContent = 'Комната недоступна';
+      if (subEl)   subEl.textContent   = 'Ссылка устарела или комната была закрыта. Переход в главное меню через 10 сек…';
+
+      // Кнопка немедленного перехода
+      const cancelBtn = document.getElementById('btn-cancel-wait');
+      if (cancelBtn) {
+        cancelBtn.textContent = 'Главное меню';
+        cancelBtn.onclick = () => { clearTimeout(window._expiredTimer); showScreen('menu'); };
+      }
+
+      // Автоматический редирект через 10 секунд
+      let secs = 10;
+      const tick = () => {
+        secs--;
+        if (subEl) subEl.textContent = `Ссылка устарела или комната была закрыта. Переход через ${secs} сек…`;
+        if (secs <= 0) { showScreen('menu'); if (cancelBtn) { cancelBtn.textContent = 'Отмена'; cancelBtn.onclick = null; } }
+        else window._expiredTimer = setTimeout(tick, 1000);
+      };
+      window._expiredTimer = setTimeout(tick, 1000);
+    });
+
     this.socket.on('error_msg', ({ message }) => {
       showModal('Ошибка', message, [{ label: 'Ок', cls: 'btn-ghost', action: closeModal }]);
     });
@@ -2062,14 +2091,14 @@ function bindNav() {
   document.getElementById('btn-share-invite')?.addEventListener('click', () => {
     const link = WS._inviteLink;
     if (!link) return;
-    const text = `Сыграем в Морской бой?`;
     const tg = window.Telegram?.WebApp;
     try {
-      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
+      // Весь контент в text — так текст гарантированно перед ссылкой
+      const fullText = `Сыграем в Морской бой?\n${link}`;
+      tg.openTelegramLink(`https://t.me/share/url?text=${encodeURIComponent(fullText)}`);
       return;
     } catch(e) {}
-    // Fallback — копируем в буфер
-    navigator.clipboard?.writeText(`${text}\n${link}`).then(() => {
+    navigator.clipboard?.writeText(`Сыграем в Морской бой?\n${link}`).then(() => {
       const btn = document.getElementById('btn-share-invite');
       if (btn) { btn.textContent = 'Скопировано!'; setTimeout(() => btn.textContent = 'Отправить другу', 2000); }
     });

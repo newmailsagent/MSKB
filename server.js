@@ -380,15 +380,18 @@ io.on('connection', (socket) => {
     }
     else if (mode === 'friend_create') {
       const roomId = crypto.randomUUID();
-      const room   = { id: roomId, p1: makePlayer(info), p2: null, turn: playerId, started: false, over: false, _turnTimer: null, _warnTimer: null };
+      const room   = { id: roomId, p1: makePlayer(info), p2: null, turn: playerId, started: false, over: false, _turnTimer: null, _warnTimer: null, _emptyTimer: null };
       rooms.set(roomId, room);
       socket.join(roomId);
       socket.emit('room_created', { roomId });
     }
     else if (mode === 'friend_join') {
       const room = rooms.get(friendRoomId);
-      if (!room) { socket.emit('error_msg', { message: 'Комната не найдена' }); return; }
+      if (!room) { socket.emit('room_expired'); return; }
+      if (room.over) { socket.emit('room_expired'); return; }
       if (room.p2) { socket.emit('error_msg', { message: 'Комната заполнена' }); return; }
+      // Отменяем таймер удаления если комната ждала
+      if (room._emptyTimer) { clearTimeout(room._emptyTimer); room._emptyTimer = null; }
       room.p2 = makePlayer(info);
       socket.join(friendRoomId);
       notifyBothMatched(room);
@@ -484,26 +487,35 @@ io.on('connection', (socket) => {
 
     for (const [roomId, room] of rooms) {
       if (room.over) continue;
-      if (room.p1?.socketId === socket.id || room.p2?.socketId === socket.id) {
-        clearTurnTimer(room);
+      if (room.p1?.socketId !== socket.id && room.p2?.socketId !== socket.id) continue;
+
+      clearTurnTimer(room);
+
+      const leaver = room.p1?.socketId === socket.id ? room.p1 : room.p2;
+      const stayer = room.p1?.socketId === socket.id ? room.p2 : room.p1;
+
+      if (room.started && stayer?.socketId) {
+        // Игра шла — победа оставшемуся
         room.over = true;
-
-        const leaver  = room.p1?.socketId === socket.id ? room.p1 : room.p2;
-        const stayer  = room.p1?.socketId === socket.id ? room.p2 : room.p1;
-
-        if (stayer?.socketId && room.started) {
-          // Игра уже шла — победа тому, кто остался
-          io.to(stayer.socketId).emit('opponent_disconnected_win');
-          addWin(stayer.playerId,  stayer.shots,  stayer.hits,  true);
-          addLoss(leaver.playerId, leaver.shots,  leaver.hits,  true);
-          recordDuelResult(stayer.playerId, leaver.playerId);
-        } else {
-          // Игра ещё не началась — просто уведомляем
-          if (stayer?.socketId) io.to(stayer.socketId).emit('opponent_left');
-        }
+        io.to(stayer.socketId).emit('opponent_disconnected_win');
+        addWin(stayer.playerId,  stayer.shots, stayer.hits, true);
+        addLoss(leaver.playerId, leaver.shots, leaver.hits, true);
+        recordDuelResult(stayer.playerId, leaver.playerId);
         rooms.delete(roomId);
-        break;
+      } else if (stayer?.socketId) {
+        // Игра не началась, второй игрок есть — уведомляем и удаляем
+        room.over = true;
+        io.to(stayer.socketId).emit('opponent_left');
+        rooms.delete(roomId);
+      } else {
+        // Комната пустая — держим 5 минут, потом удаляем
+        if (room._emptyTimer) clearTimeout(room._emptyTimer);
+        room._emptyTimer = setTimeout(() => {
+          rooms.delete(roomId);
+          console.log(`[room] ${roomId} expired after 5min empty`);
+        }, 5 * 60 * 1000);
       }
+      break;
     }
   });
 });
