@@ -1,452 +1,359 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#111111">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Морской бой</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Морской бой</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    // Сразу после загрузки TG скрипта — сбрасываем все его CSS переменные
+    // TG устанавливает их через style.setProperty на documentElement
+    ;(function() {
+      var tgVars = [
+        '--tg-theme-bg-color','--tg-theme-secondary-bg-color',
+        '--tg-theme-button-color','--tg-theme-button-text-color',
+        '--tg-theme-text-color','--tg-theme-hint-color',
+        '--tg-theme-link-color','--tg-viewport-height',
+        '--tg-viewport-stable-height','--tg-color-scheme'
+      ];
+      // Удаляем TG переменные с :root
+      tgVars.forEach(function(v) {
+        document.documentElement.style.removeProperty(v);
+      });
+      // Перехватываем будущие попытки TG установить переменные
+      var orig = CSSStyleDeclaration.prototype.setProperty;
+      CSSStyleDeclaration.prototype.setProperty = function(name, value, priority) {
+        if (name && name.startsWith('--tg-theme')) return; // блокируем
+        return orig.call(this, name, value, priority);
+      };
+    })();
+  </script>
 </head>
 <body>
-    <!-- ═══════════════════════════════════════════════════
-         ЗАГРУЗКА
-    ═══════════════════════════════════════════════════════ -->
-    <div id="screen-loading" class="screen active">
-        <div class="loading-inner">
-            <div class="loading-grid">
-                <span></span><span></span><span></span>
-                <span></span><span></span><span></span>
-                <span></span><span></span><span></span>
-            </div>
-            <div class="loading-text">МОРСКОЙ БОЙ</div>
-        </div>
+
+<!-- ЗАГРУЗКА -->
+<div id="screen-loading" class="screen active">
+  <div class="loading-inner">
+    <div class="loading-grid">
+      <span></span><span></span><span></span>
+      <span></span><span></span><span></span>
+      <span></span><span></span><span></span>
     </div>
+    <p class="loading-text">МОРСКОЙ БОЙ</p>
+  </div>
+</div>
 
-    <!-- ═══════════════════════════════════════════════════
-         ГЛАВНОЕ МЕНЮ
-    ═══════════════════════════════════════════════════════ -->
-    <div id="screen-menu" class="screen">
-        <!-- Шапка с профилем -->
-        <div class="menu-header">
-            <div class="user-info">
-                <div class="avatar" id="menu-avatar">?</div>
-                <div>
-                    <span class="username" id="menu-username">Гость</span>
-                    <span class="user-tag" id="menu-tag">@unknown</span>
-                </div>
-            </div>
-            <div class="header-right">
-                <div class="stats-mini">
-                    <div class="stat-item">
-                        <span class="stat-val" id="menu-wins">0</span>
-                        <span class="stat-lbl">побед</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-val" id="menu-games">0</span>
-                        <span class="stat-lbl">боёв</span>
-                    </div>
-                </div>
-                <button class="btn-sound" id="btn-sound-menu" aria-label="Звук">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M11 5L6 9H2v6h4l5 4V5z"/>
-                        <path class="sound-mute-line" id="sound-line-menu" d="M23 9l-6 6M17 9l6 6" style="display:none"/>
-                    </svg>
-                </button>
-                <button class="burger-btn" id="btn-burger" aria-label="Меню">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </button>
-            </div>
-        </div>
-
-        <!-- TG промо баннер -->
-        <div class="tg-promo-banner" id="tg-promo">
-            <button class="tg-promo-close" id="btn-close-promo">✕</button>
-            <p>
-                Отслеживай статистику и соревнуйся с другими в Telegram!<br>
-                <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
-            </p>
-        </div>
-
-        <!-- Герой-секция с заголовком (ЦЕНТР ЭКРАНА) -->
-        <div class="menu-hero">
-            <div class="hero-grid" id="hero-grid"></div>
-            <h1 class="hero-title">МОРСКОЙ<br>БОЙ</h1>
-        </div>
-
-        <!-- Навигация (НИЖНИЙ КРАЙ) -->
-        <div class="menu-nav">
-            <div class="btn-row">
-                <button class="btn btn-primary btn-large" id="btn-new-game">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 5v14M5 12h14"/>
-                    </svg>
-                    НОВАЯ ИГРА
-                </button>
-            </div>
-            <div class="btn-row">
-                <button class="btn btn-secondary" id="btn-rating">Рейтинг</button>
-                <button class="btn btn-secondary" id="btn-stats">Статистика</button>
-                <button class="btn btn-secondary" id="btn-settings">Настройки</button>
-            </div>
-        </div>
+<!-- ГЛАВНОЕ МЕНЮ -->
+<div id="screen-menu" class="screen">
+  <!-- Промо-баббл для гостей (скрывается если уже в TG или закрыт) -->
+  <div class="tg-promo-banner" id="tg-promo-menu">
+    Отслеживай статистику и соревнуйся с другими в Telegram!
+    <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
+    <button class="tg-promo-close" id="tg-promo-close">✕</button>
+  </div>
+  <header class="menu-header">
+    <div class="user-info">
+      <div class="avatar" id="user-avatar">?</div>
+      <div class="user-details">
+        <span class="username" id="user-name">Гость</span>
+        <span class="user-tag"  id="user-tag">@unknown</span>
+      </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════
-         РЕЖИМ ИГРЫ
-    ═══════════════════════════════════════════════════════ -->
-    <div id="screen-mode" class="screen">
-        <div class="page-header">
-            <button class="btn-back" id="btn-back-mode">← Назад</button>
-            <h2>Режим игры</h2>
-        </div>
-        <div class="mode-list">
-            <div class="mode-card" data-mode="online-random">
-                <div class="mode-info">
-                    <strong>Случайный соперник</strong>
-                    <span>Найти игрока онлайн</span>
-                </div>
-                <span class="mode-badge online">ОНЛАЙН</span>
-            </div>
-            <div class="mode-card" data-mode="online-friend">
-                <div class="mode-info">
-                    <strong>С другом</strong>
-                    <span>Пригласить по ссылке</span>
-                </div>
-                <span class="mode-badge online">ОНЛАЙН</span>
-            </div>
-            <div class="mode-card" data-mode="bot-easy">
-                <div class="mode-info">
-                    <strong>Против бота</strong>
-                    <span>Обычная сложность</span>
-                </div>
-                <span class="mode-badge medium">ЛЕГКО</span>
-            </div>
-            <div class="mode-card" data-mode="bot-hard">
-                <div class="mode-info">
-                    <strong>Против бота</strong>
-                    <span>Тяжёлая сложность — тактический ИИ</span>
-                </div>
-                <span class="mode-badge hard">СЛОЖНО</span>
-            </div>
-        </div>
+    <div class="header-right">
+      <div class="online-counter">
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="3" fill="currentColor"/><path d="M1 12c0-3.314 2.686-5 6-5s6 1.686 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span class="online-count-val">0</span>
+      </div>
+      <button class="btn-sound" id="btn-sound-toggle" title="Звук">
+        <svg id="sound-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path id="sound-waves" d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        </svg>
+      </button>
+      <div class="stats-mini">
+        <div class="stat-item"><span class="stat-val" id="stat-wins">0</span><span class="stat-lbl">побед</span></div>
+        <div class="stat-item"><span class="stat-val" id="stat-total">0</span><span class="stat-lbl">боёв</span></div>
+      </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════
-         РАССТАНОВКА КОРАБЛЕЙ
-    ═══════════════════════════════════════════════════════ -->
-    <div id="screen-placement" class="screen">
-        <div class="page-header">
-            <button class="btn-back" id="btn-back-placement">← Назад</button>
-            <h2>Расставь корабли</h2>
-        </div>
-        <div class="placement-controls">
-            <button class="btn btn-ghost btn-sm" id="btn-rotate">↻ Повернуть</button>
-            <button class="btn btn-ghost btn-sm" id="btn-random">Случайно</button>
-            <button class="btn btn-ghost btn-sm" id="btn-clear">Очистить</button>
-        </div>
-        <div class="placement-ships" id="placement-dock"></div>
-        <div class="board-wrap">
-            <div class="board-outer">
-                <div class="board-labels-col" id="placement-labels-left"></div>
-                <div class="board-container">
-                    <div class="board-labels-row" id="placement-labels-top"></div>
-                    <div class="board" id="placement-board"></div>
-                </div>
-            </div>
-        </div>
-        <button class="btn btn-primary btn-ready-sticky" id="btn-ready">✓ Готов к бою</button>
+  </header>
+  <div class="menu-hero">
+    <div class="hero-grid" id="hero-grid"></div>
+    <h1 class="hero-title">МОРСКОЙ<br/>БОЙ</h1>
+  </div>
+  <nav class="menu-nav">
+    <button class="btn btn-primary btn-large" data-screen="mode">НОВАЯ ИГРА</button>
+    <div class="btn-row">
+      <button class="btn btn-secondary" data-screen="leaderboard">Рейтинг</button>
+      <button class="btn btn-secondary" data-screen="stats">Статистика</button>
     </div>
+    <button class="btn btn-ghost" data-screen="settings">Настройки</button>
+  </nav>
+</div>
 
-    <!-- ═══════════════════════════════════════════════════
-         ОЖИДАНИЕ СОПЕРНИКА
-    ═══════════════════════════════════════════════════════ -->
-    <div id="screen-waiting" class="screen">
-        <div class="waiting-inner">
-            <div class="search-anim">
-                <div class="search-cell" id="search-cell"></div>
-            </div>
-            <h2>Ищем соперника…</h2>
-            <p>Это займёт несколько секунд</p>
-            <div class="search-timer" id="search-timer">00:00</div>
-            <div class="invite-block hidden" id="invite-block">
-                <span class="invite-label">Жди друга или пригласи:</span>
-                <div class="invite-link-display hidden" id="invite-link"></div>
-                <div class="invite-btns-row">
-                    <button class="btn btn-primary invite-btn" id="btn-send-invite">Отправить другу</button>
-                    <button class="btn btn-secondary invite-btn" id="btn-copy-link">Скопировать ссылку</button>
-                </div>
-            </div>
-            <button class="btn btn-ghost" id="btn-cancel-wait">Отмена</button>
-        </div>
+<!-- ВЫБОР РЕЖИМА -->
+<div id="screen-mode" class="screen">
+  <div class="page-header">
+    <button class="btn-back" data-screen="menu">← Назад</button>
+    <h2>Режим игры</h2>
+  </div>
+  <div class="mode-list">
+    <button class="mode-card" id="mode-random">
+      <div class="mode-info"><strong>Случайный соперник</strong><span>Найти игрока онлайн</span></div>
+      <div class="mode-badge online">ОНЛАЙН</div>
+    </button>
+    <button class="mode-card" id="mode-friend">
+      <div class="mode-info"><strong>С другом</strong><span>Пригласить по ссылке</span></div>
+    </button>
+    <button class="mode-card" id="mode-bot-easy">
+      <div class="mode-info"><strong>Против бота</strong><span>Обычная сложность</span></div>
+      <div class="mode-badge">ЛЕГКО</div>
+    </button>
+    <button class="mode-card" id="mode-bot-hard">
+      <div class="mode-info"><strong>Против бота</strong><span>Тяжёлая сложность — тактический ИИ</span></div>
+      <div class="mode-badge hard">СЛОЖНО</div>
+    </button>
+  </div>
+</div>
+
+<!-- РАССТАНОВКА КОРАБЛЕЙ -->
+<div id="screen-placement" class="screen">
+  <div class="page-header">
+    <button class="btn-back" data-screen="mode">← Назад</button>
+    <h2>Расставь корабли</h2>
+  </div>
+
+  <!-- Контролы ВЫШЕ дока — не перекрываются -->
+  <div class="placement-controls">
+    <button class="btn btn-sm" id="btn-rotate">↻ Повернуть</button>
+    <button class="btn btn-sm btn-ghost" id="btn-random-place">Случайно</button>
+    <button class="btn btn-sm btn-ghost" id="btn-clear-place">Очистить</button>
+  </div>
+
+  <!-- Корабли для выбора -->
+  <div class="placement-ships" id="ship-dock"></div>
+
+  <!-- Поле -->
+  <div class="board-wrap" id="placement-board-wrap">
+    <div class="board-outer">
+      <div class="board-labels-col" id="placement-col-labels"></div>
+      <div class="board-container">
+        <div class="board-labels-row" id="placement-row-labels"></div>
+        <div class="board" id="placement-board"></div>
+      </div>
     </div>
+  </div>
 
-    <!-- ═══════════════════════════════════════════════════
-         ИГРОВОЙ ЭКРАН
-    ═══════════════════════════════════════════════════════ -->
-    <div id="screen-game" class="screen">
-        <div class="game-topbar">
-            <button class="btn-back mobile-only" id="btn-back-game">← Назад</button>
-            <div class="game-toggle" id="field-toggle">
-                <button class="toggle-btn active" data-field="enemy">Врага</button>
-                <button class="toggle-btn" data-field="my">Моё</button>
-            </div>
-            <div class="game-status" id="game-status">Твой ход</div>
-            <div class="opponent-info">
-                <div class="opp-avatar" id="opp-avatar">?</div>
-                <span class="duel-score" id="duel-score">0:0</span>
-            </div>
-        </div>
-        <div class="turn-countdown hidden" id="turn-countdown">00:20</div>
-        <div class="game-boards-row">
-            <div class="board-col" id="game-board-wrap">
-                <div class="board-title desktop-only">Поле противника</div>
-                <div class="board-wrap">
-                    <div class="board-outer">
-                        <div class="board-labels-col" id="game-labels-left"></div>
-                        <div class="board-container">
-                            <div class="board-labels-row" id="game-labels-top"></div>
-                            <div class="board enemy-board" id="game-board"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="board-col" id="my-board-wrap">
-                <div class="board-title desktop-only">Моё поле</div>
-                <div class="board-wrap">
-                    <div class="board-outer">
-                        <div class="board-labels-col" id="my-labels-left"></div>
-                        <div class="board-container">
-                            <div class="board-labels-row" id="my-labels-top"></div>
-                            <div class="board" id="my-board"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="enemy-fleet">
-            <span class="enemy-fleet-label">Осталось у врага:</span>
-            <div class="enemy-fleet-ships" id="enemy-fleet"></div>
-        </div>
-        <div class="game-footer">
-            <div class="opponent-info">
-                <span>Соперник</span>
-            </div>
-            <button class="btn btn-surrender-ghost desktop-only" id="btn-surrender-desktop">🏳️ Сдаться</button>
-            <button class="btn btn-danger mobile-only" id="btn-surrender">Сдаться</button>
-        </div>
+  <button class="btn btn-primary btn-large btn-ready-sticky" id="btn-ready" disabled>
+    ✓ Готов к бою
+  </button>
+</div>
+
+<!-- ОЖИДАНИЕ СОПЕРНИКА -->
+<div id="screen-waiting" class="screen">
+  <div class="waiting-inner">
+    <div class="search-anim" id="search-anim">
+      <div class="search-cell" id="search-cell"></div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════
-         КОНЕЦ ИГРЫ
-    ═══════════════════════════════════════════════════════ -->
-    <div id="screen-gameover" class="screen">
-        <div class="gameover-inner">
-            <div class="gameover-icon" id="go-icon">🏆</div>
-            <h1 class="gameover-title" id="go-title">ПОБЕДА!</h1>
-            <p class="gameover-sub" id="go-sub">Ты потопил все корабли!</p>
-            <div class="gameover-stats">
-                <div class="go-stat">
-                    <span id="go-shots">0</span>
-                    <small>выстрелов</small>
-                </div>
-                <div class="go-stat">
-                    <span id="go-hits">0</span>
-                    <small>попаданий</small>
-                </div>
-                <div class="go-stat">
-                    <span id="go-accuracy">0%</span>
-                    <small>точность</small>
-                </div>
-            </div>
-            <div class="btn-col">
-                <button class="btn btn-primary btn-large" id="btn-revanch">Реванш</button>
-                <button class="btn btn-secondary" id="btn-menu-from-go">← Главное меню</button>
-            </div>
-        </div>
+    <h2 id="waiting-title">Ищем соперника…</h2>
+    <p id="waiting-sub">Это займёт несколько секунд</p>
+    <p class="search-timer hidden" id="search-timer">00:00</p>
+    <div class="invite-block hidden" id="invite-block">
+      <p class="invite-label">Жди друга или пригласи:</p>
+      <span class="invite-link-display hidden" id="invite-link-display"></span>
+      <div class="invite-btns-row">
+        <button class="btn btn-primary btn-sm invite-btn hidden" id="btn-share-invite">Отправить другу</button>
+        <button class="btn btn-sm invite-btn hidden" id="btn-copy-link">Скопировать ссылку</button>
+      </div>
     </div>
+    <button class="btn btn-ghost" id="btn-cancel-wait">Отмена</button>
+  </div>
+</div>
 
-    <!-- ═══════════════════════════════════════════════════
-         РЕЙТИНГ
-    ═══════════════════════════════════════════════════════ -->
-    <div id="screen-rating" class="screen">
-        <div class="page-header">
-            <button class="btn-back" id="btn-back-rating">← Назад</button>
-            <h2>Рейтинг</h2>
-            <button class="rating-info-btn" id="btn-rating-info">?</button>
-        </div>
-        <div class="tg-promo-banner hidden" id="tg-promo-rating">
-            <button class="tg-promo-close" id="btn-close-promo-rating">✕</button>
-            <p>
-                Войди через Telegram чтобы попасть в рейтинг!<br>
-                <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
-            </p>
-        </div>
-        <div class="my-record-card">
-            <div class="my-record-name">Мой рекорд</div>
-            <div class="my-record-grid">
-                <div>
-                    <span class="my-record-val" id="rating-wins">-</span>
-                    <span class="my-record-lbl">Победы</span>
-                </div>
-                <div>
-                    <span class="my-record-val" id="rating-losses">-</span>
-                    <span class="my-record-lbl">Поражения</span>
-                </div>
-                <div>
-                    <span class="my-record-val" id="rating-total">-</span>
-                    <span class="my-record-lbl">Всего</span>
-                </div>
-                <div>
-                    <span class="my-record-val" id="rating-winrate">-</span>
-                    <span class="my-record-lbl">Винрейт</span>
-                </div>
-            </div>
-        </div>
-        <div class="btn-row" style="padding: 0 16px 12px;">
-            <button class="btn btn-primary" id="btn-join-rating">Участвовать в рейтинге</button>
-            <button class="btn btn-ghost" id="btn-leave-rating">Покинуть рейтинг</button>
-        </div>
-        <div class="rating-section-title">
-            Топ игроков
-            <div class="stats-mode-toggle">
-                <button class="stm-btn active" data-mode="online">Онлайн</button>
-                <button class="stm-btn" data-mode="all">Все</button>
-            </div>
-            <div class="online-counter">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
-                <span id="online-count">Загрузка…</span>
-            </div>
-        </div>
-        <div class="leaderboard-list" id="leaderboard-list"></div>
+<!-- ИГРА -->
+<div id="screen-game" class="screen">
+
+  <!-- Топбар: переключатель (мобайл) + статус + бургер -->
+  <div class="game-topbar">
+    <div class="game-toggle" id="field-toggle">
+      <button class="toggle-btn active" id="btn-show-enemy">Врага</button>
+      <button class="toggle-btn"        id="btn-show-mine">Моё</button>
     </div>
+    <div class="game-status" id="game-status">Твой ход</div>
+    <!-- Бургер кнопка -->
+    <button class="burger-btn" id="burger-btn" aria-label="Меню">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="turn-countdown hidden" id="turn-countdown">
+    <span id="turn-countdown-text">00:20</span>
+  </div>
 
-    <!-- ═══════════════════════════════════════════════════
-         СТАТИСТИКА
-    ═══════════════════════════════════════════════════════ -->
-    <div id="screen-stats" class="screen">
-        <div class="page-header">
-            <button class="btn-back" id="btn-back-stats">← Назад</button>
-            <h2>Статистика</h2>
-        </div>
-        <div class="tg-promo-banner hidden" id="tg-promo-stats">
-            <button class="tg-promo-close" id="btn-close-promo-stats">✕</button>
-            <p>
-                Войди через Telegram чтобы сохранять статистику!<br>
-                <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
-            </p>
-        </div>
-        <div class="stats-profile">
-            <div class="stats-avatar" id="stats-avatar">?</div>
-            <div class="stats-name" id="stats-name">Гость</div>
-        </div>
-        <div class="stats-grid">
-            <div class="stat-card green">
-                <span id="stats-wins">0</span>
-                <small>Победы</small>
-            </div>
-            <div class="stat-card red">
-                <span id="stats-losses">0</span>
-                <small>Поражения</small>
-            </div>
-            <div class="stat-card yellow">
-                <span id="stats-total">0</span>
-                <small>Всего боёв</small>
-            </div>
-            <div class="stat-card blue">
-                <span id="stats-accuracy">0%</span>
-                <small>Точность</small>
-            </div>
-            <div class="stat-card">
-                <span id="stats-winrate">0%</span>
-                <small>Винрейт</small>
-            </div>
-            <div class="stat-card">
-                <span id="stats-best">0</span>
-                <small>Рекорд</small>
-            </div>
-        </div>
-        <div class="section-title">Последние бои</div>
-        <div class="history-list" id="history-list">
-            <div class="empty-state">Нет боёв</div>
-        </div>
+  <!-- Мобайл: одно поле (переключаемое) -->
+  <div class="board-wrap" id="game-board-wrap">
+    <div class="board-outer">
+      <div class="board-labels-col" id="game-col-labels"></div>
+      <div class="board-container">
+        <div class="board-labels-row" id="game-row-labels"></div>
+        <div class="board" id="game-board"></div>
+      </div>
     </div>
+  </div>
 
-    <!-- ═══════════════════════════════════════════════════
-         НАСТРОЙКИ
-    ═══════════════════════════════════════════════════════ -->
-    <div id="screen-settings" class="screen">
-        <div class="page-header">
-            <button class="btn-back" id="btn-back-settings">← Назад</button>
-            <h2>Настройки</h2>
-        </div>
-        <div class="settings-list">
-            <div class="setting-item">
-                <span>Звуки</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="setting-sound" checked>
-                    <span class="toggle-track"></span>
-                </label>
-            </div>
-            <div class="setting-item">
-                <span>Вибрация</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="setting-vibration" checked>
-                    <span class="toggle-track"></span>
-                </label>
-            </div>
-            <div class="setting-item">
-                <span>Подсказки (баббл)</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="setting-hints" checked>
-                    <span class="toggle-track"></span>
-                </label>
-            </div>
-            <button class="btn btn-danger" id="btn-reset-stats" style="margin-top: 16px;">Сбросить статистику</button>
-        </div>
+  <!-- Десктоп: второе поле (наше) — скрыто на мобайл -->
+  <div class="board-wrap desktop-only" id="my-board-wrap" style="display:none">
+    <div class="board-outer">
+      <div class="board-labels-col" id="game-enemy-col-labels"></div>
+      <div class="board-container">
+        <div class="board-labels-row" id="game-enemy-row-labels"></div>
+        <div class="board" id="my-board"></div>
+      </div>
     </div>
+  </div>
 
-    <!-- ═══════════════════════════════════════════════════
-         БУРГЕР МЕНЮ
-    ═══════════════════════════════════════════════════════ -->
-    <div class="burger-overlay hidden" id="burger-overlay"></div>
-    <div class="burger-menu" id="burger-menu">
-        <div class="burger-menu-header">МЕНЮ</div>
-        <button class="burger-item" id="burger-sound">
-            <span>🔊</span> Звук
-        </button>
-        <button class="burger-item" id="burger-moves">
-            <span>👁</span> Ходы противника
-        </button>
-        <button class="burger-item" id="burger-stats">
-            <span>📊</span> Статистика
-        </button>
-        <button class="burger-item" id="burger-settings">
-            <span>⚙️</span> Настройки
-        </button>
-        <div class="burger-divider"></div>
-        <button class="burger-item danger" id="burger-surrender">
-            <span>🏳️</span> Сдаться
-        </button>
+  <!-- Флот противника -->
+  <div class="enemy-fleet" id="enemy-fleet">
+    <span class="enemy-fleet-label">Осталось у врага:</span>
+    <div class="enemy-fleet-ships" id="enemy-fleet-ships"></div>
+  </div>
+
+  <!-- Футер: аватар + имя соперника + сдаться -->
+  <div class="game-footer">
+    <div class="opponent-info" id="opponent-info">
+      <span id="opp-name">Соперник</span>
     </div>
+    <button class="btn btn-sm btn-surrender-ghost" id="btn-surrender">Сдаться</button>
+  </div>
 
-    <!-- ═══════════════════════════════════════════════════
-         МОДАЛЬНЫЕ ОКНА
-    ═══════════════════════════════════════════════════════ -->
-    <div class="modal-overlay hidden" id="modal-overlay">
-        <div class="modal">
-            <h3 id="modal-title">Подтверждение</h3>
-            <p id="modal-message">Вы уверены?</p>
-            <div class="modal-btns">
-                <button class="btn btn-secondary" id="modal-cancel">Отмена</button>
-                <button class="btn btn-primary" id="modal-confirm">OK</button>
-            </div>
-        </div>
+  <div class="shot-feedback hidden" id="shot-feedback"></div>
+</div>
+
+<!-- КОНЕЦ ИГРЫ -->
+<div id="screen-gameover" class="screen">
+  <div class="gameover-inner">
+    <div class="gameover-icon" id="gameover-icon">🏆</div>
+    <h1 class="gameover-title" id="gameover-title">ПОБЕДА!</h1>
+    <p class="gameover-sub"   id="gameover-sub">Ты потопил все корабли!</p>
+    <div class="gameover-stats">
+      <div class="go-stat"><span id="go-shots">0</span><small>выстрелов</small></div>
+      <div class="go-stat"><span id="go-hits">0</span><small>попаданий</small></div>
+      <div class="go-stat"><span id="go-acc">0%</span><small>точность</small></div>
     </div>
+    <div class="btn-col">
+      <button class="btn btn-primary btn-large" id="btn-rematch">Реванш</button>
+      <button class="btn btn-secondary" data-screen="menu">← Главное меню</button>
+    </div>
+  </div>
+</div>
 
-    <script src="app.js"></script>
+<!-- РЕЙТИНГ -->
+<div id="screen-leaderboard" class="screen">
+  <div class="page-header">
+    <button class="btn-back" data-screen="menu">← Назад</button>
+    <h2>Рейтинг</h2>
+    <button class="rating-info-btn" id="rating-info-btn" title="Как работает рейтинг">?</button>
+  </div>
+  <div class="tg-promo-banner hidden" id="tg-promo-lb">
+    Войди через Telegram чтобы попасть в рейтинг!
+    <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
+  </div>
+
+  <!-- Мой рекорд -->
+  <div class="rating-section" id="my-record-section">
+    <div class="rating-section-title">Мой рекорд</div>
+    <div id="my-record-card" class="my-record-card">
+      <p class="empty-state">Нет данных</p>
+    </div>
+    <!-- Кнопки участия -->
+    <div style="padding: 0 16px 8px; display:flex; gap:8px;">
+      <button class="btn btn-primary btn-sm" id="btn-join-rating" style="display:none">Участвовать в рейтинге</button>
+      <button class="btn btn-ghost btn-sm"   id="btn-leave-rating" style="display:none">Покинуть рейтинг</button>
+    </div>
+  </div>
+
+  <!-- Общий рейтинг -->
+  <div class="rating-section">
+    <div class="rating-section-title">Топ игроков</div>
+    <div class="leaderboard-list" id="leaderboard-list"><p class="empty-state">Загрузка…</p></div>
+  </div>
+</div>
+
+<!-- СТАТИСТИКА -->
+<div id="screen-stats" class="screen">
+  <div class="page-header">
+    <button class="btn-back" id="stats-back-btn" data-screen="menu">← Назад</button>
+    <h2>Статистика</h2>
+  </div>
+  <div class="tg-promo-banner hidden" id="tg-promo-stats">
+    Войди через Telegram чтобы сохранять статистику!
+    <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
+  </div>
+  <div class="stats-profile">
+    <div class="stats-avatar" id="stats-avatar">?</div>
+    <div class="stats-name"   id="stats-name">Гость</div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card green"><span id="st-wins">0</span><small>Победы</small></div>
+    <div class="stat-card red"><span id="st-losses">0</span><small>Поражения</small></div>
+    <div class="stat-card blue"><span id="st-total">0</span><small>Всего боёв</small></div>
+    <div class="stat-card"><span id="st-acc">0%</span><small>Точность</small></div>
+    <div class="stat-card"><span id="st-winrate">0%</span><small>Винрейт</small></div>
+  </div>
+  <h3 class="section-title">Последние бои</h3>
+  <div class="history-list" id="history-list"><p class="empty-state">Нет боёв</p></div>
+</div>
+
+<!-- НАСТРОЙКИ -->
+<div id="screen-settings" class="screen">
+  <div class="page-header">
+    <button class="btn-back" id="settings-back-btn" data-screen="menu">← Назад</button>
+    <h2>Настройки</h2>
+  </div>
+  <div class="settings-list">
+    <div class="setting-item"><span>Звуки</span><label class="toggle-switch"><input type="checkbox" id="setting-sound" checked/><span class="toggle-track"></span></label></div>
+    <div class="setting-item mobile-only"><span>Вибрация</span><label class="toggle-switch"><input type="checkbox" id="setting-vibro" checked/><span class="toggle-track"></span></label></div>
+    <div class="setting-item" id="hints-setting-item"><span>Подсказки (баббл)</span><label class="toggle-switch"><input type="checkbox" id="setting-hints" checked/><span class="toggle-track"></span></label></div>
+    <button class="btn btn-danger btn-sm" id="btn-reset-stats">Сбросить статистику</button>
+  </div>
+</div>
+
+<!-- МОДАЛКА -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal" id="modal-box">
+    <h3 id="modal-title"></h3>
+    <p  id="modal-body"></p>
+    <div class="modal-btns" id="modal-btns"></div>
+  </div>
+</div>
+
+<!-- БУРГЕР МЕНЮ (выезжает справа) -->
+<div id="burger-overlay" class="burger-overlay hidden"></div>
+<div id="burger-menu" class="burger-menu">
+  <div class="burger-menu-header">Меню</div>
+  <button class="burger-item" id="burger-sound">
+    <span id="burger-sound-icon">🔊</span>
+    <span>Звук</span>
+  </button>
+  <!-- Ходы противника — только мобайл -->
+  <button class="burger-item mobile-only" id="burger-enemy-moves">
+    <span id="burger-enemy-moves-icon">👁</span>
+    <span>Ходы противника</span>
+  </button>
+  <button class="burger-item" id="burger-stats-btn">
+    <span>📊</span>
+    <span>Статистика</span>
+  </button>
+  <button class="burger-item" id="burger-settings-btn">
+    <span>⚙️</span>
+    <span>Настройки</span>
+  </button>
+  <div class="burger-divider"></div>
+  <button class="burger-item danger" id="burger-surrender">
+    <span>🏳️</span>
+    <span>Сдаться</span>
+  </button>
+</div>
+
+<script src="game.js"></script>
 </body>
 </html>
