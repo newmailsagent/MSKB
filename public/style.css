@@ -314,23 +314,18 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .waiting-inner h2 { margin: 16px 0 2px; font-family: var(--font-hd); font-size: 18px; }
 .waiting-inner > p { color: var(--hint); font-size: 14px; min-height: 18px; }
 
-.invite-block { margin-top: 16px; width: 100%; text-align: left; }
+.invite-block { margin-top: 16px; width: 100%; text-align: center; }
 .invite-block.hidden { display: none; }
-.invite-label { font-size: 12px; color: var(--hint); margin-bottom: 6px; text-align: center; display: block; }
-.invite-link-row {
-  display: flex; gap: 8px; align-items: center;
+.invite-label { font-size: 12px; color: var(--hint); margin-bottom: 10px; display: block; }
+.invite-link-display {
+  display: block; font-size: 11px; color: var(--link);
+  word-break: break-all; margin-bottom: 8px;
+  padding: 6px 10px; background: var(--bg2); border-radius: 6px;
+}
+.invite-link-display.hidden { display: none; }
+.invite-btns-row { display: flex; flex-direction: column; gap: 8px; width: 100%; }  display: flex; gap: 8px; align-items: center;
   background: var(--bg2); border-radius: var(--radius);
   padding: 8px 10px;
-  width: 100%; overflow: hidden;
-}
-/* Ссылка обрезается — НЕ выходит за экран */
-.invite-link {
-  flex: 1; min-width: 0;
-  font-size: 11px; color: var(--link);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.invite-link-row .btn { flex-shrink: 0; }
-
 /* Кнопка отмены — центрирована */
 #btn-cancel-wait { margin-top: 16px; align-self: center; }
 

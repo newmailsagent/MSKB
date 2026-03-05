@@ -18,6 +18,7 @@ const PORT        = process.env.PORT        || 3000;
 const DB_PATH     = process.env.DB_PATH     || './data/game.db';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const BOT_USERNAME = process.env.BOT_USERNAME || '';
+const APP_NAME     = process.env.APP_NAME     || 'bteship';
 
 const TURN_TIMEOUT_MS = 60000; // 60 сек на ход
 const MAX_TIMEOUTS    = 2;     // 2 просрочки = поражение
@@ -526,7 +527,7 @@ function checkSunkServer(field, hitR, hitC) {
   return ship.length > 0 && ship.every(([r, c]) => field[r][c] === 2);
 }
 
-app.get('/api/config',     (req, res) => res.json({ botUsername: BOT_USERNAME }));
+app.get('/api/config',     (req, res) => res.json({ botUsername: BOT_USERNAME, appName: APP_NAME }));
 app.get('/api/online',     (req, res) => res.json({ count: getOnlineCount() }));
 app.get('/api/history/:id',(req, res) => { try { const mode = req.query.mode || null; res.json({ ok: true, data: getBattleHistory(req.params.id, 30, mode) }); } catch(e) { res.status(500).json({ ok: false }); } });
 app.post('/api/history', (req, res) => {

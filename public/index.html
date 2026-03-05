@@ -159,11 +159,11 @@
     <h2 id="waiting-title">Ищем соперника…</h2>
     <p  id="waiting-sub">Это займёт несколько секунд</p>
     <div class="invite-block hidden" id="invite-block">
-      <p class="invite-label">Отправь ссылку другу:</p>
-      <div class="invite-link-row">
-        <!-- Ссылка обрезается через CSS text-overflow -->
-        <span class="invite-link" id="invite-link-text"></span>
-        <button class="btn btn-sm" id="btn-copy-link">Копировать</button>
+      <p class="invite-label">Жди друга или пригласи:</p>
+      <span class="invite-link-display hidden" id="invite-link-display"></span>
+      <div class="invite-btns-row">
+        <button class="btn btn-primary btn-sm hidden" id="btn-share-invite">📨 Отправить другу</button>
+        <button class="btn btn-sm hidden" id="btn-copy-link">Скопировать ссылку</button>
       </div>
     </div>
     <button class="btn btn-ghost" id="btn-cancel-wait">Отмена</button>

@@ -1536,22 +1536,38 @@ const WS = {
       const block = document.getElementById('invite-block');
       if (block) block.classList.remove('hidden');
 
-      // Строим ссылку: tg://t.me/bot?start=room_ID или fallback на origin
-      let link;
+      // Строим ссылку
+      let inviteLink;
       try {
         const cfg = await fetch('/api/config').then(r => r.json());
-        if (cfg.botUsername) {
-          // Telegram deep link: открывает бота и передаёт roomId как startapp параметр
-          link = `https://t.me/${cfg.botUsername}/bteship?startapp=room_${roomId}`;
+        if (cfg.botUsername && cfg.appName) {
+          inviteLink = `https://t.me/${cfg.botUsername}/${cfg.appName}?startapp=room_${roomId}`;
+        } else if (cfg.botUsername) {
+          inviteLink = `https://t.me/${cfg.botUsername}/bteship?startapp=room_${roomId}`;
         } else {
-          link = `${window.location.origin}/?room=${roomId}`;
+          inviteLink = `${window.location.origin}/?room=${roomId}`;
         }
       } catch(e) {
-        link = `${window.location.origin}/?room=${roomId}`;
+        inviteLink = `${window.location.origin}/?room=${roomId}`;
       }
 
-      const linkEl = document.getElementById('invite-link-text');
-      if (linkEl) linkEl.textContent = link;
+      // Сохраняем ссылку глобально для кнопок
+      WS._inviteLink = inviteLink;
+
+      // В Telegram — кнопка шеринга, в браузере — показываем ссылку текстом
+      const isInTG = !!window.Telegram?.WebApp?.initData;
+      const shareBtn = document.getElementById('btn-share-invite');
+      const copyBtn  = document.getElementById('btn-copy-link');
+      const linkDisplay = document.getElementById('invite-link-display');
+      if (isInTG) {
+        if (shareBtn) shareBtn.classList.remove('hidden');
+        if (copyBtn)  copyBtn.classList.remove('hidden');
+        if (linkDisplay) linkDisplay.classList.add('hidden');
+      } else {
+        if (shareBtn) shareBtn.classList.add('hidden');
+        if (copyBtn)  copyBtn.classList.remove('hidden');
+        if (linkDisplay) { linkDisplay.textContent = inviteLink; linkDisplay.classList.remove('hidden'); }
+      }
     });
 
     // ── Матч найден (оба игрока) ──────────────────────
@@ -2040,13 +2056,33 @@ function bindNav() {
     }
   });
 
-  // Копировать ссылку
+  // Кнопка "Отправить другу" — открывает список чатов TG
+  document.getElementById('btn-share-invite')?.addEventListener('click', () => {
+    const link = WS._inviteLink;
+    if (!link) return;
+    const text = `Сыграем в Морской бой? Присоединяйся! 🚢`;
+    const tg = window.Telegram?.WebApp;
+    if (tg?.switchInlineQuery) {
+      // Открывает выбор чата и вставляет текст с ссылкой
+      try {
+        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
+        return;
+      } catch(e) {}
+    }
+    // Fallback — копируем в буфер
+    navigator.clipboard?.writeText(link).then(() => {
+      const btn = document.getElementById('btn-share-invite');
+      if (btn) { btn.textContent = 'Ссылка скопирована!'; setTimeout(() => btn.textContent = '📨 Отправить другу', 2000); }
+    });
+  });
+
+  // Кнопка "Скопировать ссылку"
   document.getElementById('btn-copy-link')?.addEventListener('click', () => {
-    const text = document.getElementById('invite-link-text')?.textContent;
-    if (!text) return;
-    navigator.clipboard?.writeText(text).then(() => {
+    const link = WS._inviteLink;
+    if (!link) return;
+    navigator.clipboard?.writeText(link).then(() => {
       const btn = document.getElementById('btn-copy-link');
-      if (btn) { btn.textContent = 'Скопировано!'; setTimeout(() => btn.textContent = 'Копировать', 2000); }
+      if (btn) { btn.textContent = 'Скопировано!'; setTimeout(() => btn.textContent = 'Скопировать ссылку', 2000); }
     });
   });
 
