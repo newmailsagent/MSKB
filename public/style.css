@@ -163,24 +163,18 @@ html, body {
 .stat-val { display: block; font-family: var(--font-hd); font-size: 18px; color: var(--accent); }
 .stat-lbl { font-size: 11px; color: var(--hint); text-transform: uppercase; letter-spacing: 1px; }
 
-/* Меню: hero-grid — чистый фон, не влияет на layout */
+/* ─── МЕНЮ ───────────────────────────────────────── */
 #screen-menu { position: relative; overflow: hidden; }
-#screen-menu header { position: relative; z-index: 1; }
-#screen-menu .menu-nav { position: relative; z-index: 1; margin-top: auto; }
-#screen-menu .hero-title { position: relative; z-index: 1; }
 
 .menu-hero {
-  /* Абсолютный слой — только фон, из потока убран */
-  position: absolute; inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
+  position: relative; flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 160px; overflow: hidden;
   container-type: size; container-name: hero;
 }
 .hero-grid {
   position: absolute; inset: 0;
   display: grid;
-  /* Квадратные ячейки: 10 колонок и 10 строк одинакового размера */
   grid-template-columns: repeat(10, 1fr);
   grid-template-rows: repeat(10, 1fr);
   gap: 2px; opacity: .15;
@@ -189,16 +183,13 @@ html, body {
   background: var(--cell-empty); border-radius: 3px;
   transition: opacity .4s; position: relative; overflow: hidden;
 }
-/* Точка — используем min(ширины, высоты) через aspect-ratio трюк */
 .hero-grid-cell.active::after {
   content: ''; position: absolute;
-  /* Квадратный элемент 35% от ширины ячейки */
   left: 50%; top: 50%;
   width: 35%; aspect-ratio: 1;
   transform: translate(-50%, -50%);
   background: var(--hint); border-radius: 50%;
 }
-/* Попадание — штриховка */
 .hero-grid-cell.hit { background: var(--cell-empty); opacity: 1; }
 .hero-grid-cell.hit::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, var(--red) 0px, var(--red) 2px, transparent 2px, transparent 6px); opacity: .85; }
 .hero-title { font-family: var(--font-hd); font-size: clamp(26px,8vw,40px); font-weight: 900; letter-spacing: 4px; text-align: center; line-height: 1.15; position: relative; z-index: 1; }
