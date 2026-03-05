@@ -319,18 +319,17 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 #screen-waiting { align-items: center; justify-content: center; }
 .waiting-inner {
   text-align: center;
-  padding: 24px 20px;
+  padding: 32px 24px;
   width: 100%;
   max-width: 360px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
 }
-.waiting-inner h2 { margin: 16px 0 2px; font-family: var(--font-hd); font-size: 18px; }
-.waiting-inner > p { color: var(--hint); font-size: 14px; min-height: 18px; }
-
-.invite-block { margin-top: 16px; width: 100%; text-align: center; }
+.waiting-inner h2 { margin: 8px 0 0; font-family: var(--font-hd); font-size: 18px; }
+.waiting-inner > p { color: var(--hint); font-size: 14px; min-height: 18px; margin: 0; }
+.invite-block { margin-top: 8px; width: 100%; text-align: center; }
 .invite-block.hidden { display: none; }
 .invite-label { font-size: 12px; color: var(--hint); margin-bottom: 10px; display: block; }
 .invite-link-display {
@@ -346,9 +345,9 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 /* Кнопка отмены — центрирована */
 #btn-cancel-wait { margin-top: 16px; align-self: center; }
 
-.search-anim { width: 64px; height: 64px; margin: 0 auto; }
+.search-anim { width: 51px; height: 51px; margin: 0 auto; }
 .search-cell {
-  width: 64px; height: 64px; border-radius: 12px;
+  width: 51px; height: 51px; border-radius: 10px;
   background: var(--red);
   position: relative; overflow: hidden;
   transition: background 0.3s;
@@ -390,6 +389,16 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .toggle-btn.active { background: var(--accent); color: #111; }
 
 .game-status { flex: 1; text-align: center; font-family: var(--font-hd); font-size: 13px; letter-spacing: 1px; color: var(--accent); }
+.turn-countdown {
+  text-align: center; padding: 4px 0;
+  font-family: var(--font-hd); font-size: 20px; font-weight: 700;
+  letter-spacing: 3px; color: var(--yellow);
+  background: rgba(212,172,13,.08);
+  border-bottom: 1px solid rgba(212,172,13,.2);
+  transition: color 0.3s;
+}
+.turn-countdown.urgent { color: var(--red); background: rgba(217,83,79,.1); border-color: rgba(217,83,79,.3); }
+.turn-countdown.hidden { display: none; }
 
 .ships-left { display: none; }
 /* Fix 5: поле врага (куда МЫ бьём) — яркое, это наши атаки */

@@ -1260,27 +1260,32 @@ function initVisibilityHandler() {
 
 function startTurnWarningUI(secondsLeft) {
   clearTurnWarningUI();
-  const statusEl = document.getElementById('game-status');
-  if (!statusEl) return;
+  const countdownEl = document.getElementById('turn-countdown');
+  const countdownText = document.getElementById('turn-countdown-text');
+  if (!countdownEl || !countdownText) return;
+
+  countdownEl.classList.remove('hidden', 'urgent');
 
   let secs = secondsLeft;
   const update = () => {
     if (!Game.active || !Game.isMyTurn) { clearTurnWarningUI(); return; }
     const mm = String(Math.floor(secs/60)).padStart(2,'0');
     const ss = String(secs % 60).padStart(2,'0');
-    statusEl.textContent = `Твой ход  ${mm}:${ss}`;
-    statusEl.style.color = secs <= 10 ? 'var(--red)' : 'var(--yellow)';
+    countdownText.textContent = `${mm}:${ss}`;
+    if (secs <= 10) countdownEl.classList.add('urgent');
+    else countdownEl.classList.remove('urgent');
     if (secs <= 0) { clearTurnWarningUI(); return; }
     secs--;
   };
   update();
   Game._timerInterval = setInterval(update, 1000);
-  Game._timerSeconds  = secs;
 }
 
 function clearTurnWarningUI() {
   if (Game._timerInterval) { clearInterval(Game._timerInterval); Game._timerInterval = null; }
   Game._timerSeconds = null;
+  const countdownEl = document.getElementById('turn-countdown');
+  if (countdownEl) countdownEl.classList.add('hidden');
   updateGameStatus();
 }
 
@@ -1893,7 +1898,7 @@ async function startOnline(mode) {
 
     if (mode === 'random') {
       setText('waiting-title', 'Ищем соперника…');
-      setText('waiting-sub',   'Это займёт несколько секунд');
+      setText('waiting-sub',   'Это займёт какое-то время');
       startSearchUI();
       WS.matchmake('random');
     } else if (mode === 'friend') {
