@@ -1783,6 +1783,26 @@ const WS = {
       clearTurnWarningUI();
       endGame('loss');
     });
+
+    // Реванш: соперник нажал реванш — обновляем кнопку
+    this.socket.on('rematch_requested', () => {
+      const btn = document.getElementById('btn-rematch');
+      if (btn && !btn.disabled) {
+        // Соперник уже ждёт — подсвечиваем кнопку
+        btn.textContent = 'Соперник ждёт! Жми реванш';
+      }
+    });
+
+    // Реванш отклонён (таймер истёк, второй не нажал)
+    this.socket.on('rematch_declined', () => {
+      clearInterval(Game._rematchTimer);
+      const btn = document.getElementById('btn-rematch');
+      if (btn) { btn.textContent = 'Реванш'; btn.disabled = false; }
+      // Показываем сообщение и редирект через 3 сек
+      const sub = document.getElementById('gameover-sub');
+      if (sub) sub.textContent = 'Соперник отказался от реванша…';
+      setTimeout(() => showScreen('menu'), 3000);
+    });
   },
 
   matchmake(mode, extraData = {}) {
@@ -1906,15 +1926,18 @@ async function startOnline(mode) {
     await WS.connect(serverUrl);
 
     if (mode === 'random') {
+      pendingGameMode = 'online-random';
       setText('waiting-title', 'Ищем соперника…');
       setText('waiting-sub',   'Это займёт какое-то время');
       startSearchUI();
       WS.matchmake('random');
     } else if (mode === 'friend') {
+      pendingGameMode = 'online-friend';
       setText('waiting-title', 'Создаём комнату…');
       setText('waiting-sub',   '');
       WS.matchmake('friend_create');
     } else if (mode.startsWith('friend_join:')) {
+      pendingGameMode = 'online-friend';
       const roomId = mode.slice('friend_join:'.length);
       setText('waiting-title', 'Подключаемся к другу…');
       setText('waiting-sub',   '');
@@ -2100,7 +2123,7 @@ function bindNav() {
     Sound.click();
     savePlacement(); // сохраняем для следующей игры
     const myShips = Placement.getShipsForGame();
-    if (pendingGameMode === 'online') {
+    if (pendingGameMode === 'online-random' || pendingGameMode === 'online-friend') {
       WS.sendShips(Placement.board);
       showScreen('waiting');
       setText('waiting-title', 'Ждём соперника…');
@@ -2134,10 +2157,23 @@ function bindNav() {
   document.getElementById('btn-rematch')?.addEventListener('click', () => {
     Sound.click();
     const mode = pendingGameMode || 'bot-easy';
-    if (mode === 'online') {
-      // Онлайн реванш — заново ищем соперника
-      WS.disconnect();
-      startOnline('random');
+    if (mode === 'online-random' || mode === 'online-friend') {
+      if (!WS.socket || !WS.roomId) return;
+      WS.socket.emit('rematch_request', { roomId: WS.roomId });
+      // Запускаем таймер 10 сек на кнопке
+      const btn = document.getElementById('btn-rematch');
+      if (!btn) return;
+      btn.disabled = true;
+      let secs = 10;
+      btn.textContent = `Ждём соперника… ${secs}`;
+      Game._rematchTimer = setInterval(() => {
+        secs--;
+        if (btn) btn.textContent = `Ждём соперника… ${secs}`;
+        if (secs <= 0) {
+          clearInterval(Game._rematchTimer);
+          // Сервер сам пришлёт rematch_declined если второй не ответил
+        }
+      }, 1000);
     } else {
       startPlacement(mode);
     }
