@@ -78,7 +78,7 @@ html, body {
     left: 50% !important;
     right: auto !important;
     transform: translateX(calc(-50% + 100vw)) !important;
-    width: 760px;
+    width: 990px;
   }
   .screen.active {
     transform: translateX(-50%) !important;
@@ -164,10 +164,11 @@ html, body {
 .stat-lbl { font-size: 11px; color: var(--hint); text-transform: uppercase; letter-spacing: 1px; }
 
 .menu-hero {
-  position: relative; flex: 1;
+  position: absolute; inset: 0;   /* на весь экран меню */
   display: flex; align-items: center; justify-content: center;
-  min-height: 160px; overflow: hidden;
+  overflow: hidden;
   container-type: size; container-name: hero;
+  z-index: 0;
 }
 .hero-grid {
   position: absolute; inset: 0;
@@ -188,7 +189,18 @@ html, body {
 .hero-grid-cell.hit::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, var(--red) 0px, var(--red) 2px, transparent 2px, transparent 6px); opacity: .85; }
 .hero-title { font-family: var(--font-hd); font-size: clamp(26px,8vw,40px); font-weight: 900; letter-spacing: 4px; text-align: center; line-height: 1.15; position: relative; z-index: 1; }
 
-.menu-nav { padding: 0 16px 24px; display: flex; flex-direction: column; gap: 10px; }
+/* Меню экран: header и nav поверх hero-фона */
+#screen-menu { position: relative; }
+#screen-menu header { position: relative; z-index: 1; }
+.menu-nav {
+  padding: 0 16px 24px;
+  display: flex; flex-direction: column; gap: 10px;
+  position: relative; z-index: 1;
+  margin-top: auto;
+  /* Стеклянный фон под кнопками */
+  background: linear-gradient(to top, rgba(17,17,17,0.75) 70%, transparent);
+  padding-top: 32px;
+}
 .btn-row { display: flex; gap: 10px; }
 .btn-row .btn { flex: 1; }
 
@@ -204,14 +216,14 @@ html, body {
 .btn:active { transform: scale(.96); opacity: .9; }
 .btn-primary   { background: var(--accent); color: var(--accent-text); }
 .btn-primary.btn-large {
-  background: rgba(255,255,255,0.05) !important;
-  backdrop-filter: blur(20px) saturate(1.5);
-  -webkit-backdrop-filter: blur(20px) saturate(1.5);
-  border: 1px solid rgba(255,255,255,0.13) !important;
-  color: rgba(255,255,255,0.88) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.08) !important;
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.20) !important;
+  color: rgba(255,255,255,0.92) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 4px 20px rgba(0,0,0,0.3);
 }
-.btn-primary.btn-large:active { background: rgba(255,255,255,0.11) !important; }
+.btn-primary.btn-large:active { background: rgba(255,255,255,0.15) !important; }
 .btn-secondary { background: var(--bg2);    color: var(--text); border: 1px solid rgba(255,255,255,.1); }
 .btn-ghost     { background: transparent;   color: var(--hint); border: 1px solid rgba(255,255,255,.08); }
 .btn-danger    { background: var(--red);    color: #fff; }
@@ -427,7 +439,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 
 .shot-feedback { display: none !important; }
 
-.game-footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid rgba(255,255,255,.06); flex-shrink: 0; }
+.game-footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 8px; border-top: 1px solid rgba(255,255,255,.06); flex-shrink: 0; margin-top: auto; }
 .opponent-info { font-size: 14px; }
 
 .enemy-fleet { padding: 4px 12px 8px; flex-shrink: 0; }
