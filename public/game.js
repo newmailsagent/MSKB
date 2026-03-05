@@ -801,22 +801,25 @@ const Placement = {
 
     if (!this._drag.moved && Math.hypot(dx, dy) > 8) {
       this._drag.moved = true;
-      // Отменяем long-press
       clearTimeout(this._drag.longTimer); this._drag.longTimer = null;
 
       const ship = this._drag.ship;
+      // Запоминаем ориентацию ДО снятия с поля
+      const shipVertical = ship.vertical;
+      this.vertical = shipVertical;
+
       // Снимаем с поля
       ship.cells.forEach(({ r, c }) => { this.board[r][c] = CELL_EMPTY; });
-      this.vertical = ship.vertical;
       ship.placed = false; ship.cells = [];
       this.selected = ship;
 
-      // Создаём ghost
-      this._drag.ghost = this._makeGhost(ship);
+      // Ghost с правильной ориентацией
+      this._drag.ghost = this._makeGhost(ship, shipVertical);
       document.body.appendChild(this._drag.ghost);
 
-      // Перерисовываем — теперь это безопасно, т.к. listener на boardEl (не на cell)
-      this.renderDock(); this.renderBoard();
+      // renderBoard — убираем корабль с поля визуально
+      this.renderBoard();
+      // renderDock — НЕ вызываем во время drag, чтобы корабль не появлялся в доке
     }
 
     if (this._drag.moved) {
@@ -938,9 +941,10 @@ const Placement = {
     return this.ships.find(s => s.placed && s.cells.some(sc => sc.r === r && sc.c === c)) || null;
   },
 
-  _makeGhost(ship) {
+  _makeGhost(ship, vertical) {
+    const v = vertical !== undefined ? vertical : ship.vertical;
     const g = document.createElement('div');
-    g.className = 'ship-piece' + (ship.vertical ? ' vertical' : '');
+    g.className = 'ship-piece' + (v ? ' vertical' : '');
     g.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;opacity:0.7;' +
       'transform:translate(-50%,-50%);border:2px solid var(--accent);' +
       'background:var(--bg2);border-radius:5px;padding:4px;touch-action:none;';
@@ -959,7 +963,12 @@ const Placement = {
   _showPreview(cx, cy) {
     this.clearPreview();
     if (!this.selected) return;
-    const el = document.elementFromPoint(cx, cy); if (!el) return;
+    // Временно скрываем ghost чтобы elementFromPoint не упирался в него
+    const ghost = this._drag?.ghost;
+    if (ghost) ghost.style.display = 'none';
+    const el = document.elementFromPoint(cx, cy);
+    if (ghost) ghost.style.display = '';
+    if (!el) return;
     const cell = el.closest('[data-r][data-c]');
     if (!cell || !document.getElementById('placement-board')?.contains(cell)) return;
     let r = +cell.dataset.r, c = +cell.dataset.c;
@@ -977,7 +986,12 @@ const Placement = {
   },
 
   _dropAt(cx, cy, ship) {
+    // Прячем ghost чтобы elementFromPoint нашёл ячейку под ним
+    const ghost = this._drag?.ghost;
+    if (ghost) ghost.style.display = 'none';
     const el = document.elementFromPoint(cx, cy);
+    if (ghost) ghost.style.display = '';
+
     const cell = el?.closest('[data-r][data-c]');
     const boardEl = document.getElementById('placement-board');
     if (cell && boardEl?.contains(cell)) {
