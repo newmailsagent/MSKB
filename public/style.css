@@ -72,6 +72,22 @@ html, body {
   user-select: none;
 }
 
+/* ─── ДЕСКТОП: ограничиваем ширину ──────────────────── */
+@media (min-width: 1281px) {
+  .screen {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(calc(-50% + 100vw)) !important;
+    width: 480px;
+  }
+  .screen.active {
+    transform: translateX(-50%) !important;
+  }
+  .screen.slide-back {
+    transform: translateX(calc(-50% - 100vw)) !important;
+  }
+}
+
 /* ─── ЭКРАНЫ ─────────────────────────────────────── */
 .screen {
   position: fixed; inset: 0;
@@ -330,12 +346,41 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 /* Кнопка отмены — центрирована */
 #btn-cancel-wait { margin-top: 16px; align-self: center; }
 
-.radar-anim { position: relative; width: 80px; height: 80px; margin: 0 auto; }
-.radar-ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; animation: radar-expand 2s ease-out infinite; }
-.radar-ring:nth-child(2) { animation-delay: .66s; }
-.radar-ring:nth-child(3) { animation-delay: 1.33s; }
-.radar-dot  { position: absolute; top:50%; left:50%; transform: translate(-50%,-50%); width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
-@keyframes radar-expand { 0%{opacity:.8;transform:scale(.2)} 100%{opacity:0;transform:scale(1)} }
+.search-anim { width: 64px; height: 64px; margin: 0 auto; }
+.search-cell {
+  width: 64px; height: 64px; border-radius: 12px;
+  background: var(--red);
+  position: relative; overflow: hidden;
+  transition: background 0.3s;
+}
+/* Состояние 1: красный залитый (потопленный) — default */
+/* Состояние 2: серый с точкой (промах) */
+.search-cell.state-miss {
+  background: var(--cell-empty);
+}
+.search-cell.state-miss::after {
+  content: ''; position: absolute;
+  inset: 0; margin: auto;
+  width: 35%; height: 35%;
+  background: var(--hint);
+  border-radius: 50%;
+}
+/* Состояние 3: штриховка (попадание) */
+.search-cell.state-hit {
+  background: var(--cell-empty);
+}
+.search-cell.state-hit::after {
+  content: ''; position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    45deg, var(--red) 0px, var(--red) 2px,
+    transparent 2px, transparent 8px
+  );
+}
+.search-timer {
+  font-family: var(--font-hd); font-size: 13px;
+  color: var(--hint); letter-spacing: 2px; margin-top: 4px;
+}
+.search-timer.hidden { display: none; }
 
 /* ─── ИГРОВОЙ ЭКРАН ──────────────────────────────── */
 .game-topbar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; flex-shrink: 0; }

@@ -1574,6 +1574,7 @@ const WS = {
 
     // ── Матч найден (оба игрока) ──────────────────────
     this.socket.on('matched', ({ roomId, opponent }) => {
+      stopSearchUI();
       this.roomId  = roomId;
       Game.roomId  = roomId;
       Game.opponent = { name: opponent.name, id: opponent.playerId };
@@ -1839,6 +1840,46 @@ const WS = {
 };
 
 /* ─── ОНЛАЙН ИГРА ────────────────────────────────── */
+/* ─── АНИМАЦИЯ ПОИСКА ────────────────────────────────── */
+let _searchAnimTimer = null;
+let _searchClockTimer = null;
+
+function startSearchUI() {
+  stopSearchUI();
+  const cell = document.getElementById('search-cell');
+  const timerEl = document.getElementById('search-timer');
+  if (!cell || !timerEl) return;
+
+  // Таймер поиска
+  timerEl.classList.remove('hidden');
+  let secs = 0;
+  const pad = n => String(n).padStart(2, '0');
+  timerEl.textContent = '00:00';
+  _searchClockTimer = setInterval(() => {
+    secs++;
+    timerEl.textContent = `${pad(Math.floor(secs/60))}:${pad(secs%60)}`;
+  }, 1000);
+
+  // Анимация 3 состояний: sunk → miss → hit → sunk…
+  const states = ['', 'state-miss', 'state-hit'];
+  let idx = 0;
+  const tick = () => {
+    cell.className = 'search-cell ' + states[idx];
+    idx = (idx + 1) % states.length;
+    _searchAnimTimer = setTimeout(tick, 850);
+  };
+  tick();
+}
+
+function stopSearchUI() {
+  clearTimeout(_searchAnimTimer); _searchAnimTimer = null;
+  clearInterval(_searchClockTimer); _searchClockTimer = null;
+  const timerEl = document.getElementById('search-timer');
+  if (timerEl) timerEl.classList.add('hidden');
+  const cell = document.getElementById('search-cell');
+  if (cell) cell.className = 'search-cell';
+}
+
 async function startOnline(mode) {
   // Очищаем экран ожидания до подключения
   setText('waiting-title', 'Подключение…');
@@ -1853,6 +1894,7 @@ async function startOnline(mode) {
     if (mode === 'random') {
       setText('waiting-title', 'Ищем соперника…');
       setText('waiting-sub',   'Это займёт несколько секунд');
+      startSearchUI();
       WS.matchmake('random');
     } else if (mode === 'friend') {
       setText('waiting-title', 'Создаём комнату…');
@@ -2115,7 +2157,7 @@ function bindNav() {
   });
 
   // Отмена ожидания
-  document.getElementById('btn-cancel-wait')?.addEventListener('click', () => { WS.disconnect(); showScreen('menu'); });
+  document.getElementById('btn-cancel-wait')?.addEventListener('click', () => { stopSearchUI(); WS.disconnect(); showScreen('menu'); });
 
   // Закрытие модалки по overlay
   document.getElementById('modal-overlay')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });

@@ -152,12 +152,12 @@
 <!-- ОЖИДАНИЕ СОПЕРНИКА -->
 <div id="screen-waiting" class="screen">
   <div class="waiting-inner">
-    <div class="radar-anim">
-      <div class="radar-ring"></div><div class="radar-ring"></div><div class="radar-ring"></div>
-      <div class="radar-dot"></div>
+    <div class="search-anim" id="search-anim">
+      <div class="search-cell" id="search-cell"></div>
     </div>
     <h2 id="waiting-title">Ищем соперника…</h2>
-    <p  id="waiting-sub">Это займёт несколько секунд</p>
+    <p id="waiting-sub">Это займёт несколько секунд</p>
+    <p class="search-timer hidden" id="search-timer">00:00</p>
     <div class="invite-block hidden" id="invite-block">
       <p class="invite-label">Жди друга или пригласи:</p>
       <span class="invite-link-display hidden" id="invite-link-display"></span>
