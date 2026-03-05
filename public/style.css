@@ -163,20 +163,27 @@ html, body {
 .stat-val { display: block; font-family: var(--font-hd); font-size: 18px; color: var(--accent); }
 .stat-lbl { font-size: 11px; color: var(--hint); text-transform: uppercase; letter-spacing: 1px; }
 
+/* Меню: hero-grid растягивается на весь экран через overflow:hidden на родителе */
+#screen-menu { position: relative; overflow: hidden; }
+#screen-menu header { position: relative; z-index: 1; }
+#screen-menu .menu-nav { position: relative; z-index: 1; }
+#screen-menu .hero-title { position: relative; z-index: 1; }
 .menu-hero {
-  position: absolute; inset: 0;   /* на весь экран меню */
+  position: relative; flex: 1;
   display: flex; align-items: center; justify-content: center;
-  overflow: hidden;
+  min-height: 160px; overflow: visible;
   container-type: size; container-name: hero;
-  z-index: 0;
 }
+/* hero-grid выходит за границы .menu-hero — покрывает весь экран */
 .hero-grid {
-  position: absolute; inset: 0;
+  position: absolute;
+  top: -200vh; left: 0; right: 0; bottom: -200vh;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
-  grid-template-rows: repeat(10, min(10cqw, 10cqh));
+  grid-template-rows: repeat(10, 10vw);
   gap: 2px; opacity: .15;
   align-content: center;
+  pointer-events: none;
 }
 .hero-grid-cell {
   background: var(--cell-empty); border-radius: 3px;
@@ -189,18 +196,7 @@ html, body {
 .hero-grid-cell.hit::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, var(--red) 0px, var(--red) 2px, transparent 2px, transparent 6px); opacity: .85; }
 .hero-title { font-family: var(--font-hd); font-size: clamp(26px,8vw,40px); font-weight: 900; letter-spacing: 4px; text-align: center; line-height: 1.15; position: relative; z-index: 1; }
 
-/* Меню экран: header и nav поверх hero-фона */
-#screen-menu { position: relative; }
-#screen-menu header { position: relative; z-index: 1; }
-.menu-nav {
-  padding: 0 16px 24px;
-  display: flex; flex-direction: column; gap: 10px;
-  position: relative; z-index: 1;
-  margin-top: auto;
-  /* Стеклянный фон под кнопками */
-  background: linear-gradient(to top, rgba(17,17,17,0.75) 70%, transparent);
-  padding-top: 32px;
-}
+.menu-nav { padding: 0 16px 24px; display: flex; flex-direction: column; gap: 10px; }
 .btn-row { display: flex; gap: 10px; }
 .btn-row .btn { flex: 1; }
 
