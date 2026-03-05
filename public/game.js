@@ -1536,19 +1536,21 @@ const WS = {
       const block = document.getElementById('invite-block');
       if (block) block.classList.remove('hidden');
 
-      // Строим ссылку
+      // Строим ссылку — в TG всегда через бота, в браузере через origin
       let inviteLink;
       try {
         const cfg = await fetch('/api/config').then(r => r.json());
-        if (cfg.botUsername && cfg.appName) {
-          inviteLink = `https://t.me/${cfg.botUsername}/${cfg.appName}?startapp=room_${roomId}`;
-        } else if (cfg.botUsername) {
-          inviteLink = `https://t.me/${cfg.botUsername}/bteship?startapp=room_${roomId}`;
+        const botUsername = cfg.botUsername || 'bteship_bot';
+        const appName     = cfg.appName     || 'bteship';
+        if (isInsideTelegram()) {
+          inviteLink = `https://t.me/${botUsername}/${appName}?startapp=room_${roomId}`;
         } else {
           inviteLink = `${window.location.origin}/?room=${roomId}`;
         }
       } catch(e) {
-        inviteLink = `${window.location.origin}/?room=${roomId}`;
+        inviteLink = isInsideTelegram()
+          ? `https://t.me/bteship_bot/bteship?startapp=room_${roomId}`
+          : `${window.location.origin}/?room=${roomId}`;
       }
 
       // Сохраняем ссылку глобально для кнопок
@@ -2060,19 +2062,16 @@ function bindNav() {
   document.getElementById('btn-share-invite')?.addEventListener('click', () => {
     const link = WS._inviteLink;
     if (!link) return;
-    const text = `Сыграем в Морской бой? Присоединяйся! 🚢`;
+    const text = `Сыграем в Морской бой?`;
     const tg = window.Telegram?.WebApp;
-    if (tg?.switchInlineQuery) {
-      // Открывает выбор чата и вставляет текст с ссылкой
-      try {
-        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
-        return;
-      } catch(e) {}
-    }
+    try {
+      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
+      return;
+    } catch(e) {}
     // Fallback — копируем в буфер
-    navigator.clipboard?.writeText(link).then(() => {
+    navigator.clipboard?.writeText(`${text}\n${link}`).then(() => {
       const btn = document.getElementById('btn-share-invite');
-      if (btn) { btn.textContent = 'Ссылка скопирована!'; setTimeout(() => btn.textContent = '📨 Отправить другу', 2000); }
+      if (btn) { btn.textContent = 'Скопировано!'; setTimeout(() => btn.textContent = 'Отправить другу', 2000); }
     });
   });
 
