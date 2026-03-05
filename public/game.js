@@ -86,10 +86,21 @@ const Sound = (() => {
 function vibrate(p = [30]) {
   if (!App.settings?.vibro) return;
   try {
-    // Пробуем navigator.vibrate напрямую (работает на Android Chrome, Telegram Android)
-    if (navigator.vibrate) {
-      navigator.vibrate(p);
+    // Telegram HapticFeedback — работает на iOS и Android в Telegram
+    const hf = window.Telegram?.WebApp?.HapticFeedback;
+    if (hf) {
+      // Определяем тип по длине паттерна
+      if (p.length === 1 && p[0] <= 20) {
+        hf.impactOccurred('light');
+      } else if (p.length === 1) {
+        hf.impactOccurred('medium');
+      } else {
+        hf.notificationOccurred('warning');
+      }
+      return; // HapticFeedback сработал — navigator.vibrate не нужен
     }
+    // Fallback: navigator.vibrate (Android Chrome вне Telegram)
+    if (navigator.vibrate) navigator.vibrate(p);
   } catch(e) {}
 }
 
@@ -1531,7 +1542,7 @@ const WS = {
         const cfg = await fetch('/api/config').then(r => r.json());
         if (cfg.botUsername) {
           // Telegram deep link: открывает бота и передаёт roomId как startapp параметр
-          link = `https://t.me/${cfg.botUsername}/battleship?startapp=room_${roomId}`;
+          link = `https://t.me/${cfg.botUsername}/bteship?startapp=room_${roomId}`;
         } else {
           link = `${window.location.origin}/?room=${roomId}`;
         }
