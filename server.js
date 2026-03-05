@@ -477,54 +477,6 @@ io.on('connection', (socket) => {
     recordDuelResult(winner.playerId, surrenderer.playerId);
   });
 
-  // Реванш
-  socket.on('rematch_request', ({ roomId }) => {
-    const room = rooms.get(roomId);
-    if (!room || !room.over) return;
-    const player = getPlayer(room, socket.id);
-    if (!player) return;
-    player.rematch = true;
-
-    const other = getOpponent(room, socket.id);
-
-    // Если второй уже нажал — сразу запускаем
-    if (other?.rematch) {
-      clearTimeout(room._rematchTimer);
-      _startRematch(room);
-      return;
-    }
-
-    // Уведомляем соперника
-    if (other?.socketId) io.to(other.socketId).emit('rematch_requested');
-
-    // Таймер 10 сек — если второй не ответил, отменяем
-    room._rematchTimer = setTimeout(() => {
-      if (player.rematch && !other?.rematch) {
-        io.to(player.socketId).emit('rematch_declined');
-        player.rematch = false;
-      }
-    }, 10000);
-  });
-
-  function _startRematch(room) {
-    const newRoomId = crypto.randomUUID();
-    const newRoom = {
-      id: newRoomId,
-      p1: makePlayer({ playerId: room.p1.playerId, playerName: room.p1.name, socketId: room.p1.socketId }),
-      p2: makePlayer({ playerId: room.p2.playerId, playerName: room.p2.name, socketId: room.p2.socketId }),
-      turn: room.p1.playerId,
-      started: false, over: false,
-      _turnTimer: null, _warnTimer: null, _emptyTimer: null, _rematchTimer: null
-    };
-    rooms.set(newRoomId, newRoom);
-    rooms.delete(room.id);
-    const p1sock = io.sockets.sockets.get(newRoom.p1.socketId);
-    const p2sock = io.sockets.sockets.get(newRoom.p2.socketId);
-    if (p1sock) p1sock.join(newRoomId);
-    if (p2sock) p2sock.join(newRoomId);
-    notifyBothMatched(newRoom);
-  }
-
   // п.5: отключение во время игры = победа оставшемуся
   socket.on('disconnect', () => {
     console.log(`[-] ${socket.id}`);
