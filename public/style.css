@@ -626,6 +626,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 
 /* ─── АВАТАР СОПЕРНИКА В БОЕВОМ ЭКРАНЕ ───────────── */
 .opponent-info { display: flex; align-items: center; gap: 8px; }
+.duel-score { font-size: 13px; font-weight: 700; letter-spacing: 1px; opacity: 0.9; }
 .opp-avatar {
   width: 28px; height: 28px;
   border-radius: 50%;

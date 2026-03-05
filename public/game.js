@@ -1556,7 +1556,13 @@ const WS = {
       if (!App.user.isGuest && opponent.playerId) {
         fetch(`/api/duel/${App.user.id}/${opponent.playerId}`)
           .then(r => r.json())
-          .then(j => { if (j.ok) Game.opponent.duel = j.data; })
+          .then(j => {
+            if (j.ok) {
+              Game.opponent.duel = j.data;
+              // Перерисовываем аватар с duel-счётом если игра уже началась
+              renderOpponentAvatar(Game.opponent.name, false);
+            }
+          })
           .catch(() => {});
       }
       setTimeout(() => startPlacement('online'), 800);
@@ -2146,7 +2152,14 @@ function renderOpponentAvatar(name, isBot) {
   const info = document.getElementById('opponent-info');
   if (!info) return;
   const letter = isBot ? 'Б' : (name ? name[0].toUpperCase() : '?');
-  info.innerHTML = `<div class="opp-avatar">${letter}</div><span id="opp-name">${name || (isBot ? 'Бот' : 'Соперник')}</span>`;
+  const duel = Game.opponent?.duel;
+  let duelHtml = '';
+  if (!isBot && duel) {
+    const theirColor = duel.theirWins > duel.myWins ? ' style="color:var(--red)"' : '';
+    const myColor    = duel.myWins > duel.theirWins ? ' style="color:var(--green)"' : '';
+    duelHtml = `<span class="duel-score"><span${theirColor}>${duel.theirWins}</span>:<span${myColor}>${duel.myWins}</span></span>`;
+  }
+  info.innerHTML = `<div class="opp-avatar">${letter}</div><span id="opp-name">${name || (isBot ? 'Бот' : 'Соперник')}</span>${duelHtml}`;
 }
 
 /* ─── СТАРТ ──────────────────────────────────────── */
