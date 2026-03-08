@@ -938,7 +938,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 }
 .profile-avatar-frame img {
   width: 100%; height: 100%; object-fit: cover; display: block;
-  border-radius: 0; /* заполняет квадрат без своего радиуса */
+  border-radius: 0 !important; /* заполняет квадрат без своего радиуса */
 }
 .profile-avatar {
   width: 100%; height: 100%;
@@ -1030,4 +1030,11 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .profile-tg-btn {
   text-decoration: none;
   display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* +0 XP при нечестном бое */
+.xp-zero {
+  color: var(--hint);
+  font-weight: 600;
+  font-size: 16px;
 }

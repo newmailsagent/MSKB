@@ -626,7 +626,7 @@ async function renderStatsScreen(mode) {
   const statsAvatar = document.getElementById('stats-avatar');
   if (statsAvatar) {
     if (App.user.photo) {
-      statsAvatar.innerHTML = `<img src="${App.user.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+      statsAvatar.innerHTML = `<img src="${App.user.photo}" alt="">`;
     } else {
       statsAvatar.textContent = (App.user.name[0]||'?').toUpperCase();
     }
@@ -2320,6 +2320,24 @@ function showXpReward(xpData) {
   saveJSON('bs_user', App.user);
   updateMenuLevel();
 
+  block.classList.remove('hidden');
+
+  // Случай: нечестный бой — 0 XP
+  if (xpData.xpGain === 0) {
+    const gainEl = document.getElementById('xp-gained');
+    if (gainEl) {
+      gainEl.innerHTML = '<span class="xp-zero">+0 XP</span>';
+    }
+    const prog = getXpProgress(xpData.xpAfter);
+    setText('xp-ring-level', prog.level);
+    setText('xp-progress-text', prog.xpInLevel + ' / ' + prog.xpNeeded + ' XP');
+    const bar  = document.getElementById('xp-progress-bar');
+    const ring = document.getElementById('xp-ring-fill');
+    if (bar)  { bar.style.transition = 'none'; bar.style.width = prog.pct + '%'; }
+    if (ring) { ring.style.transition = 'none'; setRingProgress(ring, prog.pct, 80); }
+    return;
+  }
+
   const progBefore = getXpProgress(xpData.xpBefore);
   const progAfter  = getXpProgress(xpData.xpAfter);
   const baseXp  = xpData.baseXp  || Math.min(xpData.xpGain, 1000);
@@ -2337,8 +2355,6 @@ function showXpReward(xpData) {
   const lvlEl  = document.getElementById('xp-ring-level');
   const lvlUpEl = document.getElementById('xp-levelup');
   if (lvlUpEl) { lvlUpEl.classList.add('hidden'); lvlUpEl.classList.remove('anim-levelup'); }
-
-  block.classList.remove('hidden');
 
   const bar   = document.getElementById('xp-progress-bar');
   const ring  = document.getElementById('xp-ring-fill');
@@ -2500,7 +2516,7 @@ async function renderProfileScreen() {
   const avEl = document.getElementById('profile-avatar');
   if (avEl) {
     avEl.innerHTML = App.user.photo
-      ? `<img src="${App.user.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+      ? `<img src="${App.user.photo}" alt="">`
       : (App.user.name[0]||'?').toUpperCase();
   }
 
