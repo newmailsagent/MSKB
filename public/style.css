@@ -923,29 +923,47 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   to   { transform: scale(1)  translateY(0);    opacity: 1; }
 }
 
-/* ─── Экран ПРОФИЛЯ ─── */
-.profile-inner {
-  display: flex; flex-direction: column; align-items: center;
-  padding: 20px 20px 32px; gap: 12px;
+/* ═══════════════════════════════════════════════════
+   ПРОФИЛЬ
+═══════════════════════════════════════════════════ */
+
+/* Единый горизонтальный отступ для всего профиля */
+:root { --profile-px: 20px; }
+
+/* ── Шапка: аватарка слева, имя+звание справа ── */
+.profile-header-block {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 28px var(--profile-px) 20px;
 }
-.profile-avatar-wrap { position: relative; display: inline-block; margin-bottom: 4px; }
+.profile-avatar-wrap { position: relative; flex-shrink: 0; }
 .profile-avatar-frame {
-  width: 88px; height: 88px; border-radius: 18px;
+  width: 72px; height: 72px; border-radius: 16px;
   border: 3px solid #607d8b;
   display: flex; align-items: center; justify-content: center;
-  overflow: hidden; font-size: 36px; font-weight: 700;
+  overflow: hidden; font-size: 30px; font-weight: 700;
   background: var(--bg2); color: var(--text);
 }
 .profile-avatar-frame img {
   width: 100%; height: 100%; object-fit: cover; display: block;
-  border-radius: 0 !important; /* заполняет квадрат без своего радиуса */
+  border-radius: 0 !important;
 }
 .profile-avatar {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 36px; font-weight: 700;
 }
-/* Рамки уровней — цвета без свечения (готовы к кастомизации) */
+.profile-level-tag {
+  position: absolute; bottom: -4px; right: -4px;
+  padding: 2px 6px; border-radius: 6px;
+  font-size: 11px; font-weight: 700;
+  border: 2px solid var(--bg);
+}
+.profile-header-info { display: flex; flex-direction: column; gap: 3px; }
+.profile-name { font-size: 20px; font-weight: 700; }
+.profile-rank { font-size: 13px; color: var(--accent); font-weight: 600; }
+
+/* Рамки уровней */
 .level-frame-1,.level-frame-2,.level-frame-3,.level-frame-4 { border-color: #607d8b; }
 .level-frame-5,.level-frame-6,.level-frame-7,.level-frame-8,.level-frame-9 { border-color: #43a047; }
 .level-frame-10,.level-frame-11,.level-frame-12,.level-frame-13,.level-frame-14 { border-color: #1e88e5; }
@@ -954,25 +972,45 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .level-frame-25,.level-frame-26,.level-frame-27,.level-frame-28,.level-frame-29 { border-color: #f57f17; }
 .level-frame-30 { border-color: #ffd600; }
 
-.profile-level-tag {
-  position: absolute; bottom: -2px; right: -2px;
-  padding: 2px 7px; border-radius: 6px;
-  font-size: 12px; font-weight: 700;
-  border: 2px solid var(--bg);
+/* ── Вкладки — в стиле игры ── */
+.profile-tabs {
+  display: flex;
+  margin: 0 var(--profile-px) 0;
+  background: var(--bg2);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
 }
-.profile-name { font-size: 22px; font-weight: 700; }
-.profile-rank { font-size: 14px; color: var(--accent); font-weight: 600; margin-top: -4px; }
+.profile-tab {
+  flex: 1;
+  padding: 9px 0;
+  background: none; border: none;
+  font-size: 13px; font-weight: 700;
+  color: var(--hint);
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: .5px;
+  transition: background .18s, color .18s;
+}
+.profile-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
 
-.profile-xp-section {
-  display: flex; align-items: center; gap: 16px;
-  width: 100%; max-width: 340px;
-  background: transparent;
-  padding: 8px 0 0;
-  margin-top: 0;
+/* ── Контент вкладок ── */
+.profile-tab-content {
+  padding: 20px var(--profile-px) 40px;
 }
-.profile-ring-wrap { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
-.profile-ring { width: 120px; height: 120px; }
-.profile-ring-bg { fill: rgba(255,255,255,.06); stroke: none; }
+.profile-tab-content.hidden { display: none; }
+
+/* ── XP-секция ── */
+.profile-xp-section {
+  display: flex; align-items: center; gap: 20px;
+  width: 100%;
+}
+.profile-ring-wrap { position: relative; width: 110px; height: 110px; flex-shrink: 0; }
+.profile-ring { width: 110px; height: 110px; }
+.profile-ring-bg   { fill: rgba(255,255,255,.06); stroke: none; }
 .profile-ring-fill {
   fill: none; stroke: #e53935; stroke-width: 5; stroke-linecap: round;
   stroke-dasharray: 0 448;
@@ -981,9 +1019,9 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 }
 .profile-ring-level {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  font-size: 32px; font-weight: 800; color: var(--text);
+  font-size: 30px; font-weight: 800; color: var(--text);
 }
-.profile-xp-details { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.profile-xp-details { flex: 1; display: flex; flex-direction: column; gap: 10px; }
 .profile-xp-label { font-size: 11px; color: var(--hint); text-transform: uppercase; letter-spacing: .5px; }
 .profile-progress-wrap {
   width: 100%; height: 4px;
@@ -998,9 +1036,77 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   transition: width .8s cubic-bezier(.4,0,.2,1);
 }
 .profile-xp-nums { font-size: 13px; font-weight: 600; }
-.profile-xp-total { font-size: 11px; color: var(--hint); }
 
-/* level-pop при level up */
+/* ── Статистика внутри профиля ── */
+
+/* Тумблер По сети / Против ботов — две равные половины */
+#profile-stats-mode-toggle { margin-bottom: 16px; }
+#profile-stats-mode-toggle .stats-mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  background: var(--bg2);
+  border-radius: 10px;
+  padding: 3px;
+  margin: 0;
+}
+#profile-stats-mode-toggle .stm-btn {
+  flex: none;
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 0;
+  border-radius: 8px;
+  letter-spacing: .3px;
+}
+#profile-stats-mode-toggle .stm-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* stats-grid без своих отступов — берёт padding от tab-content */
+#profile-tab-stats .stats-grid {
+  padding: 0;
+  margin-bottom: 20px;
+}
+#profile-tab-stats .section-title {
+  padding: 0 0 10px;
+}
+#profile-tab-stats .history-list {
+  padding: 0;
+}
+
+/* Кнопка сброса — во всю ширину */
+#profile-tab-stats .btn-reset-wrap {
+  margin-top: 24px;
+}
+#btn-reset-stats {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+/* ── Гостевой блок ── */
+.profile-inner.profile-guest {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; text-align: center;
+  padding: 40px var(--profile-px);
+  gap: 12px;
+}
+.profile-guest-icon  { font-size: 56px; opacity: .5; }
+.profile-guest-title { font-size: 18px; font-weight: 700; }
+.profile-guest-text  {
+  font-size: 14px; color: var(--hint); line-height: 1.55;
+  max-width: 280px; margin: 0 auto;
+}
+.profile-tg-btn {
+  text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-top: 4px;
+}
+
+/* ── level-pop анимация ── */
 @keyframes levelPop {
   0%   { transform: translate(-50%,-50%) scale(1); }
   40%  { transform: translate(-50%,-50%) scale(1.6); color: #ffd600; }
@@ -1008,119 +1114,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 }
 .xp-ring-level.level-pop { animation: levelPop .5s cubic-bezier(.2,1.4,.4,1) both; }
 
-/* xp-gained компоненты */
+/* XP-текст компоненты */
 .xp-base  { color: var(--text); }
 .xp-bonus { color: rgba(255,255,255,.65); font-weight: 600; }
-
-/* ─── Гостевой профиль ─── */
-.profile-guest {
-  justify-content: center; text-align: center;
-  padding: 40px 24px;
-}
-.profile-guest-icon {
-  font-size: 56px; margin-bottom: 12px; opacity: .5;
-}
-.profile-guest-title {
-  font-size: 18px; font-weight: 700; margin-bottom: 10px;
-}
-.profile-guest-text {
-  font-size: 14px; color: var(--hint); line-height: 1.55;
-  max-width: 280px; margin: 0 auto 24px;
-}
-.profile-tg-btn {
-  text-decoration: none;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-
-/* +0 XP при нечестном бое */
-.xp-zero {
-  color: var(--hint);
-  font-weight: 600;
-  font-size: 16px;
-}
-
-/* ═══════════════════════════════════════════════════
-   ПРОФИЛЬ: ШАПКА + ТАБЫ
-═══════════════════════════════════════════════════ */
-.profile-head {
-  display: flex; align-items: center; gap: 14px;
-  padding: 20px 20px 0;
-}
-.profile-head-info {
-  display: flex; flex-direction: column; gap: 3px;
-}
-.profile-name { font-size: 20px; font-weight: 700; }
-.profile-rank { font-size: 13px; color: var(--accent); font-weight: 500; }
-
-/* Табы */
-.profile-tabs {
-  display: flex; gap: 0;
-  margin: 16px 20px 0;
-  border-bottom: 2px solid rgba(255,255,255,.08);
-}
-.profile-tab {
-  flex: 1; padding: 10px 0;
-  background: none; border: none;
-  font-size: 14px; font-weight: 600; color: var(--hint);
-  cursor: pointer; position: relative;
-  transition: color .2s;
-}
-.profile-tab.active {
-  color: var(--text);
-}
-.profile-tab.active::after {
-  content: '';
-  position: absolute; bottom: -2px; left: 0; right: 0;
-  height: 2px; background: var(--accent); border-radius: 2px 2px 0 0;
-}
-.profile-tab-content {
-  padding: 16px 20px 24px;
-}
-.profile-tab-content.hidden { display: none; }
-
-/* XP-секция в табе — убираем лишние отступы */
-.profile-tab-content .profile-xp-section {
-  padding-top: 0; margin-top: 0;
-}
-
-/* ═══════════════════════════════════════════════════
-   ПРОФИЛЬ — ВКЛАДКИ
-═══════════════════════════════════════════════════ */
-
-/* Шапка профиля (аватар + имя) */
-.profile-header-block {
-  display: flex; flex-direction: column; align-items: center;
-  padding: 20px 20px 12px; gap: 8px;
-}
-
-/* Вкладки */
-.profile-tabs {
-  display: flex; gap: 0;
-  border-bottom: 2px solid rgba(255,255,255,.08);
-  margin: 0 0 0;
-  padding: 0 16px;
-}
-.profile-tab {
-  flex: 1; padding: 10px 0; font-size: 14px; font-weight: 600;
-  background: none; border: none; color: var(--hint);
-  border-bottom: 2px solid transparent; margin-bottom: -2px;
-  cursor: pointer; transition: color .2s, border-color .2s;
-}
-.profile-tab.active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-
-/* Контент вкладок */
-.profile-tab-content {
-  padding: 16px 20px 32px;
-}
-.profile-tab-content.hidden { display: none; }
-
-/* Вкладка статистики — убираем отступ stats-profile (аватара нет) */
-#profile-tab-stats .stats-profile { display: none !important; }
-#profile-tab-stats .stats-grid { margin-top: 0; }
-#profile-tab-stats .stats-mode-toggle { margin-bottom: 12px; }
-
-/* Тумблер режима внутри профиля */
-#profile-stats-mode-toggle { margin-bottom: 4px; }
+.xp-zero  { color: var(--hint); font-weight: 600; font-size: 16px; }
