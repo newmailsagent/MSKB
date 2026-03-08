@@ -605,54 +605,18 @@ async function renderStatsScreen(mode) {
   if (!mode) mode = App._statsMode || 'online';
   App._statsMode = mode;
 
-  const statsGrid    = document.querySelector('.stats-grid');
-  const statsProfile = document.querySelector('.stats-profile');
-  const sectionTitle = document.querySelector('.section-title');
+  const statsBody    = document.getElementById('profile-stats-body');
   const historyList  = document.getElementById('history-list');
 
   if (isGuest) {
-    if (statsGrid)    statsGrid.style.display    = 'none';
-    if (statsProfile) statsProfile.style.display = 'none';
-    if (sectionTitle) sectionTitle.style.display = 'none';
-    if (historyList)  historyList.innerHTML = '';
+    if (statsBody) statsBody.style.display = 'none';
     return;
   }
+  if (statsBody) statsBody.style.display = '';
 
-  if (statsGrid)    statsGrid.style.display    = '';
-  if (statsProfile) statsProfile.style.display = '';
-  if (sectionTitle) sectionTitle.style.display = '';
-
-  // Аватар
-  const statsAvatar = document.getElementById('stats-avatar');
-  if (statsAvatar) {
-    if (App.user.photo) {
-      statsAvatar.innerHTML = `<img src="${App.user.photo}" alt="">`;
-    } else {
-      statsAvatar.textContent = (App.user.name[0]||'?').toUpperCase();
-    }
-  }
-  setText('stats-name', App.user.name);
-
-  // Тумблер режима
-  let toggle = document.getElementById('stats-mode-toggle');
-  if (!toggle) {
-    const header = document.querySelector('#screen-stats .page-header');
-    if (header) {
-      toggle = document.createElement('div');
-      toggle.id = 'stats-mode-toggle';
-      toggle.className = 'stats-mode-toggle';
-      toggle.innerHTML =
-        '<button class="stm-btn" data-mode="online">По сети</button>' +
-        '<button class="stm-btn" data-mode="bot">Против ботов</button>';
-      header.appendChild(toggle);
-      toggle.addEventListener('click', e => {
-        const btn = e.target.closest('[data-mode]');
-        if (btn) renderStatsScreen(btn.dataset.mode);
-      });
-    }
-  }
   // Подсвечиваем активный режим
-  document.querySelectorAll('.stm-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.querySelectorAll('#profile-stats-mode-toggle .stm-btn')
+    .forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
 
   let wins, losses, totalShots, totalHits, histToShow;
 
@@ -2507,13 +2471,50 @@ function setRingProgress(rectEl, pct, size) {
 }
 
 /* ─── ЭКРАН ПРОФИЛЯ ──────────────────────────────── */
-async function renderProfileScreen() {
+async function renderProfileScreen(tab) {
   const isGuest = !!App.user.isGuest;
   const authBlock  = document.getElementById('profile-content-auth');
   const guestBlock = document.getElementById('profile-content-guest');
   if (authBlock)  authBlock.style.display  = isGuest ? 'none' : '';
   if (guestBlock) guestBlock.style.display = isGuest ? ''     : 'none';
   if (isGuest) return;
+
+  // Вкладки — инициализируем один раз
+  if (!document.querySelector('.profile-tab[data-tab]').__tabBound) {
+    document.querySelectorAll('.profile-tab[data-tab]').forEach(btn => {
+      btn.__tabBound = true;
+      btn.addEventListener('click', () => {
+        const t = btn.dataset.tab;
+        document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+        document.querySelectorAll('.profile-tab-content').forEach(el => el.classList.toggle('hidden', el.id !== 'profile-tab-' + t));
+        if (t === 'stats') renderStatsScreen();
+      });
+    });
+  }
+
+  // Открываем нужную вкладку если передана
+  if (tab) {
+    document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.profile-tab-content').forEach(el => el.classList.toggle('hidden', el.id !== 'profile-tab-' + tab));
+    if (tab === 'stats') renderStatsScreen();
+  }
+
+  // Инициализируем табы (один раз)
+  if (!renderProfileScreen._tabsInited) {
+    renderProfileScreen._tabsInited = true;
+    document.querySelectorAll('.profile-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const t = tab.dataset.tab;
+        document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+        document.querySelectorAll('.profile-tab-content').forEach(c => c.classList.toggle('hidden', c.id !== 'profile-tab-' + t));
+        if (t === 'stats') renderStatsScreen();
+      });
+    });
+    document.getElementById('profile-stats-mode-toggle')?.addEventListener('click', e => {
+      const btn = e.target.closest('[data-mode]');
+      if (btn) renderStatsScreen(btn.dataset.mode);
+    });
+  }
 
   const xp    = App.user.xp || 0;
   const prog  = getXpProgress(xp);
@@ -2570,7 +2571,6 @@ function bindNav() {
     const isBack = btn.classList.contains('btn-back');
     Sound.click();
     if (scr === 'leaderboard') renderLeaderboard();
-    if (scr === 'stats')       renderStatsScreen();
     if (scr === 'profile')     renderProfileScreen();
     showScreen(scr, { isBack });
   });
@@ -2788,7 +2788,7 @@ function _prevBackTarget() {
     case 'mode':        return 'menu';
     case 'placement':   return 'mode';
     case 'leaderboard': return 'menu';
-    case 'stats':       return document.getElementById('stats-back-btn')?.dataset.screen || 'menu';
+    case 'stats':       return 'profile';
     case 'settings':    return document.getElementById('settings-back-btn')?.dataset.screen || 'menu';
     case 'gameover':    return 'menu';
     default:            return 'menu';

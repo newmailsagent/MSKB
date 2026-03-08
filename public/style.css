@@ -1038,3 +1038,89 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   font-weight: 600;
   font-size: 16px;
 }
+
+/* ═══════════════════════════════════════════════════
+   ПРОФИЛЬ: ШАПКА + ТАБЫ
+═══════════════════════════════════════════════════ */
+.profile-head {
+  display: flex; align-items: center; gap: 14px;
+  padding: 20px 20px 0;
+}
+.profile-head-info {
+  display: flex; flex-direction: column; gap: 3px;
+}
+.profile-name { font-size: 20px; font-weight: 700; }
+.profile-rank { font-size: 13px; color: var(--accent); font-weight: 500; }
+
+/* Табы */
+.profile-tabs {
+  display: flex; gap: 0;
+  margin: 16px 20px 0;
+  border-bottom: 2px solid rgba(255,255,255,.08);
+}
+.profile-tab {
+  flex: 1; padding: 10px 0;
+  background: none; border: none;
+  font-size: 14px; font-weight: 600; color: var(--hint);
+  cursor: pointer; position: relative;
+  transition: color .2s;
+}
+.profile-tab.active {
+  color: var(--text);
+}
+.profile-tab.active::after {
+  content: '';
+  position: absolute; bottom: -2px; left: 0; right: 0;
+  height: 2px; background: var(--accent); border-radius: 2px 2px 0 0;
+}
+.profile-tab-content {
+  padding: 16px 20px 24px;
+}
+.profile-tab-content.hidden { display: none; }
+
+/* XP-секция в табе — убираем лишние отступы */
+.profile-tab-content .profile-xp-section {
+  padding-top: 0; margin-top: 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   ПРОФИЛЬ — ВКЛАДКИ
+═══════════════════════════════════════════════════ */
+
+/* Шапка профиля (аватар + имя) */
+.profile-header-block {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 20px 20px 12px; gap: 8px;
+}
+
+/* Вкладки */
+.profile-tabs {
+  display: flex; gap: 0;
+  border-bottom: 2px solid rgba(255,255,255,.08);
+  margin: 0 0 0;
+  padding: 0 16px;
+}
+.profile-tab {
+  flex: 1; padding: 10px 0; font-size: 14px; font-weight: 600;
+  background: none; border: none; color: var(--hint);
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
+  cursor: pointer; transition: color .2s, border-color .2s;
+}
+.profile-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* Контент вкладок */
+.profile-tab-content {
+  padding: 16px 20px 32px;
+}
+.profile-tab-content.hidden { display: none; }
+
+/* Вкладка статистики — убираем отступ stats-profile (аватара нет) */
+#profile-tab-stats .stats-profile { display: none !important; }
+#profile-tab-stats .stats-grid { margin-top: 0; }
+#profile-tab-stats .stats-mode-toggle { margin-bottom: 12px; }
+
+/* Тумблер режима внутри профиля */
+#profile-stats-mode-toggle { margin-bottom: 4px; }

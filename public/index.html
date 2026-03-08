@@ -90,7 +90,7 @@
     <button class="btn btn-primary btn-large" data-screen="mode">НОВАЯ ИГРА</button>
     <div class="btn-row">
       <button class="btn btn-secondary" data-screen="leaderboard">Рейтинг</button>
-      <button class="btn btn-secondary" data-screen="stats">Статистика</button>
+      <button class="btn btn-secondary" data-screen="profile">Профиль</button>
     </div>
     <button class="btn btn-ghost" data-screen="settings">Настройки</button>
   </nav>
@@ -287,35 +287,76 @@
     <button class="btn-back" data-screen="menu">← Назад</button>
     <h2>Профиль</h2>
   </div>
-  <!-- Блок для авторизованных -->
-  <div class="profile-inner" id="profile-content-auth">
-    <div class="profile-avatar-wrap">
-      <div class="profile-avatar-frame" id="profile-avatar-frame">
-        <div class="profile-avatar" id="profile-avatar">?</div>
-      </div>
-      <div class="profile-level-tag" id="profile-level-tag">Ур. 1</div>
-    </div>
-    <div class="profile-name" id="profile-name">Игрок</div>
-    <div class="profile-rank" id="profile-rank">Новобранец Неона</div>
 
-    <div class="profile-xp-section">
-      <div class="profile-ring-wrap">
-        <svg class="profile-ring" viewBox="0 0 120 120">
-          <rect class="profile-ring-bg"   x="6"  y="6"  width="108" height="108" rx="20" ry="20"/>
-          <rect class="profile-ring-fill" id="profile-ring-fill" x="6" y="6" width="108" height="108" rx="20" ry="20"/>
-        </svg>
-        <div class="profile-ring-level" id="profile-ring-level">1</div>
-      </div>
-      <div class="profile-xp-details">
-        <div class="profile-xp-label">Прогресс уровня</div>
-        <div class="profile-progress-wrap">
-          <div class="profile-progress-bar" id="profile-progress-bar" style="width:0%"></div>
+  <!-- Блок для авторизованных -->
+  <div id="profile-content-auth">
+
+    <!-- Шапка: аватар + имя + ранг -->
+    <div class="profile-head">
+      <div class="profile-avatar-wrap">
+        <div class="profile-avatar-frame" id="profile-avatar-frame">
+          <div class="profile-avatar" id="profile-avatar">?</div>
         </div>
-        <div class="profile-xp-nums">
-          <span id="profile-xp-current">0</span> / <span id="profile-xp-needed">1000</span> XP
+        <div class="profile-level-tag" id="profile-level-tag">Ур. 1</div>
+      </div>
+      <div class="profile-head-info">
+        <div class="profile-name" id="profile-name">Игрок</div>
+        <div class="profile-rank" id="profile-rank">Новобранец Неона</div>
+      </div>
+    </div>
+
+    <!-- Табы -->
+    <div class="profile-tabs">
+      <button class="profile-tab active" data-tab="xp">Уровень</button>
+      <button class="profile-tab" data-tab="stats">Статистика</button>
+    </div>
+
+    <!-- Вкладка: Уровень -->
+    <div class="profile-tab-content" id="profile-tab-xp">
+      <div class="profile-xp-section">
+        <div class="profile-ring-wrap">
+          <svg class="profile-ring" viewBox="0 0 120 120">
+            <rect class="profile-ring-bg"   x="6"  y="6"  width="108" height="108" rx="20" ry="20"/>
+            <rect class="profile-ring-fill" id="profile-ring-fill" x="6" y="6" width="108" height="108" rx="20" ry="20"/>
+          </svg>
+          <div class="profile-ring-level" id="profile-ring-level">1</div>
+        </div>
+        <div class="profile-xp-details">
+          <div class="profile-xp-label">Прогресс уровня</div>
+          <div class="profile-progress-wrap">
+            <div class="profile-progress-bar" id="profile-progress-bar" style="width:0%"></div>
+          </div>
+          <div class="profile-xp-nums">
+            <span id="profile-xp-current">0</span> / <span id="profile-xp-needed">1000</span> XP
+          </div>
         </div>
       </div>
     </div>
+
+    <!-- Вкладка: Статистика -->
+    <div class="profile-tab-content hidden" id="profile-tab-stats">
+      <div class="tg-promo-banner hidden" id="tg-promo-stats">
+        Войди через Telegram чтобы сохранять статистику!
+        <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
+      </div>
+      <div id="profile-stats-body">
+        <div id="profile-stats-mode-toggle" class="stats-mode-toggle">
+          <button class="stm-btn active" data-mode="online">По сети</button>
+          <button class="stm-btn" data-mode="bot">Против ботов</button>
+        </div>
+        <div class="stats-grid" id="profile-stats-grid">
+          <div class="stat-card green"><span id="st-wins">0</span><small>Победы</small></div>
+          <div class="stat-card red"><span id="st-losses">0</span><small>Поражения</small></div>
+          <div class="stat-card blue"><span id="st-total">0</span><small>Всего боёв</small></div>
+          <div class="stat-card"><span id="st-acc">0%</span><small>Точность</small></div>
+          <div class="stat-card"><span id="st-winrate">0%</span><small>Винрейт</small></div>
+        </div>
+        <h3 class="section-title">Последние бои</h3>
+        <div class="history-list" id="history-list"><p class="empty-state">Нет боёв</p></div>
+        <button class="btn btn-danger btn-sm" id="btn-reset-stats" style="margin-top:16px">Сбросить статистику</button>
+      </div>
+    </div>
+
   </div>
 
   <!-- Блок для гостей -->
@@ -365,30 +406,6 @@
 </div>
 
 <!-- СТАТИСТИКА -->
-<div id="screen-stats" class="screen">
-  <div class="page-header">
-    <button class="btn-back" id="stats-back-btn" data-screen="menu">← Назад</button>
-    <h2>Статистика</h2>
-  </div>
-  <div class="tg-promo-banner hidden" id="tg-promo-stats">
-    Войди через Telegram чтобы сохранять статистику!
-    <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
-  </div>
-  <div class="stats-profile">
-    <div class="stats-avatar" id="stats-avatar">?</div>
-    <div class="stats-name"   id="stats-name">Гость</div>
-  </div>
-  <div class="stats-grid">
-    <div class="stat-card green"><span id="st-wins">0</span><small>Победы</small></div>
-    <div class="stat-card red"><span id="st-losses">0</span><small>Поражения</small></div>
-    <div class="stat-card blue"><span id="st-total">0</span><small>Всего боёв</small></div>
-    <div class="stat-card"><span id="st-acc">0%</span><small>Точность</small></div>
-    <div class="stat-card"><span id="st-winrate">0%</span><small>Винрейт</small></div>
-  </div>
-  <h3 class="section-title">Последние бои</h3>
-  <div class="history-list" id="history-list"><p class="empty-state">Нет боёв</p></div>
-</div>
-
 <!-- НАСТРОЙКИ -->
 <div id="screen-settings" class="screen">
   <div class="page-header">
