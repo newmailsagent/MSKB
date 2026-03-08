@@ -935,7 +935,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 28px var(--profile-px) 20px;
+  padding: 24px 20px 16px;
 }
 .profile-avatar-wrap { position: relative; flex-shrink: 0; }
 .profile-avatar-frame {
@@ -975,31 +975,38 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 /* ── Вкладки — в стиле игры ── */
 .profile-tabs {
   display: flex;
-  margin: 0 var(--profile-px) 0;
+  margin: 0;
   background: var(--bg2);
-  border-radius: 10px;
-  padding: 3px;
+  border-radius: 0;
+  padding: 4px 20px;
   gap: 3px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
 }
 .profile-tab {
   flex: 1;
-  padding: 9px 0;
+  padding: 10px 0;
   background: none; border: none;
   font-size: 13px; font-weight: 700;
   color: var(--hint);
-  border-radius: 8px;
+  border-radius: 0;
   cursor: pointer;
-  letter-spacing: .5px;
-  transition: background .18s, color .18s;
+  letter-spacing: .3px;
+  position: relative;
+  transition: color .18s;
 }
 .profile-tab.active {
-  background: var(--accent);
   color: #fff;
+}
+.profile-tab.active::after {
+  content: '';
+  position: absolute; bottom: -5px; left: 20%; right: 20%;
+  height: 2px; background: var(--accent);
+  border-radius: 2px;
 }
 
 /* ── Контент вкладок ── */
 .profile-tab-content {
-  padding: 20px var(--profile-px) 40px;
+  padding: 20px 0 40px;
 }
 .profile-tab-content.hidden { display: none; }
 
@@ -1007,6 +1014,8 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .profile-xp-section {
   display: flex; align-items: center; gap: 20px;
   width: 100%;
+  padding: 0 20px;
+  box-sizing: border-box;
 }
 .profile-ring-wrap { position: relative; width: 110px; height: 110px; flex-shrink: 0; }
 .profile-ring { width: 110px; height: 110px; }
@@ -1040,15 +1049,19 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 /* ── Статистика внутри профиля ── */
 
 /* Тумблер По сети / Против ботов — две равные половины */
-#profile-stats-mode-toggle { margin-bottom: 16px; }
+#profile-stats-mode-toggle {
+  margin: 0 20px 16px;
+}
 #profile-stats-mode-toggle .stats-mode-toggle {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 3px;
+  width: 100%;
   background: var(--bg2);
   border-radius: 10px;
   padding: 3px;
   margin: 0;
+  margin-left: 0;  /* сброс глобального margin-left:auto */
 }
 #profile-stats-mode-toggle .stm-btn {
   flex: none;
@@ -1059,32 +1072,35 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   padding: 9px 0;
   border-radius: 8px;
   letter-spacing: .3px;
+  color: var(--hint);
 }
 #profile-stats-mode-toggle .stm-btn.active {
   background: var(--accent);
   color: #fff;
 }
 
-/* stats-grid без своих отступов — берёт padding от tab-content */
+/* stats-grid с нормальными отступами */
 #profile-tab-stats .stats-grid {
-  padding: 0;
+  padding: 0 20px;
   margin-bottom: 20px;
 }
 #profile-tab-stats .section-title {
-  padding: 0 0 10px;
+  padding: 4px 20px 10px;
 }
 #profile-tab-stats .history-list {
-  padding: 0;
+  padding: 0 20px;
 }
 
 /* Кнопка сброса — во всю ширину */
 #profile-tab-stats .btn-reset-wrap {
   margin-top: 24px;
+  padding: 0 20px;
 }
 #btn-reset-stats {
-  display: block;
-  width: 100%;
+  display: block !important;
+  width: 100% !important;
   text-align: center;
+  box-sizing: border-box;
 }
 
 /* ── Гостевой блок ── */
