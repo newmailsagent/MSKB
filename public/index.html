@@ -48,7 +48,7 @@
 <div id="screen-menu" class="screen">
   <!-- Промо-баббл для гостей (скрывается если уже в TG или закрыт) -->
   <div class="tg-promo-banner" id="tg-promo-menu">
-    Отслеживай статистику и соревнуйся с другими в Telegram!
+    В Telegram — повышай уровень, получай звания и соревнуйся в рейтинге!
     <a href="https://t.me/bteship_bot/bteship" target="_blank">t.me/bteship_bot/bteship</a>
     <button class="tg-promo-close" id="tg-promo-close">✕</button>
   </div>
@@ -288,7 +288,8 @@
     <button class="btn-back" data-screen="menu">← Назад</button>
     <h2>Профиль</h2>
   </div>
-  <div class="profile-inner">
+  <!-- Блок для авторизованных -->
+  <div class="profile-inner" id="profile-content-auth">
     <div class="profile-avatar-wrap">
       <div class="profile-avatar-frame" id="profile-avatar-frame">
         <div class="profile-avatar" id="profile-avatar">?</div>
@@ -298,7 +299,6 @@
     <div class="profile-name" id="profile-name">Игрок</div>
     <div class="profile-rank" id="profile-rank">Новобранец Неона</div>
 
-    <!-- Большой кольцевой прогресс уровня -->
     <div class="profile-xp-section">
       <div class="profile-ring-wrap">
         <svg class="profile-ring" viewBox="0 0 120 120">
@@ -315,9 +315,21 @@
         <div class="profile-xp-nums">
           <span id="profile-xp-current">0</span> / <span id="profile-xp-needed">1000</span> XP
         </div>
-        <div class="profile-xp-total">Всего XP: <span id="profile-xp-total">0</span></div>
       </div>
     </div>
+  </div>
+
+  <!-- Блок для гостей -->
+  <div class="profile-inner profile-guest" id="profile-content-guest" style="display:none">
+    <div class="profile-guest-icon">👤</div>
+    <div class="profile-guest-title">Ты играешь как гость</div>
+    <div class="profile-guest-text">
+      Войди через Telegram — и получишь доступ к уровням, званиям и рейтингу.
+      Твои победы начнут считаться, а прогресс сохранится на всех устройствах.
+    </div>
+    <a class="btn btn-primary btn-large profile-tg-btn" href="https://t.me/bteship_bot/bteship" target="_blank">
+      Открыть в Telegram
+    </a>
   </div>
 </div>
 

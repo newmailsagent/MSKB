@@ -154,7 +154,7 @@ html, body {
 .sound-mute-line { stroke: var(--hint); stroke-width: 2; stroke-linecap: round; }
 
 .user-info { display: flex; align-items: center; gap: 10px; }
-.avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; border: 2px solid var(--accent); overflow: hidden; }
+.avatar { width: 42px; height: 42px; border-radius: 10px; background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; border: 2px solid #607d8b; overflow: hidden; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 .username { font-weight: 600; font-size: 15px; display: block; }
 .user-tag { color: var(--hint); font-size: 12px; }
@@ -843,21 +843,25 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   border-radius: 14px;
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   width: 100%;
+  /* Фиксируем высоту чтобы появление бонусной строки не двигало layout */
+  min-height: 120px;
 }
 .xp-gained {
-  font-size: 22px; font-weight: 800; color: var(--accent);
+  font-size: 18px; font-weight: 800; color: var(--text);
+  min-height: 24px; /* резервируем место под обе строки сразу */
+  text-align: center;
   animation: xpGainedPop .5s cubic-bezier(.2,1.4,.4,1) both;
 }
 @keyframes xpGainedPop {
   from { transform: scale(.5); opacity: 0; }
   to   { transform: scale(1);  opacity: 1; }
 }
-.xp-level-display { display: flex; align-items: center; gap: 14px; width: 100%; max-width: 280px; }
+.xp-level-display { display: flex; align-items: center; gap: 14px; width: 100%; max-width: 280px; min-height: 52px; }
 
 /* ─── Квадратное кольцо прогресса ─── */
 .xp-ring { width: 80px; height: 80px; flex-shrink: 0; }
 .xp-ring-bg {
-  fill: var(--bg2); stroke: var(--bg2); stroke-width: 0;
+  fill: rgba(255,255,255,.06); stroke: none;
 }
 .xp-ring-fill {
   fill: none;
@@ -867,7 +871,6 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   stroke-dasharray: 0 288;
   stroke-dashoffset: 72;
   transition: stroke-dasharray .9s cubic-bezier(.4,0,.2,1);
-  filter: drop-shadow(0 0 3px #e53935aa);
 }
 .xp-ring-level {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
@@ -875,7 +878,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 }
 .xp-ring-wrap { position: relative; width: 80px; height: 80px; flex-shrink: 0; }
 
-.xp-ring-info { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.xp-ring-info { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .xp-ring-rank { font-size: 13px; font-weight: 600; color: var(--accent); }
 
 /* Прогресс-бар XP */
@@ -887,13 +890,11 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   height: 100%; border-radius: 4px;
   background: #e53935;
   transition: width .9s cubic-bezier(.4,0,.2,1);
-  box-shadow: 0 0 4px #e5393577;
 }
 .xp-progress-bar-bonus {
   position: absolute; top: 0; height: 100%; border-radius: 4px;
-  background: #ffd600;
+  background: rgba(255,255,255,.5);
   transition: width .9s cubic-bezier(.4,0,.2,1) .1s;
-  box-shadow: 0 0 6px #ffd60088;
 }
 .xp-progress-bar-wrap { position: relative; }
 .xp-progress-text { font-size: 11px; color: var(--hint); }
@@ -923,21 +924,23 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 }
 .profile-avatar-wrap { position: relative; display: inline-block; margin-bottom: 4px; }
 .profile-avatar-frame {
-  width: 88px; height: 88px; border-radius: 50%;
-  border: 4px solid var(--accent);
+  width: 88px; height: 88px; border-radius: 18px;
+  border: 3px solid #607d8b;
   display: flex; align-items: center; justify-content: center;
   overflow: hidden; font-size: 36px; font-weight: 700;
   background: var(--bg2); color: var(--text);
-  /* Базовая рамка — переопределяется level-frame-N */
 }
-/* Рамки уровней — готовы к кастомизации */
+.profile-avatar-frame img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+/* Рамки уровней — цвета без свечения (готовы к кастомизации) */
 .level-frame-1,.level-frame-2,.level-frame-3,.level-frame-4 { border-color: #607d8b; }
 .level-frame-5,.level-frame-6,.level-frame-7,.level-frame-8,.level-frame-9 { border-color: #43a047; }
 .level-frame-10,.level-frame-11,.level-frame-12,.level-frame-13,.level-frame-14 { border-color: #1e88e5; }
-.level-frame-15,.level-frame-16,.level-frame-17,.level-frame-18,.level-frame-19 { border-color: #8e24aa; box-shadow: 0 0 12px #8e24aa55; }
-.level-frame-20,.level-frame-21,.level-frame-22,.level-frame-23,.level-frame-24 { border-color: #e53935; box-shadow: 0 0 14px #e5393555; }
-.level-frame-25,.level-frame-26,.level-frame-27,.level-frame-28,.level-frame-29 { border-color: #f57f17; box-shadow: 0 0 16px #f57f1755; }
-.level-frame-30 { border-color: #ffd600; box-shadow: 0 0 20px #ffd60077; }
+.level-frame-15,.level-frame-16,.level-frame-17,.level-frame-18,.level-frame-19 { border-color: #8e24aa; }
+.level-frame-20,.level-frame-21,.level-frame-22,.level-frame-23,.level-frame-24 { border-color: #e53935; }
+.level-frame-25,.level-frame-26,.level-frame-27,.level-frame-28,.level-frame-29 { border-color: #f57f17; }
+.level-frame-30 { border-color: #ffd600; }
 
 .profile-level-tag {
   position: absolute; bottom: -2px; right: -2px;
@@ -957,13 +960,12 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 }
 .profile-ring-wrap { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
 .profile-ring { width: 120px; height: 120px; }
-.profile-ring-bg { fill: var(--bg3, #1a1a2e); stroke: none; }
+.profile-ring-bg { fill: rgba(255,255,255,.06); stroke: none; }
 .profile-ring-fill {
-  fill: none; stroke: var(--accent); stroke-width: 9; stroke-linecap: round;
+  fill: none; stroke: #e53935; stroke-width: 5; stroke-linecap: round;
   stroke-dasharray: 0 448;
   stroke-dashoffset: 112;
   transition: stroke-dasharray .8s cubic-bezier(.4,0,.2,1);
-  filter: drop-shadow(0 0 5px var(--accent));
 }
 .profile-ring-level {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
@@ -976,9 +978,8 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   background: var(--bg); overflow: hidden;
 }
 .profile-progress-bar {
-  height: 100%; border-radius: 5px; background: var(--accent);
+  height: 100%; border-radius: 5px; background: #e53935;
   transition: width .8s cubic-bezier(.4,0,.2,1);
-  box-shadow: 0 0 8px var(--accent);
 }
 .profile-xp-nums { font-size: 13px; font-weight: 600; }
 .profile-xp-total { font-size: 11px; color: var(--hint); }
@@ -993,4 +994,24 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 
 /* xp-gained компоненты */
 .xp-base  { color: var(--text); }
-.xp-bonus { color: #ffd600; font-weight: 700; }
+.xp-bonus { color: rgba(255,255,255,.65); font-weight: 600; }
+
+/* ─── Гостевой профиль ─── */
+.profile-guest {
+  justify-content: center; text-align: center;
+  padding: 40px 24px;
+}
+.profile-guest-icon {
+  font-size: 56px; margin-bottom: 12px; opacity: .5;
+}
+.profile-guest-title {
+  font-size: 18px; font-weight: 700; margin-bottom: 10px;
+}
+.profile-guest-text {
+  font-size: 14px; color: var(--hint); line-height: 1.55;
+  max-width: 280px; margin: 0 auto 24px;
+}
+.profile-tg-btn {
+  text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center;
+}

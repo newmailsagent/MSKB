@@ -2287,16 +2287,27 @@ function updateMenuUI() {
   updateMenuStats();
 }
 
+// Цвета рамок по тирам — совпадают с .level-frame-N
+const LEVEL_FRAME_COLORS = {
+  1:'#607d8b',2:'#607d8b',3:'#607d8b',4:'#607d8b',
+  5:'#43a047',6:'#43a047',7:'#43a047',8:'#43a047',9:'#43a047',
+  10:'#1e88e5',11:'#1e88e5',12:'#1e88e5',13:'#1e88e5',14:'#1e88e5',
+  15:'#8e24aa',16:'#8e24aa',17:'#8e24aa',18:'#8e24aa',19:'#8e24aa',
+  20:'#e53935',21:'#e53935',22:'#e53935',23:'#e53935',24:'#e53935',
+  25:'#f57f17',26:'#f57f17',27:'#f57f17',28:'#f57f17',29:'#f57f17',
+  30:'#ffd600',
+};
+
 function updateMenuLevel() {
   const xp    = App.user.xp || 0;
   const prog  = getXpProgress(xp);
   setText('menu-level-badge', prog.level);
   setText('user-rank', prog.rank);
-  // Применяем класс уровня к бейджу
   const badge = document.getElementById('menu-level-badge');
-  if (badge) {
-    badge.className = 'level-badge level-bg-' + prog.level;
-  }
+  if (badge) badge.className = 'level-badge level-bg-' + prog.level;
+  // Синхронизируем цвет рамки аватара на главной с цветом в профиле
+  const avatar = document.getElementById('user-avatar');
+  if (avatar) avatar.style.borderColor = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
 }
 
 /* ─── XP ПОСТ-БОЙ АНИМАЦИЯ ──────────────────────── */
@@ -2317,7 +2328,7 @@ function showXpReward(xpData) {
   // Сначала показываем базовые, потом бонус
   const gainEl = document.getElementById('xp-gained');
   if (gainEl) {
-    gainEl.innerHTML = '<span class="xp-base">+' + baseXp + ' XP базовых</span>';
+    gainEl.textContent = '+' + baseXp;
   }
 
   setText('xp-ring-level', progBefore.level);
@@ -2385,8 +2396,8 @@ function _showBonusPhase(xpData, progMid, progAfter, bar, ring, barBonus, gainEl
   // Показываем бонусную фазу через 600ms после базовой
   setTimeout(() => {
     if (gainEl) gainEl.innerHTML =
-      '<span class="xp-base">+' + baseXp + ' XP</span> ' +
-      '<span class="xp-bonus">+' + bonusXp + ' бонус за точность</span>';
+      '<span class="xp-base">+' + baseXp + '</span>' +
+      '<span class="xp-bonus"> +' + bonusXp + '</span>';
 
     // Анимируем бонусный кусок поверх
     if (barBonus) {
@@ -2465,6 +2476,13 @@ function setRingProgress(rectEl, pct, size) {
 
 /* ─── ЭКРАН ПРОФИЛЯ ──────────────────────────────── */
 async function renderProfileScreen() {
+  const isGuest = !!App.user.isGuest;
+  const authBlock  = document.getElementById('profile-content-auth');
+  const guestBlock = document.getElementById('profile-content-guest');
+  if (authBlock)  authBlock.style.display  = isGuest ? 'none' : '';
+  if (guestBlock) guestBlock.style.display = isGuest ? ''     : 'none';
+  if (isGuest) return;
+
   const xp    = App.user.xp || 0;
   const prog  = getXpProgress(xp);
 
@@ -2474,7 +2492,6 @@ async function renderProfileScreen() {
   setText('profile-ring-level', prog.level);
   setText('profile-xp-current', prog.xpInLevel);
   setText('profile-xp-needed',  prog.xpNeeded);
-  setText('profile-xp-total',   xp);
 
   // Прогресс-бар
   const bar = document.getElementById('profile-progress-bar');
@@ -2526,10 +2543,9 @@ function bindNav() {
     showScreen(scr, { isBack });
   });
 
-  // Открытие профиля по клику на аватар/имя
+  // Открытие профиля по клику на аватар/имя (работает для всех)
   document.getElementById('btn-open-profile')?.addEventListener('click', () => {
     Sound.click();
-    if (App.user.isGuest) return; // гостям профиль недоступен
     renderProfileScreen();
     showScreen('profile');
   });
@@ -2671,13 +2687,44 @@ function initOnlineCounter() {
     document.querySelectorAll('.online-count-val').forEach(el => el.textContent = count);
   };
 
-  // Только HTTP-поллинг — не создаём отдельный сокет, чтобы не накручивать счётчик онлайна
-  const poll = () => fetch('/api/online').then(r => r.json()).then(d => update(d.count)).catch(() => {});
-  poll();
-  setInterval(poll, 15000);
+  // Сразу делаем HTTP-запрос для первого значения
+  fetch('/api/online').then(r => r.json()).then(d => update(d.count)).catch(() => {});
 
-  // Когда основной WS-сокет подключён — слушаем обновления через него
-  // (подключается в startOnline → WS.connect, там добавляем слушатель)
+  // Подключаем лёгкий WS только для счётчика (не matchmake, не играем)
+  // Используем тот же origin — сервер учитывает его в onlineSessions
+  try {
+    const _loadAndConnect = () => {
+      if (WS.socket) {
+        // Уже есть основной сокет — просто слушаем его
+        WS.socket.on('online_count', ({ count }) => update(count));
+        return;
+      }
+      // Создаём отдельный "тихий" сокет только для счётчика
+      if (!window.io) return;
+      const counterSocket = io(window.location.origin, { transports: ['websocket','polling'] });
+      counterSocket.on('online_count', ({ count }) => update(count));
+      counterSocket.on('connect', () => update); // сервер пришлёт broadcast при коннекте
+      // Сохраняем чтобы не создавать дубли
+      initOnlineCounter._socket = counterSocket;
+    };
+
+    if (window.io) {
+      _loadAndConnect();
+    } else {
+      // socket.io ещё не загружен — ждём
+      const s = document.createElement('script');
+      s.src = '/socket.io/socket.io.js';
+      s.onload = _loadAndConnect;
+      document.head.appendChild(s);
+    }
+  } catch(e) {}
+
+  // Fallback HTTP-поллинг каждые 20с на случай проблем с WS
+  setInterval(() => {
+    if (!initOnlineCounter._socket?.connected && !WS.socket?.connected) {
+      fetch('/api/online').then(r => r.json()).then(d => update(d.count)).catch(() => {});
+    }
+  }, 20000);
 }
 
 /* ─── СВАЙП НАЗАД (от 1/3 экрана) ───────────────── */
