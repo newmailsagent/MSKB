@@ -125,8 +125,7 @@
 
   <!-- Контролы ВЫШЕ дока — не перекрываются -->
   <div class="placement-controls">
-    <button class="btn btn-sm" id="btn-rotate">↻ Повернуть</button>
-    <button class="btn btn-sm btn-ghost" id="btn-random-place">Случайно</button>
+    <button class="btn btn-sm btn-place-random" id="btn-random-place">↻ Случайно</button>
     <button class="btn btn-sm btn-ghost" id="btn-clear-place">Очистить</button>
   </div>
 
@@ -240,8 +239,9 @@
       <div class="go-stat"><span id="go-acc">0%</span><small>точность</small></div>
     </div>
     <div class="btn-col">
+      <div id="rematch-status" class="rematch-status hidden"></div>
       <button class="btn btn-primary btn-large" id="btn-rematch">Реванш</button>
-      <button class="btn btn-secondary" data-screen="menu">← Главное меню</button>
+      <button class="btn btn-secondary" id="btn-to-menu" data-screen="menu">← Главное меню</button>
     </div>
   </div>
 </div>

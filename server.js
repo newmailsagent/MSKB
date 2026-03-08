@@ -477,6 +477,62 @@ io.on('connection', (socket) => {
     recordDuelResult(winner.playerId, surrenderer.playerId);
   });
 
+  // ── Реванш ───────────────────────────────────────
+  socket.on('rematch_request', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const requester = getPlayer(room, socket.id);
+    const opponent  = getOpponent(room, socket.id);
+    if (!requester || !opponent) return;
+
+    // Инициализируем объект реванша в комнате если нет
+    if (!room.rematch) room.rematch = {};
+
+    room.rematch[socket.id] = true;
+
+    // Уведомляем соперника
+    if (opponent.socketId) {
+      io.to(opponent.socketId).emit('rematch_requested');
+    }
+
+    // Оба нажали реванш?
+    const p1Ready = room.rematch[room.p1?.socketId];
+    const p2Ready = room.rematch[room.p2?.socketId];
+
+    if (p1Ready && p2Ready) {
+      // Оба согласились — очищаем таймер и запускаем новую игру в той же комнате
+      if (room._rematchTimer) { clearTimeout(room._rematchTimer); room._rematchTimer = null; }
+      room.rematch = null;
+
+      // Сбрасываем состояние комнаты для новой игры
+      room.over      = false;
+      room.started   = false;
+      room.p1.ships  = null; room.p1.ready = false; room.p1.shots = 0; room.p1.hits = 0;
+      room.p2.ships  = null; room.p2.ready = false; room.p2.shots = 0; room.p2.hits = 0;
+
+      io.to(room.p1.socketId).emit('rematch_accepted');
+      io.to(room.p2.socketId).emit('rematch_accepted');
+      console.log(`[rematch] room ${roomId} restarted`);
+      return;
+    }
+
+    // Запускаем 10-секундный таймер если это первый запрос
+    if (!room._rematchTimer) {
+      room._rematchTimer = setTimeout(() => {
+        if (!room.rematch) return;
+        // Кто не нажал — тому отказ, кто нажал — ему declined
+        const p1 = room.p1, p2 = room.p2;
+        if (room.rematch[p1?.socketId] && !room.rematch[p2?.socketId]) {
+          io.to(p1.socketId).emit('rematch_declined');
+        } else if (room.rematch[p2?.socketId] && !room.rematch[p1?.socketId]) {
+          io.to(p2.socketId).emit('rematch_declined');
+        }
+        room.rematch = null;
+        room._rematchTimer = null;
+      }, 10000);
+    }
+  });
+
   // п.5: отключение во время игры = победа оставшемуся
   socket.on('disconnect', () => {
     console.log(`[-] ${socket.id}`);

@@ -260,7 +260,7 @@ function initUser() {
     const cleanId = String(parseInt(tgUser.id, 10));
     App.user = {
       id:       cleanId,
-      name:     tgUser.first_name || 'Игрок',
+      name:     tgUser.first_name || tgUser.username || 'Игрок',
       username: tgUser.username ? '@' + tgUser.username : '',
       photo:    tgUser.photo_url || null,
       isGuest:  false,
@@ -1489,6 +1489,48 @@ function huntParity(board) {
 
 const getNeighbors4 = (r,c) => [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].filter(([nr,nc])=>inBounds(nr,nc));
 
+/* ─── СИСТЕМА РЕВАНШЕЙ ───────────────────────────── */
+const Rematch = {
+  _interval: null,
+  _secs: 10,
+
+  _clear() {
+    if (this._interval) { clearInterval(this._interval); this._interval = null; }
+    const btn = document.getElementById('btn-rematch');
+    if (btn) { btn.textContent = 'Реванш'; btn.disabled = false; btn._timerActive = false; btn.classList.remove('pulse-accent'); }
+    const statusEl = document.getElementById('rematch-status');
+    if (statusEl) { statusEl.classList.add('hidden'); statusEl.classList.remove('opponent-wants','declined'); statusEl.textContent = ''; }
+  },
+
+  startTimer() {
+    this._clear();
+    this._secs = 10;
+    const btn = document.getElementById('btn-rematch');
+    if (btn) { btn._timerActive = true; btn.disabled = true; }
+    const update = () => {
+      if (btn) btn.textContent = `Ожидаем… ${this._secs}с`;
+      if (this._secs <= 0) {
+        clearInterval(this._interval); this._interval = null;
+        // Таймер истёк на нашей стороне, сервер пришлёт rematch_declined
+      }
+      this._secs--;
+    };
+    update();
+    this._interval = setInterval(update, 1000);
+  },
+
+  request() {
+    if (!WS.socket || !WS.roomId) return;
+    WS.socket.emit('rematch_request', { roomId: WS.roomId });
+    this.startTimer();
+    const statusEl = document.getElementById('rematch-status');
+    if (statusEl) {
+      statusEl.textContent = 'Ждём ответа соперника…';
+      statusEl.classList.remove('hidden','opponent-wants','declined');
+    }
+  },
+};
+
 /* ─── КОНЕЦ ИГРЫ ─────────────────────────────────── */
 function endGame(result) {
   Game.active = false;
@@ -1506,6 +1548,11 @@ function endGame(result) {
   setText('go-acc',   Game.shots ? Math.round(Game.hits/Game.shots*100)+'%' : '0%');
   if (result === 'win')  { Sound.win();  vibrate([50,30,100,30,200]); }
   if (result === 'loss') { Sound.lose(); vibrate([200]); }
+  // Сбрасываем состояние реванша перед показом экрана
+  Rematch._clear();
+  // Скрываем реванш для ботов — там не нужен WS-реванш
+  const rematchBtn = document.getElementById('btn-rematch');
+  if (rematchBtn) rematchBtn.style.display = Game.mode === 'online' ? '' : '';
   setTimeout(() => showScreen('gameover'), 800);
 }
 
@@ -1725,6 +1772,46 @@ const WS = {
 
     this.socket.on('error_msg', ({ message }) => {
       showModal('Ошибка', message, [{ label: 'Ок', cls: 'btn-ghost', action: closeModal }]);
+    });
+
+    // ── Реванш ───────────────────────────────────────
+    this.socket.on('rematch_requested', () => {
+      // Соперник нажал реванш — показываем уведомление на нашем экране
+      const statusEl = document.getElementById('rematch-status');
+      if (statusEl) {
+        statusEl.textContent = 'Соперник предлагает вам реванш!';
+        statusEl.classList.remove('hidden', 'declined');
+        statusEl.classList.add('opponent-wants');
+      }
+      // Подсвечиваем кнопку реванша
+      const rematchBtn = document.getElementById('btn-rematch');
+      if (rematchBtn && !rematchBtn._timerActive) {
+        rematchBtn.classList.add('pulse-accent');
+      }
+    });
+
+    this.socket.on('rematch_accepted', () => {
+      // Оба согласились — стартуем расстановку с тем же соперником в той же комнате
+      Rematch._clear();
+      // roomId остаётся тем же — просто инициируем расстановку
+      startPlacement('online');
+    });
+
+    this.socket.on('rematch_declined', () => {
+      // Соперник не принял в течение 10 сек
+      Rematch._clear();
+      const statusEl = document.getElementById('rematch-status');
+      if (statusEl) {
+        statusEl.textContent = 'Соперник отказался от реванша';
+        statusEl.classList.remove('hidden', 'opponent-wants');
+        statusEl.classList.add('declined');
+      }
+      const rematchBtn = document.getElementById('btn-rematch');
+      if (rematchBtn) {
+        rematchBtn.disabled = true;
+        rematchBtn.textContent = 'Реванш';
+      }
+      setTimeout(() => showScreen('menu'), 3000);
     });
 
     // п.5: соперник закрыл вкладку/приложение — нам победа
@@ -2135,10 +2222,16 @@ function bindNav() {
     Sound.click();
     const mode = pendingGameMode || 'bot-easy';
     if (mode === 'online') {
-      // Онлайн реванш — заново ищем соперника
-      WS.disconnect();
-      startOnline('random');
+      // Онлайн: WS-реванш с тем же соперником
+      if (WS.socket && WS.roomId) {
+        Rematch.request();
+      } else {
+        // Соединение потеряно — просто ищем нового
+        WS.disconnect();
+        startOnline('random');
+      }
     } else {
+      // Бот: просто заново
       startPlacement(mode);
     }
   });
