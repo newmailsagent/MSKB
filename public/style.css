@@ -155,7 +155,7 @@ html, body {
 
 .user-info { display: flex; align-items: center; gap: 10px; }
 .avatar { width: 42px; height: 42px; border-radius: 10px; background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; border: 2px solid #607d8b; overflow: hidden; }
-.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 0; display: block; }
 .username { font-weight: 600; font-size: 15px; display: block; }
 .user-tag { color: var(--hint); font-size: 12px; }
 .stats-mini { display: flex; gap: 16px; }
@@ -883,20 +883,26 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 
 /* Прогресс-бар XP */
 .xp-progress-bar-wrap {
-  width: 100%; height: 8px; border-radius: 4px;
-  background: var(--bg2); overflow: hidden;
+  width: 100%; height: 4px;
+  background: rgba(255,255,255,.1);
+  border-radius: 2px;
+  overflow: visible; /* для бонусного бара */
+  position: relative;
 }
 .xp-progress-bar {
-  height: 100%; border-radius: 4px;
+  position: absolute; top: 0; left: 0;
+  height: 4px;
+  border-radius: 2px 0 0 2px; /* скруглён только левый край */
   background: #e53935;
   transition: width .9s cubic-bezier(.4,0,.2,1);
 }
 .xp-progress-bar-bonus {
-  position: absolute; top: 0; height: 100%; border-radius: 4px;
-  background: rgba(255,255,255,.5);
+  position: absolute; top: 0;
+  height: 4px;
+  border-radius: 0 2px 2px 0; /* скруглён только правый край */
+  background: rgba(255,255,255,.45);
   transition: width .9s cubic-bezier(.4,0,.2,1) .1s;
 }
-.xp-progress-bar-wrap { position: relative; }
 .xp-progress-text { font-size: 11px; color: var(--hint); }
 
 /* Level up */
@@ -932,6 +938,12 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 }
 .profile-avatar-frame img {
   width: 100%; height: 100%; object-fit: cover; display: block;
+  border-radius: 0; /* заполняет квадрат без своего радиуса */
+}
+.profile-avatar {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 36px; font-weight: 700;
 }
 /* Рамки уровней — цвета без свечения (готовы к кастомизации) */
 .level-frame-1,.level-frame-2,.level-frame-3,.level-frame-4 { border-color: #607d8b; }
@@ -974,11 +986,15 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .profile-xp-details { flex: 1; display: flex; flex-direction: column; gap: 8px; }
 .profile-xp-label { font-size: 11px; color: var(--hint); text-transform: uppercase; letter-spacing: .5px; }
 .profile-progress-wrap {
-  width: 100%; height: 10px; border-radius: 5px;
-  background: var(--bg); overflow: hidden;
+  width: 100%; height: 4px;
+  background: rgba(255,255,255,.1);
+  border-radius: 2px;
+  position: relative; overflow: hidden;
 }
 .profile-progress-bar {
-  height: 100%; border-radius: 5px; background: #e53935;
+  position: absolute; top: 0; left: 0;
+  height: 4px; border-radius: 2px;
+  background: #e53935;
   transition: width .8s cubic-bezier(.4,0,.2,1);
 }
 .profile-xp-nums { font-size: 13px; font-weight: 600; }

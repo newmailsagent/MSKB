@@ -122,19 +122,36 @@ try {
 } catch(e) { console.error('[DB] Migration error:', e.message); }
 
 // Онлайн-игроки: socketId -> {playerId, name, connectedAt}
-const onlineSessions = new Map();
+const onlineSessions = new Map(); // socketId → session
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 минут
 
 function getOnlineCount() {
-  // Дедупликация: каждый уникальный playerId считается 1 раз.
-  // Гости без playerId считаются по socketId.
+  const now = Date.now();
   const seen = new Set();
-  for (const [, session] of onlineSessions) {
-    if (session.playerId) seen.add('p:' + session.playerId);
-    else seen.add('s:' + session.socketId);
+  for (const [, s] of onlineSessions) {
+    if (now - s.lastActive > IDLE_TIMEOUT_MS) continue; // пропускаем idle
+    if (s.playerId) seen.add(s.playerId);               // один игрок = 1 запись
+    else seen.add('g:' + s.socketId);                   // гость — по сокету
   }
   return seen.size;
 }
 function broadcastOnlineCount() { io.emit('online_count', { count: getOnlineCount() }); }
+
+// Обновляем lastActive для сокета
+function touchSession(socketId) {
+  const s = onlineSessions.get(socketId);
+  if (s) s.lastActive = Date.now();
+}
+
+// Периодически чистим idle и обновляем счётчик
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  for (const [sid, s] of onlineSessions) {
+    if (now - s.lastActive > IDLE_TIMEOUT_MS) { onlineSessions.delete(sid); changed = true; }
+  }
+  if (changed) broadcastOnlineCount();
+}, 5 * 60 * 1000); // каждые 5 минут
 
 function normalizeId(id) {
   if (!id || String(id).startsWith('guest_')) return id;
@@ -275,6 +292,8 @@ function getXpInfo(id) {
   return { xp, level, rank, xpInLevel, xpNeeded, xpForNext };
 }
 
+const MAX_LEGIT_ACCURACY = 0.60; // выше 60% — подозрительно, XP не начисляется
+
 function addWin(id, shots, hits, isOnline = false, sunkenCount = 0) {
   id = normalizeId(id);
   if (!id || id.startsWith('guest_')) return null;
@@ -289,8 +308,14 @@ function addWin(id, shots, hits, isOnline = false, sunkenCount = 0) {
       db.prepare(`UPDATE players SET rated_wins=rated_wins+1,
         rated_shots=rated_shots+?, rated_hits=rated_hits+? WHERE id=?`).run(shots, hits, id);
     }
-    const xpReward = calcXpReward('win', sunkenCount, shots, hits);
-    xpResult = addXp(id, xpReward);
+    // Анти-фарм: точность > 60% = подозрительно, XP не начисляется
+    const acc = shots > 0 ? hits / shots : 0;
+    if (acc <= MAX_LEGIT_ACCURACY) {
+      const xpReward = calcXpReward('win', sunkenCount, shots, hits);
+      xpResult = addXp(id, xpReward);
+    } else {
+      console.log(`[XP] Blocked for ${id}: acc=${(acc*100).toFixed(1)}% > 60%`);
+    }
   }
   return xpResult;
 }
@@ -449,7 +474,7 @@ io.on('connection', (socket) => {
   console.log(`[+] ${socket.id}`);
 
   // Регистрируем сессию как онлайн (даже без matchmake)
-  onlineSessions.set(socket.id, { socketId: socket.id, playerId: null, name: null, connectedAt: Date.now() });
+  onlineSessions.set(socket.id, { socketId: socket.id, playerId: null, name: null, connectedAt: Date.now(), lastActive: Date.now() });
   broadcastOnlineCount();
 
   socket.on('matchmake', ({ mode, roomId: friendRoomId, playerId, playerName }) => {
@@ -457,7 +482,7 @@ io.on('connection', (socket) => {
     socket.data.playerId = playerId;
     upsertPlayer(playerId, playerName);
     // Обновляем онлайн-сессию
-    onlineSessions.set(socket.id, { socketId: socket.id, playerId, name: playerName, connectedAt: Date.now() });
+    onlineSessions.set(socket.id, { socketId: socket.id, playerId, name: playerName, connectedAt: Date.now(), lastActive: Date.now() });
 
     const info = { socketId: socket.id, playerId, name: playerName };
 
@@ -518,6 +543,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('shoot', ({ roomId, r, c }) => {
+    touchSession(socket.id);
     const room = rooms.get(roomId);
     if (!room || !room.started || room.over) return;
 
@@ -646,6 +672,9 @@ io.on('connection', (socket) => {
   });
 
   // п.5: отключение во время игры = победа оставшемуся
+  // Клиент шлёт heartbeat раз в 5 минут пока вкладка открыта
+  socket.on('active', () => { touchSession(socket.id); });
+
   socket.on('disconnect', () => {
     console.log(`[-] ${socket.id}`);
     onlineSessions.delete(socket.id);

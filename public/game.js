@@ -2332,7 +2332,6 @@ function showXpReward(xpData) {
   }
 
   setText('xp-ring-level', progBefore.level);
-  setText('xp-ring-rank',  progBefore.rank);
   setText('xp-progress-text', progBefore.xpInLevel + ' / ' + progBefore.xpNeeded + ' XP');
 
   const lvlEl  = document.getElementById('xp-ring-level');
@@ -2365,7 +2364,6 @@ function showXpReward(xpData) {
         if (bar)  { bar.style.transition = 'none'; bar.style.width = '0%'; }
         if (ring) { ring.style.transition = 'none'; setRingProgress(ring, 0, 80); }
         setText('xp-ring-level', progMid.level);
-        setText('xp-ring-rank', progMid.rank);
         setTimeout(() => {
           if (bar)  { bar.style.transition = ''; bar.style.width = progMid.pct + '%'; }
           if (ring) { ring.style.transition = ''; setRingProgress(ring, progMid.pct, 80); }
@@ -2416,7 +2414,6 @@ function _showBonusPhase(xpData, progMid, progAfter, bar, ring, barBonus, gainEl
             if (ring) { ring.style.transition = 'none'; setRingProgress(ring, 0, 80); }
             if (barBonus) { barBonus.style.transition = 'none'; barBonus.style.width = '0%'; barBonus.style.left = '0%'; }
             setText('xp-ring-level', progAfter.level);
-            setText('xp-ring-rank', progAfter.rank);
             setTimeout(() => {
               if (bar)  { bar.style.transition = ''; bar.style.width = progAfter.pct + '%'; }
               if (ring) { ring.style.transition = ''; setRingProgress(ring, progAfter.pct, 80); }
@@ -2443,7 +2440,6 @@ function _doFinalLevelUp(progAfter, bar, ring, lvlEl, lvlUpEl) {
       if (bar)  { bar.style.transition = 'none'; bar.style.width = '0%'; }
       if (ring) { ring.style.transition = 'none'; setRingProgress(ring, 0, 80); }
       setText('xp-ring-level', progAfter.level);
-      setText('xp-ring-rank', progAfter.rank);
       setTimeout(() => {
         if (bar)  { bar.style.transition = ''; bar.style.width = progAfter.pct + '%'; }
         if (ring) { ring.style.transition = ''; setRingProgress(ring, progAfter.pct, 80); }
@@ -2719,12 +2715,18 @@ function initOnlineCounter() {
     }
   } catch(e) {}
 
-  // Fallback HTTP-поллинг каждые 20с на случай проблем с WS
+  // Heartbeat — шлём серверу 'active' каждые 5 минут чтобы не попасть в idle
+  setInterval(() => {
+    if (initOnlineCounter._socket?.connected) initOnlineCounter._socket.emit('active');
+    else if (WS.socket?.connected) WS.socket.emit('active');
+  }, 5 * 60 * 1000);
+
+  // Fallback HTTP-поллинг каждые 30с если WS не подключён
   setInterval(() => {
     if (!initOnlineCounter._socket?.connected && !WS.socket?.connected) {
       fetch('/api/online').then(r => r.json()).then(d => update(d.count)).catch(() => {});
     }
-  }, 20000);
+  }, 30000);
 }
 
 /* ─── СВАЙП НАЗАД (от 1/3 экрана) ───────────────── */
