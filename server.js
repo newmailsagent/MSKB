@@ -1148,7 +1148,7 @@ app.post('/api/equip', (req, res) => {
   try {
     const { userId, itemId } = req.body;
     if (!userId || !itemId) return res.status(400).json({ ok: false, error: 'missing params' });
-    if (!hasItem(userId, itemId)) return res.status(403).json({ ok: false, error: 'not owned' });
+    if (!isAdmin(userId) && !hasItem(userId, itemId)) return res.status(403).json({ ok: false, error: 'not owned' });
 
     const item = db.prepare(`SELECT * FROM shop_items WHERE id=?`).get(itemId);
     if (!item) return res.status(404).json({ ok: false, error: 'item not found' });

@@ -3013,10 +3013,18 @@ async function loadShopData() {
       _shopInventory = {};
       (invRes.data.items || []).forEach(i => { _shopInventory[i.item_id] = true; });
       _shopEquipped  = invRes.data.equipped || {};
-      // Синхронизируем localStorage с сервером — но НЕ применяем тему визуально
-      // (тема уже применена из localStorage при старте, или пользователь сам меняет)
+      // НЕ трогаем localStorage здесь — он управляется только через кнопки Применить/Снять
+      // Но если сервер говорит что тема экипирована — применяем визуально если ещё не применена
       const serverTheme = _shopEquipped['theme'] || null;
-      saveThemeToStorage(serverTheme);
+      const localTheme  = (() => { try { return localStorage.getItem('equippedTheme'); } catch(e) { return null; } })();
+      if (serverTheme && serverTheme !== localTheme) {
+        // Сервер знает о теме которую мы не применили локально — синхронизируем
+        saveThemeToStorage(serverTheme);
+        applyEquippedTheme(serverTheme);
+      } else if (!serverTheme && localTheme) {
+        // localStorage говорит что тема есть, но сервер не знает — доверяем localStorage
+        // (тема могла быть применена до синхронизации)
+      }
     }
   } catch(e) {
     console.error('[Shop] loadShopData error:', e);
