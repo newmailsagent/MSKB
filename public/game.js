@@ -2537,6 +2537,7 @@ async function renderProfileScreen(tab) {
         document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
         document.querySelectorAll('.profile-tab-content').forEach(el => el.classList.toggle('hidden', el.id !== 'profile-tab-' + t));
         if (t === 'stats') renderStatsScreen();
+        if (t === 'inventory') { loadShopData().then(() => renderInventory()); }
       });
     });
   }
@@ -2557,6 +2558,7 @@ async function renderProfileScreen(tab) {
         document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
         document.querySelectorAll('.profile-tab-content').forEach(c => c.classList.toggle('hidden', c.id !== 'profile-tab-' + t));
         if (t === 'stats') renderStatsScreen();
+        if (t === 'inventory') { loadShopData().then(() => renderInventory()); }
       });
     });
     document.getElementById('profile-stats-mode-toggle')?.addEventListener('click', e => {
@@ -2916,6 +2918,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initSwipeBack();
   initOnlineCounter();
   initShop();
+  initInventory();
 
   // WebSocket события магазина — вешаем когда сокет будет готов
   const _shopSocketInterval = setInterval(() => {
@@ -3196,4 +3199,227 @@ function initShop() {
   document.getElementById('shop-item-btn')?.addEventListener('click', handleShopItemBtn);
 }
 
+
+
+/* ─── ФЕЙКОВЫЕ ПРЕВЬЮ (временные SVG) ───────────────────────────────────── */
+const FAKE_PREVIEWS = {
+  frame_gold: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#1a1a1a"/>
+    <rect x="4" y="4" width="92" height="92" rx="14" fill="none" stroke="#FFD700" stroke-width="5"/>
+    <rect x="10" y="10" width="80" height="80" rx="10" fill="none" stroke="#FFD700" stroke-width="1.5" stroke-dasharray="4 3" opacity=".6"/>
+    <circle cx="4" cy="4" r="4" fill="#FFD700"/>
+    <circle cx="96" cy="4" r="4" fill="#FFD700"/>
+    <circle cx="4" cy="96" r="4" fill="#FFD700"/>
+    <circle cx="96" cy="96" r="4" fill="#FFD700"/>
+    <text x="50" y="57" text-anchor="middle" font-size="11" fill="#FFD700" font-family="monospace" letter-spacing="1">GOLD</text>
+  </svg>`,
+
+  frame_neon: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#0d0d1a"/>
+    <rect x="4" y="4" width="92" height="92" rx="14" fill="none" stroke="#00f5ff" stroke-width="4"/>
+    <rect x="8" y="8" width="84" height="84" rx="11" fill="none" stroke="#00f5ff" stroke-width="1" opacity=".4"/>
+    <rect x="12" y="12" width="76" height="76" rx="8" fill="none" stroke="#ff00e5" stroke-width="1" opacity=".3"/>
+    <line x1="4" y1="50" x2="12" y2="50" stroke="#00f5ff" stroke-width="2"/>
+    <line x1="88" y1="50" x2="96" y2="50" stroke="#00f5ff" stroke-width="2"/>
+    <line x1="50" y1="4" x2="50" y2="12" stroke="#00f5ff" stroke-width="2"/>
+    <line x1="50" y1="88" x2="50" y2="96" stroke="#00f5ff" stroke-width="2"/>
+    <text x="50" y="57" text-anchor="middle" font-size="11" fill="#00f5ff" font-family="monospace" letter-spacing="1">NEON</text>
+  </svg>`,
+
+  theme_ocean: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" rx="12" fill="#0a1628"/>
+    <rect x="0" y="60" width="100" height="40" rx="0" fill="#0d2040" opacity=".8"/>
+    <path d="M0 65 Q25 55 50 65 Q75 75 100 65 L100 100 L0 100Z" fill="#0e3060" opacity=".6"/>
+    <path d="M0 72 Q25 62 50 72 Q75 82 100 72 L100 100 L0 100Z" fill="#1a4080" opacity=".5"/>
+    <circle cx="50" cy="30" r="14" fill="none" stroke="#4488ff" stroke-width="2"/>
+    <path d="M42 30 L50 22 L58 30 L50 38Z" fill="#4488ff" opacity=".7"/>
+    <text x="50" y="55" text-anchor="middle" font-size="9" fill="#4488ff" font-family="monospace" letter-spacing="1">OCEAN</text>
+  </svg>`,
+
+  reaction_boom: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" rx="12" fill="#1a0a0a"/>
+    <polygon points="50,10 58,38 88,28 68,50 88,72 58,62 50,90 42,62 12,72 32,50 12,28 42,38" fill="#ED2822" opacity=".9"/>
+    <polygon points="50,22 56,40 74,34 62,50 74,66 56,60 50,78 44,60 26,66 38,50 26,34 44,40" fill="#ff6644" opacity=".7"/>
+    <circle cx="50" cy="50" r="10" fill="#ffcc00"/>
+    <text x="50" y="54" text-anchor="middle" font-size="10" fill="#1a0a0a" font-family="monospace" font-weight="bold">!</text>
+  </svg>`,
+};
+
+// Патчим getPreviewHtml — возвращает inline SVG если есть фейк, иначе img
+function getItemPreviewHtml(item, large = false) {
+  if (FAKE_PREVIEWS[item.id]) {
+    return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">${FAKE_PREVIEWS[item.id]}</div>`;
+  }
+  if (item.preview_url) {
+    return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" style="width:100%;height:100%;object-fit:${large?'contain':'cover'}">`;
+  }
+  return '🎁';
+}
+
+/* ─── ИНВЕНТАРЬ В ПРОФИЛЕ ────────────────────────── */
+let _invFilter = 'all';
+
+function renderInventory() {
+  const grid     = document.getElementById('inventory-grid');
+  const emptyEl  = document.getElementById('inventory-empty');
+  if (!grid) return;
+
+  const owned = _shopItems.filter(i => !!_shopInventory[i.id]);
+
+  if (!owned.length) {
+    grid.innerHTML = '';
+    emptyEl?.classList.remove('hidden');
+    return;
+  }
+  emptyEl?.classList.add('hidden');
+
+  const filtered = _invFilter === 'all' ? owned : owned.filter(i => i.type === _invFilter);
+
+  if (!filtered.length) {
+    grid.innerHTML = '<div class="shop-loading">Нет предметов этой категории</div>';
+    return;
+  }
+
+  grid.innerHTML = filtered.map(item => {
+    const equipped = Object.values(_shopEquipped).includes(item.id);
+    const cls = equipped ? 'shop-card equipped' : 'shop-card owned';
+    return `<div class="${cls}" data-inv-item="${item.id}">
+      <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
+      <div class="shop-card-body">
+        <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
+        <div class="shop-card-name">${item.name}</div>
+        <button class="shop-card-action ${equipped ? 'applied' : ''}" data-inv-action="${item.id}">
+          ${equipped ? 'Применено' : 'Применить'}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Клики по кнопкам
+  grid.querySelectorAll('[data-inv-action]').forEach(btn => {
+    const itemId = btn.dataset.invAction;
+    const item   = _shopItems.find(i => i.id === itemId);
+    if (!item) return;
+    const equipped = Object.values(_shopEquipped).includes(itemId);
+    if (equipped) return; // уже применено — не кликается
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      await fetch('/api/equip', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentPlayerId, itemId }),
+      });
+      _shopEquipped[item.type] = itemId;
+      renderInventory();
+      renderShopGrid();
+    });
+  });
+}
+
+function initInventory() {
+  // Фильтры
+  document.querySelectorAll('[data-inv-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-inv-filter]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _invFilter = btn.dataset.invFilter;
+      renderInventory();
+    });
+  });
+
+  // Ссылка "перейти в магазин"
+  document.getElementById('inventory-go-shop')?.addEventListener('click', e => {
+    e.preventDefault();
+    showScreen('shop');
+  });
+}
+
+// Патчим renderShopGrid — используем getItemPreviewHtml
+const _origRenderShopGrid = renderShopGrid;
+renderShopGrid = function() {
+  const grid = document.getElementById('shop-grid');
+  if (!grid) return;
+
+  const items = _shopFilter === 'all'
+    ? _shopItems
+    : _shopItems.filter(i => i.type === _shopFilter);
+
+  if (!items.length) {
+    grid.innerHTML = '<div class="shop-loading">Нет товаров</div>';
+    return;
+  }
+
+  grid.innerHTML = items.map(item => {
+    const owned    = !!_shopInventory[item.id];
+    const equipped = Object.values(_shopEquipped).includes(item.id);
+    const cls      = equipped ? 'shop-card equipped' : owned ? 'shop-card owned' : 'shop-card';
+    const priceHtml = equipped
+      ? '<span class="shop-card-price equipped">Надето</span>'
+      : owned
+        ? '<span class="shop-card-price owned">✓ Куплено</span>'
+        : item.price_stars
+          ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
+          : '<span class="shop-card-price owned">Бесплатно</span>';
+
+    return `<div class="${cls}" data-item-id="${item.id}">
+      <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
+      <div class="shop-card-body">
+        <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
+        <div class="shop-card-name">${item.name}</div>
+        ${priceHtml}
+      </div>
+    </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.shop-card').forEach(card => {
+    card.addEventListener('click', () => openShopItem(card.dataset.itemId));
+  });
+};
+
+// Патчим openShopItem — используем getItemPreviewHtml
+const _origOpenShopItem = openShopItem;
+openShopItem = function(itemId) {
+  const item = _shopItems.find(i => i.id === itemId);
+  if (!item) return;
+  _currentShopItemId = itemId;
+
+  const owned    = !!_shopInventory[itemId];
+  const equipped = Object.values(_shopEquipped).includes(itemId);
+
+  document.getElementById('shop-item-title').textContent = item.name;
+  document.getElementById('shop-item-name').textContent  = item.name;
+  document.getElementById('shop-item-desc').textContent  = item.description || '';
+  document.getElementById('shop-item-type-badge').textContent = ITEM_TYPE_LABELS[item.type] || item.type;
+
+  const previewEl = document.getElementById('shop-item-preview-lg');
+  previewEl.innerHTML = getItemPreviewHtml(item, true);
+
+  const priceEl  = document.getElementById('shop-item-price');
+  const statusEl = document.getElementById('shop-item-status');
+  const btnEl    = document.getElementById('shop-item-btn');
+
+  if (equipped) {
+    priceEl.textContent  = '';
+    statusEl.textContent = '✓ Применено';
+    btnEl.textContent    = 'Снять';
+    btnEl.className      = 'btn btn-secondary btn-large';
+  } else if (owned) {
+    priceEl.textContent  = '';
+    statusEl.textContent = '✓ Куплено';
+    btnEl.textContent    = 'Применить';
+    btnEl.className      = 'btn btn-primary btn-large';
+  } else if (item.price_stars) {
+    priceEl.textContent  = `⭐ ${item.price_stars} звёзд`;
+    statusEl.textContent = '';
+    btnEl.textContent    = 'Купить';
+    btnEl.className      = 'btn btn-primary btn-large';
+  } else {
+    priceEl.textContent  = 'Бесплатно';
+    statusEl.textContent = '';
+    btnEl.textContent    = 'Получить';
+    btnEl.className      = 'btn btn-primary btn-large';
+  }
+
+  document.getElementById('shop-item-back').onclick = () => showScreen('shop', { isBack: true });
+  showScreen('shop-item');
+};
 

@@ -381,6 +381,7 @@
     <div class="profile-tabs">
       <button class="profile-tab active" data-tab="xp">Уровень</button>
       <button class="profile-tab" data-tab="stats">Статистика</button>
+      <button class="profile-tab" data-tab="inventory">Инвентарь</button>
     </div>
 
     <!-- Вкладка: Уровень -->
@@ -430,6 +431,24 @@
         <div class="btn-reset-wrap">
           <button class="btn btn-danger" id="btn-reset-stats">Сбросить статистику</button>
         </div>
+      </div>
+    </div>
+
+
+    <!-- Вкладка: Инвентарь -->
+    <div class="profile-tab-content hidden" id="profile-tab-inventory">
+      <div class="inventory-empty hidden" id="inventory-empty">
+        <p>У вас пока нет предметов.<br>Загляните в <a href="#" id="inventory-go-shop">Магазин</a>!</p>
+      </div>
+      <div class="inventory-filters">
+        <button class="shop-filter active" data-inv-filter="all">Все</button>
+        <button class="shop-filter" data-inv-filter="frame">Рамки</button>
+        <button class="shop-filter" data-inv-filter="theme">Темы</button>
+        <button class="shop-filter" data-inv-filter="reaction">Реакции</button>
+        <button class="shop-filter" data-inv-filter="title">Звания</button>
+      </div>
+      <div class="shop-grid" id="inventory-grid">
+        <div class="shop-loading">Загрузка...</div>
       </div>
     </div>
 
