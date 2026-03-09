@@ -87,6 +87,7 @@ db.exec(`
   );
 `);
 try { db.exec(`ALTER TABLE battle_history ADD COLUMN mode TEXT DEFAULT 'online'`); } catch(e) {}
+try { db.exec(`ALTER TABLE shop_items ADD COLUMN photo_url_tg TEXT`); } catch(e) {}
 
 // ─── МАГАЗИН ──────────────────────────────────────────────────────────────────
 
@@ -145,18 +146,15 @@ db.exec(`
 const itemCount = db.prepare('SELECT COUNT(*) as c FROM shop_items').get().c;
 if (itemCount === 0) {
   const seedItems = [
-    // Рамки
-    { id: 'frame_gold',    type: 'frame',    name: 'Золотая рамка',    description: 'Классическая золотая рамка для аватарки',  price_stars: 50,  preview_url: '/shop/previews/frame_gold.svg',    sort_order: 10 },
-    { id: 'frame_neon',    type: 'frame',    name: 'Неоновая рамка',   description: 'Яркая неоновая рамка с эффектом свечения', price_stars: 75,  preview_url: '/shop/previews/frame_neon.svg',    sort_order: 11 },
-    // Цветовые схемы
-    { id: 'theme_ocean',   type: 'theme',    name: 'Океан',            description: 'Глубокая синяя цветовая схема',            price_stars: 100, preview_url: '/shop/previews/theme_ocean.svg',   sort_order: 20 },
-    { id: 'theme_fire',    type: 'theme',    name: 'Огонь',            description: 'Огненная красно-оранжевая схема',          price_stars: 100, preview_url: '/shop/previews/theme_fire.svg',    sort_order: 21 },
-    // Реакции
-    { id: 'reaction_boom', type: 'reaction', name: 'Бум!',             description: 'Взрыв при попадании',                     price_stars: 30,  preview_url: '/shop/previews/reaction_boom.svg', sort_order: 30 },
-    { id: 'reaction_rip',  type: 'reaction', name: 'RIP',              description: 'Надгробие при потоплении корабля',         price_stars: 30,  preview_url: '/shop/previews/reaction_rip.svg',  sort_order: 31 },
-    // Звания
-    { id: 'title_admiral', type: 'title',    name: 'Адмирал флота',    description: 'Эксклюзивное звание для лучших',           price_stars: 200, preview_url: '/shop/previews/title_admiral.svg', sort_order: 40 },
-    { id: 'title_pirate',  type: 'title',    name: 'Пират',            description: 'Вольный морской волк',                    price_stars: 150, preview_url: '/shop/previews/title_pirate.svg',  sort_order: 41 },
+    {
+      id:          'theme_light',
+      type:        'theme',
+      name:        'Светлая тема',
+      description: 'Светлая цветовая схема',
+      price_stars: 100,
+      preview_url: '/shop/previews/theme/frame_theme_white.svg',
+      sort_order:  10,
+    },
   ];
   const insertItem = db.prepare(`INSERT OR IGNORE INTO shop_items (id,type,name,description,price_stars,preview_url,sort_order) VALUES (?,?,?,?,?,?,?)`);
   for (const it of seedItems) insertItem.run(it.id, it.type, it.name, it.description, it.price_stars, it.preview_url, it.sort_order);
@@ -1041,7 +1039,7 @@ app.post('/api/shop/buy', async (req, res) => {
         payload,
         currency: 'XTR',               // Telegram Stars
         prices: [{ label: item.name, amount: item.price_stars }],
-        // photo_url не передаём — TG принимает только JPEG/PNG, не SVG
+        photo_url: item.photo_url_tg ? `${req.protocol}://${req.get('host')}${item.photo_url_tg}` : undefined,
       })
     });
     const tgJson = await tgRes.json();

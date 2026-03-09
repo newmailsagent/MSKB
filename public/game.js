@@ -3002,6 +3002,9 @@ async function loadShopData() {
       _shopInventory = {};
       (invRes.data.items || []).forEach(i => { _shopInventory[i.item_id] = true; });
       _shopEquipped  = invRes.data.equipped || {};
+      // Применяем тему из инвентаря
+      applyEquippedThemeFromState();
+      saveThemeToStorage(_shopEquipped['theme'] || null);
     }
   } catch(e) {
     console.error('[Shop] loadShopData error:', e);
@@ -3127,6 +3130,7 @@ async function handleShopItemBtn() {
       body: JSON.stringify({ userId: App.user?.id, slot: item.type }),
     });
     delete _shopEquipped[item.type];
+    if (item.type === 'theme') { resetTheme(); saveThemeToStorage(null); }
     openShopItem(itemId);
     renderShopGrid();
     return;
@@ -3138,6 +3142,7 @@ async function handleShopItemBtn() {
       body: JSON.stringify({ userId: App.user?.id, itemId }),
     });
     _shopEquipped[item.type] = itemId;
+    if (item.type === 'theme') { applyEquippedTheme(itemId); saveThemeToStorage(itemId); }
     openShopItem(itemId);
     renderShopGrid();
     return;
@@ -3220,48 +3225,8 @@ function initShop() {
 
 
 /* ─── ФЕЙКОВЫЕ ПРЕВЬЮ (временные SVG) ───────────────────────────────────── */
-const FAKE_PREVIEWS = {
-  frame_gold: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <rect width="100" height="100" fill="#1a1a1a"/>
-    <rect x="4" y="4" width="92" height="92" rx="14" fill="none" stroke="#FFD700" stroke-width="5"/>
-    <rect x="10" y="10" width="80" height="80" rx="10" fill="none" stroke="#FFD700" stroke-width="1.5" stroke-dasharray="4 3" opacity=".6"/>
-    <circle cx="4" cy="4" r="4" fill="#FFD700"/>
-    <circle cx="96" cy="4" r="4" fill="#FFD700"/>
-    <circle cx="4" cy="96" r="4" fill="#FFD700"/>
-    <circle cx="96" cy="96" r="4" fill="#FFD700"/>
-    <text x="50" y="57" text-anchor="middle" font-size="11" fill="#FFD700" font-family="monospace" letter-spacing="1">GOLD</text>
-  </svg>`,
-
-  frame_neon: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <rect width="100" height="100" fill="#0d0d1a"/>
-    <rect x="4" y="4" width="92" height="92" rx="14" fill="none" stroke="#00f5ff" stroke-width="4"/>
-    <rect x="8" y="8" width="84" height="84" rx="11" fill="none" stroke="#00f5ff" stroke-width="1" opacity=".4"/>
-    <rect x="12" y="12" width="76" height="76" rx="8" fill="none" stroke="#ff00e5" stroke-width="1" opacity=".3"/>
-    <line x1="4" y1="50" x2="12" y2="50" stroke="#00f5ff" stroke-width="2"/>
-    <line x1="88" y1="50" x2="96" y2="50" stroke="#00f5ff" stroke-width="2"/>
-    <line x1="50" y1="4" x2="50" y2="12" stroke="#00f5ff" stroke-width="2"/>
-    <line x1="50" y1="88" x2="50" y2="96" stroke="#00f5ff" stroke-width="2"/>
-    <text x="50" y="57" text-anchor="middle" font-size="11" fill="#00f5ff" font-family="monospace" letter-spacing="1">NEON</text>
-  </svg>`,
-
-  theme_ocean: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <rect width="100" height="100" rx="12" fill="#0a1628"/>
-    <rect x="0" y="60" width="100" height="40" rx="0" fill="#0d2040" opacity=".8"/>
-    <path d="M0 65 Q25 55 50 65 Q75 75 100 65 L100 100 L0 100Z" fill="#0e3060" opacity=".6"/>
-    <path d="M0 72 Q25 62 50 72 Q75 82 100 72 L100 100 L0 100Z" fill="#1a4080" opacity=".5"/>
-    <circle cx="50" cy="30" r="14" fill="none" stroke="#4488ff" stroke-width="2"/>
-    <path d="M42 30 L50 22 L58 30 L50 38Z" fill="#4488ff" opacity=".7"/>
-    <text x="50" y="55" text-anchor="middle" font-size="9" fill="#4488ff" font-family="monospace" letter-spacing="1">OCEAN</text>
-  </svg>`,
-
-  reaction_boom: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <rect width="100" height="100" rx="12" fill="#1a0a0a"/>
-    <polygon points="50,10 58,38 88,28 68,50 88,72 58,62 50,90 42,62 12,72 32,50 12,28 42,38" fill="#ED2822" opacity=".9"/>
-    <polygon points="50,22 56,40 74,34 62,50 74,66 56,60 50,78 44,60 26,66 38,50 26,34 44,40" fill="#ff6644" opacity=".7"/>
-    <circle cx="50" cy="50" r="10" fill="#ffcc00"/>
-    <text x="50" y="54" text-anchor="middle" font-size="10" fill="#1a0a0a" font-family="monospace" font-weight="bold">!</text>
-  </svg>`,
-};
+// Временные превью — используется пока нет реальных файлов
+const FAKE_PREVIEWS = {};
 
 // Патчим getPreviewHtml — возвращает inline SVG если есть фейк, иначе img
 function getItemPreviewHtml(item, large = false) {
@@ -3440,4 +3405,45 @@ openShopItem = function(itemId) {
   document.getElementById('shop-item-back').onclick = () => showScreen('shop', { isBack: true });
   showScreen('shop-item');
 };
+
+
+/* ─── ПРИМЕНЕНИЕ ТЕМ ─────────────────────────────── */
+
+// Применяет купленную тему по item_id
+function applyEquippedTheme(itemId) {
+  if (itemId === 'theme_light') {
+    document.body.classList.add('theme-light');
+  }
+  // Сюда добавлять новые темы по мере появления:
+  // else if (itemId === 'theme_ocean') { ... }
+}
+
+// Снимает все темы (возврат к тёмной по умолчанию)
+function resetTheme() {
+  document.body.classList.remove('theme-light');
+  // добавлять новые классы тем сюда
+}
+
+// Применяет тему из текущей экипировки игрока
+function applyEquippedThemeFromState() {
+  const equippedThemeId = _shopEquipped['theme'];
+  resetTheme();
+  if (equippedThemeId) applyEquippedTheme(equippedThemeId);
+}
+
+// Сохраняем тему в localStorage чтобы применялась сразу при загрузке
+function saveThemeToStorage(itemId) {
+  try {
+    if (itemId) localStorage.setItem('equippedTheme', itemId);
+    else        localStorage.removeItem('equippedTheme');
+  } catch(e) {}
+}
+
+// Применяем тему из localStorage немедленно при загрузке (до синхронизации с сервером)
+(function applyThemeEarly() {
+  try {
+    const saved = localStorage.getItem('equippedTheme');
+    if (saved) applyEquippedTheme(saved);
+  } catch(e) {}
+})();
 
