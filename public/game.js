@@ -2233,14 +2233,20 @@ function initBurger() {
     App.settings.showEnemyMoves = !App.settings.showEnemyMoves;
     saveJSON('bs_settings', App.settings);
     updateBurgerEnemyMoves();
+    // Обновляем текст кнопки
+    const span = document.querySelector('#burger-enemy-moves span:last-child');
+    if (span) span.textContent = App.settings.showEnemyMoves ? 'Ходы противника' : 'Ходы противника (выкл)';
   });
 
   document.getElementById('burger-stats-btn')?.addEventListener('click', () => {
     close();
-    renderStatsScreen();
-    const statsBackBtn = document.getElementById('stats-back-btn');
-    if (statsBackBtn) statsBackBtn.dataset.screen = Game.active ? 'game' : 'menu';
-    showScreen('stats');
+    showScreen('profile');
+    // Открываем вкладку статистики
+    setTimeout(() => {
+      document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'stats'));
+      document.querySelectorAll('.profile-tab-content').forEach(el => el.classList.toggle('hidden', el.id !== 'profile-tab-stats'));
+      renderStatsScreen();
+    }, 50);
   });
 
   document.getElementById('burger-settings-btn')?.addEventListener('click', () => {
@@ -2267,6 +2273,8 @@ function updateBurgerEnemyMoves() {
   if (!btn) return;
   const on = App.settings.showEnemyMoves !== false;
   btn.classList.toggle('muted', !on);
+  const span = btn.querySelector('span:last-child');
+  if (span) span.textContent = on ? 'Ходы противника' : 'Ходы противника (выкл)';
 }
 
 /* ─── КНОПКА ЗВУКА В ШАПКЕ ───────────────────────── */
@@ -3007,15 +3015,10 @@ async function loadShopData() {
       _shopInventory = {};
       (invRes.data.items || []).forEach(i => { _shopInventory[i.item_id] = true; });
       _shopEquipped  = invRes.data.equipped || {};
-      // Применяем тему — берём из localStorage если она уже применена (не перебиваем)
-      const storedTheme = (() => { try { return localStorage.getItem('equippedTheme'); } catch(e) { return null; } })();
+      // Синхронизируем localStorage с сервером — но НЕ применяем тему визуально
+      // (тема уже применена из localStorage при старте, или пользователь сам меняет)
       const serverTheme = _shopEquipped['theme'] || null;
-      // Если localStorage и сервер расходятся — доверяем серверу и обновляем
-      if (storedTheme !== serverTheme) {
-        saveThemeToStorage(serverTheme);
-        resetTheme();
-        if (serverTheme) applyEquippedTheme(serverTheme);
-      }
+      saveThemeToStorage(serverTheme);
     }
   } catch(e) {
     console.error('[Shop] loadShopData error:', e);

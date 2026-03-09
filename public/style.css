@@ -1291,48 +1291,60 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 
 /* ─── СВЕТЛАЯ ТЕМА — ДОПОЛНИТЕЛЬНЫЕ ПРАВКИ ──────── */
 
-/* Главный экран */
-body.theme-light .btn-primary { color: #111111; }
-body.theme-light .btn-ghost   { border-color: rgba(0,0,0,.25); color: #555; }
+/* Все кнопки .btn-primary — тёмный текст */
+body.theme-light .btn-primary,
+body.theme-light .btn-primary.btn-large { color: #111111 !important; }
 
-/* SVG заголовок — белые пути делаем тёмными */
-body.theme-light .hero-title-svg path[fill="white"],
-body.theme-light .hero-title-svg path[fill="#fff"] { fill: #1a1a1a; }
+/* btn-ghost — обводка + читаемый цвет */
+body.theme-light .btn-ghost { border-color: rgba(0,0,0,.3) !important; color: #444 !important; }
 
-/* Профиль — активная вкладка */
-body.theme-light .profile-tab.active { color: #1a1a1a; }
+/* btn-secondary — обводка */
+body.theme-light .btn-secondary { border-color: rgba(0,0,0,.2) !important; }
 
-/* Профиль — квадрат с уровнем */
+/* SVG заголовок — белые пути делаем тёмными (через фильтр, т.к. fill="white" в атрибуте) */
+body.theme-light .hero-title-svg { filter: invert(1) brightness(0.15) contrast(2); }
+
+/* Профиль — активная вкладка текст */
+body.theme-light .profile-tab.active { color: #1a1a1a !important; }
+
+/* Профиль + gameover — квадраты с уровнем — светло-серый фон */
 body.theme-light .xp-ring-bg,
-body.theme-light .profile-ring-bg { fill: #d0d0d0; }
+body.theme-light .profile-ring-bg { fill: #cccccc !important; }
 
-/* XP прогресс-бар — светло-серый фон */
-body.theme-light .xp-progress-bar-wrap { background: #cccccc; }
+/* XP прогресс-бар — светло-серый трек */
+body.theme-light .xp-progress-bar-wrap { background: #cccccc !important; }
 
 /* Бургер меню */
-body.theme-light .burger-menu  { background: #e8e8e8; border-left-color: rgba(0,0,0,.1); }
+body.theme-light .burger-menu  { background: #ebebeb; border-left-color: rgba(0,0,0,.12); }
 body.theme-light .burger-item  { border-bottom-color: rgba(0,0,0,.07); color: #1a1a1a; }
-body.theme-light .burger-item:active { background: rgba(0,0,0,.05); }
+body.theme-light .burger-item:active { background: rgba(0,0,0,.06); }
 body.theme-light .burger-overlay { background: rgba(0,0,0,.3); }
+body.theme-light .burger-menu-header { color: #888; }
 
-/* Переключатель поле Врага/Моё */
-body.theme-light .toggle-btn.active { color: var(--bg2); }
+/* Переключатель поле Врага/Моё — активная вкладка: тёмный текст */
+body.theme-light .toggle-btn.active { color: var(--bg2) !important; }
 
-/* Кнопка Готов к бою */
-body.theme-light #btn-ready { color: #111111; }
-
-/* Сдаться в футере */
+/* Сдаться в футере — красный */
 body.theme-light .btn-surrender-ghost { color: var(--red) !important; border-color: var(--red) !important; }
 
-/* Gameover — Реванш цвет текста как у Главное меню */
-body.theme-light #btn-rematch { color: var(--text); }
-body.theme-light #btn-rematch[disabled],
-body.theme-light .rematch-waiting { color: var(--text); }
+/* Gameover — Реванш и ожидание — тёмный текст */
+body.theme-light #btn-rematch,
+body.theme-light #btn-rematch:disabled { color: #1a1a1a !important; }
 
-/* Приглашение друга — кнопка Отмена */
-body.theme-light .modal-btn.btn-ghost,
-body.theme-light .modal .btn-ghost { border-color: rgba(0,0,0,.25); }
-
-/* go-result-block separator */
+/* Убираем лишний разделитель над кнопками в gameover */
 body.theme-light .go-result-block { border-bottom-color: rgba(0,0,0,.1); }
+.go-result-block { border-bottom-color: rgba(255,255,255,.07); }
 
+/* Модальные окна — кнопка Отмена обводка */
+body.theme-light .modal-actions .btn-ghost,
+body.theme-light .modal .btn-ghost { border-color: rgba(0,0,0,.3) !important; }
+
+
+/* Карточка инвентаря — убрать обводку у equipped, добавить фон кнопке */
+.shop-card.equipped { border-color: rgba(255,255,255,.08); }
+body.theme-light .shop-card.equipped { border-color: rgba(0,0,0,.08); }
+
+/* Кнопка Применить — лёгкий серый фон */
+.shop-card-action { background: rgba(255,255,255,.07) !important; }
+body.theme-light .shop-card-action { background: rgba(0,0,0,.07) !important; }
+.shop-card-action.applied { background: transparent !important; }
