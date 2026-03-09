@@ -3146,7 +3146,7 @@ async function handleShopItemBtn() {
       resetTheme();
       saveThemeToStorage(null);
       showLoaderOverMenu(hide => {
-        setTimeout(() => { hide && hide(); showScreen('menu'); }, 400);
+        setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
       });
     }
     openShopItem(itemId);
@@ -3164,7 +3164,7 @@ async function handleShopItemBtn() {
       saveThemeToStorage(itemId);
       showLoaderOverMenu(hide => {
         applyEquippedTheme(itemId);
-        setTimeout(() => { hide && hide(); showScreen('menu'); }, 400);
+        setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
       });
     }
     openShopItem(itemId);
@@ -3369,7 +3369,7 @@ function renderInventory() {
           saveThemeToStorage(null);
           showLoaderOverMenu(hide => {
             resetTheme();
-            setTimeout(() => { hide && hide(); showScreen('menu'); }, 400);
+            setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
           });
         } else {
           await fetch('/api/equip', {
@@ -3380,7 +3380,7 @@ function renderInventory() {
           saveThemeToStorage(itemId);
           showLoaderOverMenu(hide => {
             applyEquippedTheme(itemId);
-            setTimeout(() => { hide && hide(); showScreen('menu'); }, 400);
+            setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
           });
         }
         return;
