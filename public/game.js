@@ -3355,7 +3355,10 @@ function renderInventory() {
   // Клики по кнопкам
   grid.querySelectorAll('[data-inv-action]').forEach(btn => {
     const itemId = btn.dataset.invAction;
-    const item   = _shopItems.find(i => i.id === itemId);
+    // theme_dark — виртуальный, не из _shopItems
+    const item = itemId === 'theme_dark'
+      ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема' }
+      : _shopItems.find(i => i.id === itemId);
     if (!item) return;
     const activeTheme = (() => { try { return localStorage.getItem('equippedTheme'); } catch(e) { return null; } })();
     const equipped = item.type === 'theme'
