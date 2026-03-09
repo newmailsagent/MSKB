@@ -197,6 +197,8 @@ html, body {
 .hero-grid-cell.hit { background: var(--cell-empty); opacity: 1; }
 .hero-grid-cell.hit::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, var(--red) 0px, var(--red) 2px, transparent 2px, transparent 6px); opacity: .85; }
 .hero-title { font-family: var(--font-hd); font-size: clamp(26px,8vw,40px); font-weight: 900; letter-spacing: 4px; text-align: center; line-height: 1.15; position: relative; z-index: 1; }
+.hero-title-svg { position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; }
+.hero-title-svg svg { width: min(88vw, 340px); height: auto; display: block; overflow: hidden; }
 
 .menu-nav { padding: 0 16px 24px; display: flex; flex-direction: column; gap: 10px; }
 .btn-row { display: flex; gap: 10px; }
