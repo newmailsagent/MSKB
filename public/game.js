@@ -2917,9 +2917,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   initOnlineCounter();
   initShop();
 
-  // WebSocket события магазина
-  socket.on('purchase_complete', onPurchaseComplete);
-  socket.on('item_revoked',      onItemRevoked);
+  // WebSocket события магазина — вешаем когда сокет будет готов
+  const _shopSocketInterval = setInterval(() => {
+    if (!WS.socket) return;
+    WS.socket.on('purchase_complete', onPurchaseComplete);
+    WS.socket.on('item_revoked',      onItemRevoked);
+    clearInterval(_shopSocketInterval);
+  }, 500);
 
   // Анимируем прогресс лоадера пока грузим данные с сервера
   startLoadingCellAnim();
@@ -3171,6 +3175,13 @@ function onItemRevoked(data) {
 
 // Инициализация магазина
 function initShop() {
+  // Кнопка Магазин в главном меню — загружаем данные при входе
+  document.getElementById('btn-shop')?.addEventListener('click', async () => {
+    document.getElementById('shop-grid').innerHTML = '<div class="shop-loading">Загрузка...</div>';
+    await loadShopData();
+    renderShopGrid();
+  });
+
   // Фильтры
   document.querySelectorAll('.shop-filter').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -3185,15 +3196,4 @@ function initShop() {
   document.getElementById('shop-item-btn')?.addEventListener('click', handleShopItemBtn);
 }
 
-// Загружаем при входе на экран магазина
-const _origShowScreen = showScreen;
-// Перехватываем переход на shop
-document.addEventListener('DOMContentLoaded', () => {
-  // Вешаем слушатель на кнопку Магазин в меню
-  document.getElementById('btn-shop')?.addEventListener('click', async () => {
-    document.getElementById('shop-grid').innerHTML = '<div class="shop-loading">Загрузка...</div>';
-    await loadShopData();
-    renderShopGrid();
-  });
-});
 
