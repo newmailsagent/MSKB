@@ -25,7 +25,7 @@ const RANKS = [
   { minLevel: 1,  name: 'Новобранец Неона' },
   { minLevel: 5,  name: 'Хакер Дронов' },
   { minLevel: 10, name: 'Неоновый Рейдер' },
-  { minLevel: 20, name: 'Квазарный Титан' },
+  { minLevel: 20, name: 'Кибер-Титан' },
   { minLevel: 30, name: 'Абсолютный Доминайтор' },
 ];
 
@@ -359,9 +359,33 @@ function initSettings() {
     }
   });
   document.getElementById('btn-reset-stats')?.addEventListener('click', () => {
-    showModal('Сбросить статистику?', 'Все данные будут удалены.', [
+    const mode = App._statsMode || 'online';
+    const label = mode === 'online' ? 'онлайн-статистику' : 'статистику против ботов';
+    showModal('Сбросить статистику?', `Удалить ${label}? Действие нельзя отменить.`, [
       { label: 'Отмена',   cls: 'btn-ghost',  action: closeModal },
-      { label: 'Сбросить', cls: 'btn-danger', action: () => { App.stats = defaultStats(); App.history = []; saveJSON('bs_stats', App.stats); saveJSON('bs_history', App.history); updateMenuStats(); closeModal(); }},
+      { label: 'Сбросить', cls: 'btn-danger', action: async () => {
+        closeModal();
+        if (mode === 'online') {
+          // Сбрасываем онлайн: сервер + локальный кэш
+          if (!App.user.isGuest) {
+            await fetch('/api/stats/reset', {
+              method: 'POST',
+              headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ id: App.user.id }),
+            }).catch(() => {});
+          }
+          App.stats   = defaultStats();
+          App.history = [];
+        } else {
+          // Сбрасываем боты: только localStorage
+          App.statsBots   = defaultStats();
+          App.historyBots = [];
+          saveJSON('bs_stats_bots',   App.statsBots);
+          saveJSON('bs_history_bots', App.historyBots);
+        }
+        updateMenuStats();
+        renderStatsScreen(mode);
+      }},
     ]);
   });
 }
@@ -1677,8 +1701,16 @@ function endGame(result) {
       // Если xp_reward уже пришёл — запускаем анимацию
       if (Game._pendingXp) {
         setTimeout(() => { showXpReward(Game._pendingXp); Game._pendingXp = null; }, 350);
+      } else {
+        // Показываем расчётное значение сразу, чтобы игрок не видел '...'
+        // Если xp_reward придёт — перезапишет; если нет — через 4с показываем 0
+        Game._xpFallbackTimer = setTimeout(() => {
+          const gainEl2 = document.getElementById('xp-gained');
+          if (gainEl2 && gainEl2.textContent === '…') {
+            gainEl2.innerHTML = '<span class="xp-zero">+0 XP</span>';
+          }
+        }, 4000);
       }
-      // Иначе xp_reward socket listener подхватит и вызовет showXpReward сам
     } else {
       if (xpBlock) xpBlock.classList.add('hidden');
     }
@@ -1910,6 +1942,7 @@ const WS = {
 
     // XP награда по итогам онлайн-боя
     this.socket.on('xp_reward', (xpData) => {
+      if (Game._xpFallbackTimer) { clearTimeout(Game._xpFallbackTimer); Game._xpFallbackTimer = null; }
       Game._pendingXp = xpData;
       // Применяем сразу если уже на экране gameover, иначе endGame подберёт
       if (currentScreen === 'gameover') showXpReward(xpData);
@@ -2954,8 +2987,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   clearInterval(progressTick);
   setLoadingProgress(100);
 
-  // Обновляем UI уже с актуальными данными
+  // Обновляем UI уже с актуальными данными — ВСЁ рендерим пока лоадер ещё виден
   updateMenuUI();
+  // Пре-рендерим профиль и статистику за лоадером, чтобы не было мигания
+  await renderProfileScreen().catch(() => {});
+  await renderStatsScreen('online').catch(() => {});
 
   // Короткая пауза чтобы игрок увидел 100%
   await new Promise(r => setTimeout(r, 300));

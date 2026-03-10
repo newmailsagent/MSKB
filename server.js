@@ -346,7 +346,7 @@ const RANKS = [
   { minLevel: 1,  name: 'Новобранец Неона' },
   { minLevel: 5,  name: 'Хакер Дронов' },
   { minLevel: 10, name: 'Неоновый Рейдер' },
-  { minLevel: 20, name: 'Квазарный Титан' },
+  { minLevel: 20, name: 'Кибер-Титан' },
   { minLevel: 30, name: 'Абсолютный Доминайтор' },
 ];
 
@@ -378,6 +378,10 @@ function calcXpReward(result, sunkenCount, shots, hits) {
     const bonusXp = accBonus;
     return { total: baseXp + bonusXp, baseXp, bonusXp };
   } else {
+    // Проиграл: 0 XP если сдался без единого выстрела и без уничтожения кораблей
+    if (shots === 0 && (sunkenCount || 0) === 0) {
+      return { total: 0, baseXp: 0, bonusXp: 0 };
+    }
     const total = Math.min(400, 300 + 10 * (sunkenCount || 0));
     return { total, baseXp: total, bonusXp: 0 };
   }
@@ -386,12 +390,12 @@ function calcXpReward(result, sunkenCount, shots, hits) {
 function addXp(id, reward) {
   id = normalizeId(id);
   const xpGain = typeof reward === 'number' ? reward : reward.total;
-  if (!id || id.startsWith('guest_') || xpGain <= 0) return null;
+  if (!id || id.startsWith('guest_')) return null;
   const before = db.prepare(`SELECT xp FROM players WHERE id=?`).get(id);
   if (!before) return null;
   const xpBefore = before.xp || 0;
-  const xpAfter  = xpBefore + xpGain;
-  db.prepare(`UPDATE players SET xp=? WHERE id=?`).run(xpAfter, id);
+  const xpAfter  = xpBefore + Math.max(0, xpGain);
+  if (xpGain > 0) db.prepare(`UPDATE players SET xp=? WHERE id=?`).run(xpAfter, id);
   const levelBefore = calcLevel(xpBefore);
   const levelAfter  = calcLevel(xpAfter);
   const baseXp  = typeof reward === 'object' ? reward.baseXp  : xpGain;
@@ -584,8 +588,12 @@ function startTurnTimer(room) {
         winner: otherPlayer.playerId,
         loser:  timedOutPlayer.playerId,
       });
-      addWin(otherPlayer.playerId,  otherPlayer.shots,  otherPlayer.hits,  true);
-      addLoss(timedOutPlayer.playerId, timedOutPlayer.shots, timedOutPlayer.hits, true);
+      const toSunken  = timedOutPlayer.field ? countSunkenShips(timedOutPlayer.field) : 0;
+      const otherSunk = otherPlayer.field    ? countSunkenShips(otherPlayer.field)    : 0;
+      const winXpT  = addWin( otherPlayer.playerId,    otherPlayer.shots,    otherPlayer.hits,    true, toSunken);
+      const lossXpT = addLoss(timedOutPlayer.playerId, timedOutPlayer.shots, timedOutPlayer.hits, true, otherSunk);
+      if (winXpT  && otherPlayer.socketId)    io.to(otherPlayer.socketId).emit('xp_reward', winXpT);
+      if (lossXpT && timedOutPlayer.socketId) io.to(timedOutPlayer.socketId).emit('xp_reward', lossXpT);
     } else {
       // 1 просрочка — просто передаём ход
       room.turn = otherPlayer.playerId;
@@ -735,10 +743,8 @@ io.on('connection', (socket) => {
     clearTurnTimer(room);
     io.to(winner.socketId).emit('opponent_surrendered');
     io.to(surrenderer.socketId).emit('surrender_confirmed');
-    const winSurrField = getOpponent(room, socket.id)?.field;
-    const lossSurrField = surrenderer.field;
-    const wSunken = winSurrField ? countSunkenShips(winSurrField) : 0;
-    const lSunken = lossSurrField ? countSunkenShips(lossSurrField) : 0;
+    const wSunken = surrenderer.field ? countSunkenShips(surrenderer.field) : 0; // корабли, потопленные победителем
+    const lSunken = winner.field      ? countSunkenShips(winner.field)      : 0; // корабли, потопленные сдавшимся
     const winXp2  = addWin( winner.playerId,      winner.shots,      winner.hits,      true, wSunken);
     const lossXp2 = addLoss(surrenderer.playerId, surrenderer.shots, surrenderer.hits, true, lSunken);
     if (winXp2  && winner.socketId)      io.to(winner.socketId).emit('xp_reward', winXp2);
@@ -839,8 +845,12 @@ io.on('connection', (socket) => {
         // Игра шла — победа оставшемуся
         room.over = true;
         io.to(stayer.socketId).emit('opponent_disconnected_win');
-        addWin(stayer.playerId,  stayer.shots, stayer.hits, true);
-        addLoss(leaver.playerId, leaver.shots, leaver.hits, true);
+        const dSunkenStayer = leaver.field ? countSunkenShips(leaver.field) : 0;
+        const dSunkenLeaver = stayer.field ? countSunkenShips(stayer.field) : 0;
+        const dWinXp  = addWin( stayer.playerId, stayer.shots, stayer.hits, true, dSunkenStayer);
+        const dLossXp = addLoss(leaver.playerId, leaver.shots, leaver.hits, true, dSunkenLeaver);
+        if (dWinXp  && stayer.socketId) io.to(stayer.socketId).emit('xp_reward', dWinXp);
+        // leaver отключён — xp_reward не шлём
         recordDuelResult(stayer.playerId, leaver.playerId);
         rooms.delete(roomId);
       } else if (stayer?.socketId) {
@@ -943,6 +953,20 @@ app.get('/api/stats/:id',  (req, res) => {
     if (data) xpInfo = getXpInfo(req.params.id);
     res.json({ ok: true, data: data ? { ...data, ...xpInfo } : null });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post('/api/stats/reset', (req, res) => {
+  try {
+    const id = normalizeId(req.body.id);
+    if (!id || id.startsWith('guest_')) { res.json({ ok: false }); return; }
+    db.prepare(`UPDATE players SET
+      wins=0, losses=0, total_shots=0, total_hits=0,
+      online_wins=0, online_losses=0, online_shots=0, online_hits=0,
+      rated_wins=0, rated_losses=0, rated_shots=0, rated_hits=0,
+      updated_at=strftime('%s','now')
+      WHERE id=?`).run(id);
+    db.prepare(`DELETE FROM battle_history WHERE player_id=?`).run(id);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ ok: false }); }
 });
 
 // XP профиль отдельным эндпоинтом

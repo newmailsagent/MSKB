@@ -1496,3 +1496,26 @@ body.theme-light .consent-banner {
   box-shadow: 0 -8px 32px rgba(0,0,0,.15);
 }
 body.theme-light .consent-link { color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════
+   КНОПКА МАГАЗИН — выделяем на главной
+════════════════════════════════════════════════════ */
+
+#btn-shop {
+  color: var(--text) !important;
+  border-color: rgba(255,255,255,.22) !important;
+  background: rgba(255,255,255,.06) !important;
+  font-weight: 500;
+}
+#btn-shop:active {
+  background: rgba(255,255,255,.12) !important;
+}
+
+body.theme-light #btn-shop {
+  color: var(--text) !important;
+  border-color: rgba(0,0,0,.25) !important;
+  background: rgba(0,0,0,.06) !important;
+}
+body.theme-light #btn-shop:active {
+  background: rgba(0,0,0,.12) !important;
+}
