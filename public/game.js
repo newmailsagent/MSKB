@@ -310,6 +310,15 @@ function isDesktop() {
   return window.innerWidth >= 768;
 }
 
+/* ─── АВТОРИЗОВАННЫЙ FETCH ───────────────────────── */
+// Добавляет X-Telegram-Init-Data для эндпоинтов требующих верификации
+function authFetch(url, options = {}) {
+  const initData = window.Telegram?.WebApp?.initData;
+  const headers  = { ...(options.headers || {}) };
+  if (initData) headers['X-Telegram-Init-Data'] = initData;
+  return fetch(url, { ...options, headers });
+}
+
 /* ─── ПОЛЬЗОВАТЕЛЬ ───────────────────────────────── */
 /* ─── ОПРЕДЕЛЯЕМ — мы в TG или нет ─────────────── */
 function isInsideTelegram() {
@@ -3064,7 +3073,7 @@ async function loadShopData() {
     const [itemsRes, invRes] = await Promise.all([
       fetch('/api/shop/items').then(r => r.json()),
       App.user?.id && !App.user.id.startsWith('guest_')
-        ? fetch(`/api/inventory/${App.user?.id}`).then(r => r.json())
+        ? authFetch(`/api/inventory/${App.user?.id}`).then(r => r.json())
         : Promise.resolve({ ok: true, data: { items: [], equipped: {} } }),
     ]);
     if (itemsRes.ok)  _shopItems = itemsRes.data || [];
