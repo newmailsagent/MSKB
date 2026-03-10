@@ -3015,6 +3015,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Грузим данные с сервера ДО показа меню
   await syncStatsFromServer().catch(() => {});
+  // Загружаем инвентарь и применяем тему с сервера — единственный источник правды
+  await loadShopData().catch(() => {});
 
   clearInterval(progressTick);
   setLoadingProgress(100);
@@ -3072,19 +3074,13 @@ async function loadShopData() {
   try {
     const uid = App.user?.id;
     const isGuest = !uid || uid.startsWith('guest_');
-    console.log(`[Shop] loadShopData uid=${uid} isGuest=${isGuest} initData=${!!window.Telegram?.WebApp?.initData}`);
 
     const [itemsRes, invRes] = await Promise.all([
       fetch('/api/shop/items').then(r => r.json()),
       !isGuest
-        ? authFetch(`/api/inventory/${uid}`).then(async r => {
-            const json = await r.json();
-            console.log(`[Shop] inventory status=${r.status} ok=${json.ok} items=${json.data?.items?.length}`);
-            return json;
-          })
+        ? authFetch(`/api/inventory/${uid}`).then(r => r.json())
         : Promise.resolve({ ok: true, data: { items: [], equipped: {} } }),
     ]);
-    console.log(`[Shop] items=${itemsRes.data?.length} invOk=${invRes.ok}`);
     if (itemsRes.ok)  _shopItems = itemsRes.data || [];
     if (invRes.ok) {
       _shopInventory = {};
@@ -3093,15 +3089,10 @@ async function loadShopData() {
       // НЕ трогаем localStorage здесь — он управляется только через кнопки Применить/Снять
       // Но если сервер говорит что тема экипирована — применяем визуально если ещё не применена
       const serverTheme = _shopEquipped['theme'] || null;
-      const localTheme  = (() => { try { return localStorage.getItem('equippedTheme'); } catch(e) { return null; } })();
-      if (serverTheme && serverTheme !== localTheme) {
-        // Сервер знает о теме которую мы не применили локально — синхронизируем
-        saveThemeToStorage(serverTheme);
-        applyEquippedTheme(serverTheme);
-      } else if (!serverTheme && localTheme) {
-        // localStorage говорит что тема есть, но сервер не знает — доверяем localStorage
-        // (тема могла быть применена до синхронизации)
-      }
+      // Сервер — единственный источник правды для темы
+      // Применяем то что сказал сервер, localStorage больше не используем
+      resetTheme();
+      if (serverTheme) applyEquippedTheme(serverTheme);
     }
   } catch(e) {
     console.error('[Shop] loadShopData error:', e);
@@ -3229,7 +3220,6 @@ async function handleShopItemBtn() {
     delete _shopEquipped[item.type];
     if (item.type === 'theme') {
       resetTheme();
-      saveThemeToStorage(null);
       showLoaderOverMenu(hide => {
         setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
       });
@@ -3246,7 +3236,6 @@ async function handleShopItemBtn() {
     });
     _shopEquipped[item.type] = itemId;
     if (item.type === 'theme') {
-      saveThemeToStorage(itemId);
       showLoaderOverMenu(hide => {
         applyEquippedTheme(itemId);
         setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
@@ -3396,10 +3385,10 @@ function renderInventory() {
   }
 
   grid.innerHTML = filtered.map(item => {
-    // Для тем — источник правды localStorage (применяется мгновенно и не зависит от загрузки)
+    // Для всех предметов включая темы — источник правды _shopEquipped (с сервера)
     let equipped;
     if (item.type === 'theme') {
-      const activeTheme = (() => { try { return localStorage.getItem('equippedTheme'); } catch(e) { return null; } })();
+      const activeTheme = _shopEquipped['theme'] || null;
       equipped = item.id === 'theme_dark' ? !activeTheme : activeTheme === item.id;
     } else {
       equipped = Object.values(_shopEquipped).includes(item.id);
@@ -3437,7 +3426,7 @@ function renderInventory() {
       ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема' }
       : _shopItems.find(i => i.id === itemId);
     if (!item) return;
-    const activeTheme = (() => { try { return localStorage.getItem('equippedTheme'); } catch(e) { return null; } })();
+    const activeTheme = _shopEquipped['theme'] || null;
     const equipped = item.type === 'theme'
       ? (item.id === 'theme_dark' ? !activeTheme : activeTheme === itemId)
       : Object.values(_shopEquipped).includes(itemId);
@@ -3454,7 +3443,6 @@ function renderInventory() {
             });
             delete _shopEquipped['theme'];
           }
-          saveThemeToStorage(null);
           showLoaderOverMenu(hide => {
             resetTheme();
             setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
@@ -3465,7 +3453,6 @@ function renderInventory() {
             body: JSON.stringify({ userId: App.user?.id, itemId }),
           });
           _shopEquipped[item.type] = itemId;
-          saveThemeToStorage(itemId);
           showLoaderOverMenu(hide => {
             applyEquippedTheme(itemId);
             setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
@@ -3617,19 +3604,6 @@ function applyEquippedThemeFromState() {
   if (equippedThemeId) applyEquippedTheme(equippedThemeId);
 }
 
-// Сохраняем тему в localStorage чтобы применялась сразу при загрузке
-function saveThemeToStorage(itemId) {
-  try {
-    if (itemId) localStorage.setItem('equippedTheme', itemId);
-    else        localStorage.removeItem('equippedTheme');
-  } catch(e) {}
-}
 
-// Применяем тему из localStorage немедленно при загрузке (до синхронизации с сервером)
-(function applyThemeEarly() {
-  try {
-    const saved = localStorage.getItem('equippedTheme');
-    if (saved) applyEquippedTheme(saved);
-  } catch(e) {}
-})();
+
 
