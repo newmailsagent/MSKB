@@ -1337,13 +1337,13 @@ app.get('/api/inventory/:userId', (req, res) => {
     const { userId } = req.params;
     if (!userId || userId.startsWith('guest_')) return res.json({ ok: true, data: { items: [], equipped: {} } });
 
-    // Верифицируем подпись только если initData передан и валиден
-    // Невалидный/просроченный initData не блокируем — клиент мог открыть давно
     const initData   = req.headers['x-telegram-init-data'];
     const verifiedId = initData ? verifyTelegramInitData(initData) : null;
 
-    // Если подпись валидна но userId не совпадает — явная попытка получить чужой инвентарь
+    console.log(`[Inventory] userId=${userId} initData=${!!initData} verifiedId=${verifiedId} isAdmin=${isAdmin(userId)}`);
+
     if (verifiedId && verifiedId !== normalizeId(userId)) {
+      console.log(`[Inventory] BLOCKED: verifiedId=${verifiedId} !== userId=${normalizeId(userId)}`);
       return res.status(403).json({ ok: false, error: 'forbidden' });
     }
 
