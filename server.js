@@ -32,6 +32,7 @@ const MAX_TIMEOUTS    = 2;     // 2 просрочки = поражение
 const WARN_AT_MS      = 40000; // предупреждение за 20 сек (на 40-й секунде)
 
 const app    = express();
+const server = http.createServer(app);
 app.set('trust proxy', 1); // за nginx-прокси — для корректного rate limiting
 
 // ─── SECURITY MIDDLEWARE ──────────────────────────────────────────────────────
