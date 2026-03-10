@@ -2597,10 +2597,10 @@ async function renderProfileScreen(tab) {
   if (guestBlock) guestBlock.style.display = isGuest ? ''     : 'none';
   if (isGuest) return;
 
-  // Вкладки — инициализируем один раз
-  if (!document.querySelector('.profile-tab[data-tab]').__tabBound) {
+  // Инициализируем табы один раз
+  if (!renderProfileScreen._tabsInited) {
+    renderProfileScreen._tabsInited = true;
     document.querySelectorAll('.profile-tab[data-tab]').forEach(btn => {
-      btn.__tabBound = true;
       btn.addEventListener('click', () => {
         const t = btn.dataset.tab;
         document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
@@ -2609,6 +2609,10 @@ async function renderProfileScreen(tab) {
         if (t === 'inventory') { (_shopItems.length ? Promise.resolve() : loadShopData()).then(() => renderInventory()); }
       });
     });
+    document.getElementById('profile-stats-mode-toggle')?.addEventListener('click', e => {
+      const btn = e.target.closest('[data-mode]');
+      if (btn) renderStatsScreen(btn.dataset.mode);
+    });
   }
 
   // Открываем нужную вкладку если передана
@@ -2616,24 +2620,6 @@ async function renderProfileScreen(tab) {
     document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     document.querySelectorAll('.profile-tab-content').forEach(el => el.classList.toggle('hidden', el.id !== 'profile-tab-' + tab));
     if (tab === 'stats') renderStatsScreen();
-  }
-
-  // Инициализируем табы (один раз)
-  if (!renderProfileScreen._tabsInited) {
-    renderProfileScreen._tabsInited = true;
-    document.querySelectorAll('.profile-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        const t = tab.dataset.tab;
-        document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
-        document.querySelectorAll('.profile-tab-content').forEach(c => c.classList.toggle('hidden', c.id !== 'profile-tab-' + t));
-        if (t === 'stats') renderStatsScreen();
-        if (t === 'inventory') { (_shopItems.length ? Promise.resolve() : loadShopData()).then(() => renderInventory()); }
-      });
-    });
-    document.getElementById('profile-stats-mode-toggle')?.addEventListener('click', e => {
-      const btn = e.target.closest('[data-mode]');
-      if (btn) renderStatsScreen(btn.dataset.mode);
-    });
   }
 
   const xp    = App.user.xp || 0;
@@ -2669,15 +2655,23 @@ async function renderProfileScreen(tab) {
   const ringFill = document.getElementById('profile-ring-fill');
   if (ringFill) setRingProgress(ringFill, prog.pct, 120);
 
-  // Обновляем с сервера
+  // Обновляем XP с сервера и перерисовываем только числа — без рекурсии
   if (!App.user.isGuest) {
     try {
       const res = await fetch('/api/xp/' + App.user.id);
       const j   = await res.json();
-      if (j.ok && j.data) {
+      if (j.ok && j.data && j.data.xp !== App.user.xp) {
         App.user.xp = j.data.xp;
         saveJSON('bs_user', App.user);
-        renderProfileScreen(); // перерисовываем с актуальными данными
+        // Обновляем только XP-элементы без полного перерендера
+        const p2 = getXpProgress(App.user.xp);
+        setText('profile-level-tag', 'Ур. ' + p2.level);
+        setText('profile-ring-level', p2.level);
+        setText('profile-xp-current', p2.xpInLevel);
+        setText('profile-xp-needed',  p2.xpNeeded);
+        const rf = document.getElementById('profile-ring-fill');
+        if (rf) setRingProgress(rf, p2.pct, 120);
+        updateMenuLevel();
       }
     } catch(e) {}
   }
