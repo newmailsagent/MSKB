@@ -366,8 +366,10 @@ function calcRank(level) {
   return rank;
 }
 
-function calcXpReward(result, sunkenCount, shots, hits) {
+function calcXpReward(result, sunkenCount, shots, hits, loserShots) {
   if (result === 'win') {
+    // Если соперник сдался не выстрелив — утешительные 50 XP
+    if (loserShots === 0) return { total: 50, baseXp: 50, bonusXp: 0 };
     const acc = shots > 0 ? hits / shots : 0;
     let accBonus = 0;
     if (acc >= 0.50) accBonus = 500;
@@ -417,7 +419,7 @@ function getXpInfo(id) {
 
 const MAX_LEGIT_ACCURACY = 0.60; // выше 60% — подозрительно, XP не начисляется
 
-function addWin(id, shots, hits, isOnline = false, sunkenCount = 0) {
+function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots = null) {
   id = normalizeId(id);
   if (!id || id.startsWith('guest_')) return null;
   db.prepare(`UPDATE players SET wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?,
@@ -425,7 +427,8 @@ function addWin(id, shots, hits, isOnline = false, sunkenCount = 0) {
   let xpResult = null;
   if (isOnline) {
     const acc = shots > 0 ? hits / shots : 0;
-    const isLegit = acc <= MAX_LEGIT_ACCURACY;
+    // Если соперник не стрелял — антифарм не применяем (нет смысла), просто 50 XP
+    const isLegit = loserShots === 0 ? true : acc <= MAX_LEGIT_ACCURACY;
 
     db.prepare(`UPDATE players SET online_wins=online_wins+1,
       online_shots=online_shots+?, online_hits=online_hits+? WHERE id=?`).run(shots, hits, id);
@@ -437,7 +440,7 @@ function addWin(id, shots, hits, isOnline = false, sunkenCount = 0) {
         db.prepare(`UPDATE players SET rated_wins=rated_wins+1,
           rated_shots=rated_shots+?, rated_hits=rated_hits+? WHERE id=?`).run(shots, hits, id);
       }
-      const xpReward = calcXpReward('win', sunkenCount, shots, hits);
+      const xpReward = calcXpReward('win', sunkenCount, shots, hits, loserShots ?? null);
       xpResult = addXp(id, xpReward);
     } else {
       // Читер: рейтинг не засчитывается, XP = 0, но клиент видит блок
@@ -758,7 +761,7 @@ io.on('connection', (socket) => {
     io.to(surrenderer.socketId).emit('surrender_confirmed');
     const wSunken = surrenderer.field ? countSunkenShips(surrenderer.field) : 0; // корабли, потопленные победителем
     const lSunken = winner.field      ? countSunkenShips(winner.field)      : 0; // корабли, потопленные сдавшимся
-    const winXp2  = addWin( winner.playerId,      winner.shots,      winner.hits,      true, wSunken);
+    const winXp2  = addWin( winner.playerId,      winner.shots,      winner.hits,      true, wSunken, surrenderer.shots);
     const lossXp2 = addLoss(surrenderer.playerId, surrenderer.shots, surrenderer.hits, true, lSunken);
     if (winXp2  && winner.socketId)      io.to(winner.socketId).emit('xp_reward', winXp2);
     if (lossXp2 && surrenderer.socketId) io.to(surrenderer.socketId).emit('xp_reward', lossXp2);
