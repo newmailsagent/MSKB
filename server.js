@@ -967,6 +967,94 @@ app.get('/api/leaderboard',(req, res) => { try { res.json({ ok: true, data: getR
 app.get('/api/rating',    (req, res) => { try { res.json({ ok: true, data: getRating() }); } catch(e) { console.error('rating error:', e); res.status(500).json({ ok: false, error: e.message }); } });
 app.post('/api/rating/join',  (req, res) => { try { res.json(joinRating(req.body.id));  } catch(e) { res.status(500).json({ ok: false }); } });
 app.post('/api/rating/leave', (req, res) => { try { res.json(leaveRating(req.body.id)); } catch(e) { res.status(500).json({ ok: false }); } });
+
+// ─── ADMIN ANALYTICS ─────────────────────────────────────────────────────────
+app.get('/api/admin/analytics', (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    if (!SHOP_SECRET || secret !== SHOP_SECRET) {
+      return res.status(403).json({ ok: false, error: 'forbidden' });
+    }
+
+    const now     = Math.floor(Date.now() / 1000);
+    const day     = 86400;
+    const since24 = now - day;
+    const since7d = now - day * 7;
+    const since30d= now - day * 30;
+
+    // ── Игроки ──
+    const totalPlayers  = db.prepare(`SELECT COUNT(*) as n FROM players WHERE id NOT LIKE 'guest_%'`).get().n;
+    const newToday      = db.prepare(`SELECT COUNT(*) as n FROM players WHERE updated_at >= ? AND id NOT LIKE 'guest_%'`).get(since24).n;
+    const activeWeek    = db.prepare(`SELECT COUNT(DISTINCT player_id) as n FROM battle_history WHERE date >= ?`).get(since7d).n;
+    const activeMonth   = db.prepare(`SELECT COUNT(DISTINCT player_id) as n FROM battle_history WHERE date >= ?`).get(since30d).n;
+
+    // ── Бои ──
+    const battlesToday  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since24).n;
+    const battles7d     = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since7d).n;
+    const battles30d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since30d).n;
+    const battlesTotal  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online'`).get().n;
+
+    // ── Точность (средняя по всем онлайн-игрокам) ──
+    const accRow = db.prepare(`
+      SELECT
+        ROUND(100.0 * SUM(online_hits) / NULLIF(SUM(online_shots), 0), 1) as avg_acc,
+        SUM(online_shots) as total_shots,
+        SUM(online_hits)  as total_hits
+      FROM players WHERE id NOT LIKE 'guest_%'
+    `).get();
+
+    // ── Винрейт (из battle_history онлайн) ──
+    const vrRow = db.prepare(`
+      SELECT
+        SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
+        SUM(CASE WHEN result='loss' THEN 1 ELSE 0 END) as losses
+      FROM battle_history WHERE mode='online'
+    `).get();
+    const totalBattleRows = (vrRow.wins || 0) + (vrRow.losses || 0);
+    const winrate = totalBattleRows > 0
+      ? Math.round(100 * vrRow.wins / totalBattleRows)
+      : 0;
+
+    // ── Покупки ──
+    const purchasesToday= db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchased_at >= ? AND purchase_type='stars' AND is_active=1`).get(since24).n;
+    const purchases7d   = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchased_at >= ? AND purchase_type='stars' AND is_active=1`).get(since7d).n;
+    const purchases30d  = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchased_at >= ? AND purchase_type='stars' AND is_active=1`).get(since30d).n;
+    const purchasesTotal= db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchase_type='stars' AND is_active=1`).get().n;
+    const refundsTotal  = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchase_type='stars' AND is_active=0`).get().n;
+
+    // ── Топ-5 товаров ──
+    const topItems = db.prepare(`
+      SELECT i.item_id, s.name, COUNT(*) as cnt
+      FROM inventory i
+      LEFT JOIN shop_items s ON s.id = i.item_id
+      WHERE i.purchase_type='stars' AND i.is_active=1
+      GROUP BY i.item_id ORDER BY cnt DESC LIMIT 5
+    `).all();
+
+    // ── Бои по дням (последние 7) ──
+    const byDay = db.prepare(`
+      SELECT
+        date(date, 'unixepoch', 'localtime') as day,
+        COUNT(*) as battles
+      FROM battle_history
+      WHERE mode='online' AND date >= ?
+      GROUP BY day ORDER BY day ASC
+    `).all(since7d);
+
+    // ── Онлайн прямо сейчас ──
+    const onlineNow = getOnlineCount();
+
+    res.json({ ok: true, data: {
+      ts: now,
+      players:   { total: totalPlayers, new_24h: newToday, active_7d: activeWeek, active_30d: activeMonth },
+      battles:   { today: battlesToday, week: battles7d, month: battles30d, total: battlesTotal, by_day: byDay },
+      accuracy:  { avg_pct: accRow.avg_acc, total_shots: accRow.total_shots, total_hits: accRow.total_hits },
+      winrate:   { pct: winrate, wins: vrRow.wins, losses: vrRow.losses },
+      purchases: { today: purchasesToday, week: purchases7d, month: purchases30d, total: purchasesTotal, refunds: refundsTotal, top_items: topItems },
+      online_now: onlineNow,
+    }});
+  } catch(e) { console.error('[analytics]', e); res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get('/api/stats/:id',  (req, res) => {
   try {
     const data = getPlayerStats(req.params.id) || null;
