@@ -1014,6 +1014,9 @@ const Placement = {
     const boardEl = document.getElementById('placement-board');
     if (!boardEl) return;
     boardEl.innerHTML = '';
+    // DOM пересоздан — сбрасываем кэш ячеек превью
+    this._previewCells = [];
+    this._previewR = undefined; this._previewC = undefined; this._previewV = undefined;
     const cellShipMap = {};
     this.ships.forEach(ship => {
       if (ship.placed) ship.cells.forEach(({ r, c }) => { cellShipMap[r+','+c] = ship.id; });
@@ -1082,21 +1085,21 @@ const Placement = {
   },
 
   _showPreview(cx, cy) {
-    this.clearPreview();
     if (!this.selected) return;
 
-    // Вычисляем ячейку математически — elementFromPoint ненадёжен на тач
     const boardEl = document.getElementById('placement-board');
     if (!boardEl) return;
     const rect = boardEl.getBoundingClientRect();
 
-    if (cx < rect.left || cx > rect.right || cy < rect.top || cy > rect.bottom) return;
+    // Зажимаем координаты внутри доски — превью не исчезает при выходе пальца за край
+    const clampedX = Math.max(rect.left, Math.min(rect.right  - 1, cx));
+    const clampedY = Math.max(rect.top,  Math.min(rect.bottom - 1, cy));
 
     // gap между ячейками = 2px (из CSS), 9 gaps на 10 ячеек
     const cellW = (rect.width  - 2 * 9) / BOARD_SIZE;
     const cellH = (rect.height - 2 * 9) / BOARD_SIZE;
-    let c = Math.floor((cx - rect.left) / (cellW + 2));
-    let r = Math.floor((cy - rect.top)  / (cellH + 2));
+    let c = Math.floor((clampedX - rect.left) / (cellW + 2));
+    let r = Math.floor((clampedY - rect.top)  / (cellH + 2));
     c = Math.max(0, Math.min(BOARD_SIZE - 1, c));
     r = Math.max(0, Math.min(BOARD_SIZE - 1, r));
 
@@ -1104,12 +1107,22 @@ const Placement = {
     if (this.vertical) r = Math.min(r, BOARD_SIZE - size);
     else               c = Math.min(c, BOARD_SIZE - size);
 
+    // Не перерисовываем если ячейка не изменилась — устраняет мигание
+    if (this._previewR === r && this._previewC === c && this._previewV === this.vertical) return;
+    this._previewR = r; this._previewC = c; this._previewV = this.vertical;
+
+    // Снимаем классы только с закэшированных ячеек (быстрее querySelectorAll)
+    if (this._previewCells) {
+      this._previewCells.forEach(el => el.classList.remove('preview', 'invalid'));
+    }
+    this._previewCells = [];
+
     const valid = canPlace(this.board, r, c, size, this.vertical);
     for (let i = 0; i < size; i++) {
       const nr = this.vertical ? r+i : r, nc = this.vertical ? c : c+i;
       if (!inBounds(nr, nc)) continue;
       const cl = boardEl.querySelector(`[data-r="${nr}"][data-c="${nc}"]`);
-      if (cl) cl.classList.add(valid ? 'preview' : 'invalid');
+      if (cl) { cl.classList.add(valid ? 'preview' : 'invalid'); this._previewCells.push(cl); }
     }
   },
 
@@ -1166,8 +1179,15 @@ const Placement = {
   },
 
   clearPreview() {
-    document.querySelectorAll('#placement-board .preview, #placement-board .invalid')
-      .forEach(c => c.classList.remove('preview','invalid'));
+    if (this._previewCells) {
+      this._previewCells.forEach(el => el.classList.remove('preview', 'invalid'));
+      this._previewCells = [];
+    } else {
+      // Fallback на случай если кэш не инициализирован
+      document.querySelectorAll('#placement-board .preview, #placement-board .invalid')
+        .forEach(c => c.classList.remove('preview','invalid'));
+    }
+    this._previewR = undefined; this._previewC = undefined; this._previewV = undefined;
   },
 
   clear() {
