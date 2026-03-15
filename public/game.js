@@ -3675,7 +3675,6 @@ const ITEM_SCREENSHOTS = {
 };
 
 function renderShopItemSlider(item) {
-  // Удаляем старый слайдер если был
   const old = document.getElementById('shop-item-slider');
   if (old) old.remove();
 
@@ -3688,8 +3687,6 @@ function renderShopItemSlider(item) {
   const slider = document.createElement('div');
   slider.id = 'shop-item-slider';
   slider.className = 'shop-item-slider';
-  // Показываем сразу — скрываем только если все картинки не нашлись
-  slider.style.display = '';
 
   const track = document.createElement('div');
   track.className = 'shop-item-slider-track';
@@ -3701,63 +3698,104 @@ function renderShopItemSlider(item) {
 
   detail.appendChild(slider);
 
-  let loadedCount = 0;
-  let errorCount  = 0;
   let cur = 0;
-  const slideEls = [];
-  const dotEls   = [];
+  let loaded = 0;
+  let errors = 0;
+  const total = slides.length;
+  const imgs = [];
 
-  function goTo(idx) {
-    cur = (idx + slideEls.length) % slideEls.length;
-    slideEls.forEach((s, i) => s.classList.toggle('active', i === cur));
-    dotEls.forEach((d, i)   => d.classList.toggle('active', i === cur));
+  // Применяем transform для анимированного переключения
+  function goTo(idx, animate = true) {
+    cur = ((idx % total) + total) % total;
+    if (animate) {
+      track.style.transition = 'transform .32s cubic-bezier(.4,0,.2,1)';
+    } else {
+      track.style.transition = 'none';
+    }
+    track.style.transform = `translateX(-${cur * 100}%)`;
+    dotsWrap.querySelectorAll('.slider-dot').forEach((d, i) => d.classList.toggle('active', i === cur));
   }
 
-  function buildDots() {
-    if (slideEls.length <= 1) return;
+  function buildDots(count) {
+    if (count <= 1) return;
     dotsWrap.innerHTML = '';
-    dotEls.length = 0;
-    slideEls.forEach((_, i) => {
+    for (let i = 0; i < count; i++) {
       const d = document.createElement('span');
       d.className = 'slider-dot' + (i === 0 ? ' active' : '');
       d.addEventListener('click', () => goTo(i));
       dotsWrap.appendChild(d);
-      dotEls.push(d);
-    });
+    }
   }
 
+  // Предзагрузка всех картинок
   slides.forEach((src, i) => {
-    const slide = document.createElement('div');
-    slide.className = 'shop-item-slide' + (i === 0 ? ' active' : '');
-    track.appendChild(slide);
-    slideEls.push(slide);
-
     const img = new Image();
     img.onload = () => {
-      loadedCount++;
+      loaded++;
+      const slide = document.createElement('div');
+      slide.className = 'shop-item-slide';
+      slide.dataset.idx = i;
       slide.appendChild(img);
-      if (loadedCount === slides.length - errorCount) {
-        buildDots();
+
+      // Вставляем в правильном порядке
+      let inserted = false;
+      const existing = track.querySelectorAll('.shop-item-slide');
+      for (const s of existing) {
+        if (+s.dataset.idx > i) { track.insertBefore(slide, s); inserted = true; break; }
+      }
+      if (!inserted) track.appendChild(slide);
+
+      // Когда все загрузились — инициализируем слайдер
+      if (loaded + errors === total) {
+        const count = track.querySelectorAll('.shop-item-slide').length;
+        buildDots(count);
+        goTo(0, false);
       }
     };
     img.onerror = () => {
-      errorCount++;
-      const idx = slideEls.indexOf(slide);
-      if (idx > -1) slideEls.splice(idx, 1);
-      slide.remove();
-      if (errorCount === slides.length) {
-        slider.remove(); // все картинки не найдены — убираем слайдер
+      errors++;
+      if (loaded + errors === total) {
+        const count = track.querySelectorAll('.shop-item-slide').length;
+        if (count === 0) { slider.remove(); return; }
+        buildDots(count);
+        goTo(0, false);
       }
     };
     img.src = src;
   });
 
-  // Touch swipe
-  let tx = 0;
-  track.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
-  track.addEventListener('touchend',   e => {
-    const dx = e.changedTouches[0].clientX - tx;
-    if (Math.abs(dx) > 40) goTo(dx < 0 ? cur + 1 : cur - 1);
+  // Touch swipe с инерцией
+  let startX = 0, startY = 0, isDragging = false;
+  track.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    isDragging = false;
+    track.style.transition = 'none';
+  }, { passive: true });
+
+  track.addEventListener('touchmove', e => {
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    // Горизонтальный свайп доминирует
+    if (!isDragging && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 5) {
+      isDragging = true;
+    }
+    if (isDragging) {
+      const count = track.querySelectorAll('.shop-item-slide').length;
+      const offset = -cur * 100 + (dx / track.offsetWidth) * 100;
+      track.style.transform = `translateX(${offset}%)`;
+    }
+  }, { passive: true });
+
+  track.addEventListener('touchend', e => {
+    if (!isDragging) return;
+    const dx = e.changedTouches[0].clientX - startX;
+    const count = track.querySelectorAll('.shop-item-slide').length;
+    if (Math.abs(dx) > 40) {
+      goTo(dx < 0 ? cur + 1 : cur - 1);
+    } else {
+      goTo(cur); // snap back
+    }
   }, { passive: true });
 }
 
