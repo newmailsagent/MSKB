@@ -3702,99 +3702,100 @@ function renderShopItemSlider(item) {
   let loaded = 0;
   let errors = 0;
   const total = slides.length;
-  const imgs = [];
+  const slideEls = new Array(total).fill(null);
 
-  // Применяем transform для анимированного переключения
+  function getCount() { return slideEls.filter(Boolean).length; }
+
   function goTo(idx, animate = true) {
-    cur = ((idx % total) + total) % total;
-    if (animate) {
-      track.style.transition = 'transform .32s cubic-bezier(.4,0,.2,1)';
-    } else {
-      track.style.transition = 'none';
-    }
-    track.style.transform = `translateX(-${cur * 100}%)`;
+    const count = getCount();
+    if (count === 0) return;
+    cur = ((idx % count) + count) % count;
+    track.style.transition = animate ? 'transform .32s cubic-bezier(.4,0,.2,1)' : 'none';
+    // Смещаем на ширину одного слайда = ширина контейнера
+    const slideW = slider.offsetWidth || window.innerWidth;
+    track.style.transform = `translateX(${-cur * slideW}px)`;
     dotsWrap.querySelectorAll('.slider-dot').forEach((d, i) => d.classList.toggle('active', i === cur));
   }
 
-  function buildDots(count) {
-    if (count <= 1) return;
+  function buildDots() {
+    const count = getCount();
+    if (count <= 1) { dotsWrap.innerHTML = ''; return; }
     dotsWrap.innerHTML = '';
     for (let i = 0; i < count; i++) {
       const d = document.createElement('span');
       d.className = 'slider-dot' + (i === 0 ? ' active' : '');
-      d.addEventListener('click', () => goTo(i));
+      const idx = i;
+      d.addEventListener('click', () => goTo(idx));
       dotsWrap.appendChild(d);
     }
   }
 
-  // Предзагрузка всех картинок
+  function onAllSettled() {
+    buildDots();
+    goTo(0, false);
+    // Обновляем позицию при ресайзе (поворот экрана)
+    window.addEventListener('resize', () => goTo(cur, false), { passive: true });
+  }
+
   slides.forEach((src, i) => {
     const img = new Image();
     img.onload = () => {
       loaded++;
       const slide = document.createElement('div');
       slide.className = 'shop-item-slide';
-      slide.dataset.idx = i;
       slide.appendChild(img);
+      slideEls[i] = slide;
 
-      // Вставляем в правильном порядке
-      let inserted = false;
-      const existing = track.querySelectorAll('.shop-item-slide');
-      for (const s of existing) {
-        if (+s.dataset.idx > i) { track.insertBefore(slide, s); inserted = true; break; }
+      // Вставляем сразу в правильную позицию
+      let ref = null;
+      for (let j = i + 1; j < total; j++) {
+        if (slideEls[j] && track.contains(slideEls[j])) { ref = slideEls[j]; break; }
       }
-      if (!inserted) track.appendChild(slide);
+      track.insertBefore(slide, ref);
 
-      // Когда все загрузились — инициализируем слайдер
-      if (loaded + errors === total) {
-        const count = track.querySelectorAll('.shop-item-slide').length;
-        buildDots(count);
-        goTo(0, false);
-      }
+      if (loaded + errors === total) onAllSettled();
     };
     img.onerror = () => {
       errors++;
       if (loaded + errors === total) {
-        const count = track.querySelectorAll('.shop-item-slide').length;
-        if (count === 0) { slider.remove(); return; }
-        buildDots(count);
-        goTo(0, false);
+        if (getCount() === 0) { slider.remove(); return; }
+        onAllSettled();
       }
     };
     img.src = src;
   });
 
-  // Touch swipe с инерцией
-  let startX = 0, startY = 0, isDragging = false;
+  // Touch swipe
+  let startX = 0, startY = 0, dragging = false, lastDx = 0;
+
   track.addEventListener('touchstart', e => {
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
-    isDragging = false;
+    dragging = false;
+    lastDx = 0;
     track.style.transition = 'none';
   }, { passive: true });
 
   track.addEventListener('touchmove', e => {
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
-    // Горизонтальный свайп доминирует
-    if (!isDragging && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 5) {
-      isDragging = true;
+    if (!dragging) {
+      if (Math.abs(dy) > Math.abs(dx)) return; // вертикальный скролл
+      if (Math.abs(dx) > 8) dragging = true;
     }
-    if (isDragging) {
-      const count = track.querySelectorAll('.shop-item-slide').length;
-      const offset = -cur * 100 + (dx / track.offsetWidth) * 100;
-      track.style.transform = `translateX(${offset}%)`;
-    }
+    if (!dragging) return;
+    lastDx = dx;
+    const slideW = slider.offsetWidth || window.innerWidth;
+    track.style.transform = `translateX(${-cur * slideW + dx}px)`;
   }, { passive: true });
 
-  track.addEventListener('touchend', e => {
-    if (!isDragging) return;
-    const dx = e.changedTouches[0].clientX - startX;
-    const count = track.querySelectorAll('.shop-item-slide').length;
-    if (Math.abs(dx) > 40) {
-      goTo(dx < 0 ? cur + 1 : cur - 1);
+  track.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    if (Math.abs(lastDx) > 40) {
+      goTo(lastDx < 0 ? cur + 1 : cur - 1);
     } else {
-      goTo(cur); // snap back
+      goTo(cur);
     }
   }, { passive: true });
 }

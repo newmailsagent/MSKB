@@ -682,18 +682,21 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 
 /* Слайдер скриншотов */
 .shop-item-slider {
-  width: calc(100% + 32px); margin-left: -16px;
+  /* Растягиваем на весь экран, выходя за паддинги detail */
+  width: 100vw;
+  margin-left: calc(-16px);
   display: flex; flex-direction: column; gap: 0;
   flex-shrink: 0;
+  overflow: hidden; /* скрываем соседние слайды */
 }
 .shop-item-slider-track {
   display: flex;
-  overflow: hidden;
+  width: 100%;
   touch-action: pan-y;
   will-change: transform;
 }
 .shop-item-slide {
-  min-width: 100%;
+  width: 100vw;
   flex-shrink: 0;
 }
 .shop-item-slide img {
