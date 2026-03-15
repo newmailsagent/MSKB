@@ -139,10 +139,6 @@ db.exec(`
   );
 `);
 try { db.exec(`ALTER TABLE battle_history ADD COLUMN mode TEXT DEFAULT 'online'`); } catch(e) {}
-// Добавляем source: 'tg' | 'browser' — откуда пришёл игрок
-try { db.exec(`ALTER TABLE battle_history ADD COLUMN source TEXT DEFAULT 'tg'`); } catch(e) {}
-// Добавляем source в players
-try { db.exec(`ALTER TABLE players ADD COLUMN source TEXT DEFAULT 'tg'`); } catch(e) {}
 try { db.exec(`ALTER TABLE shop_items ADD COLUMN photo_url_tg TEXT`); } catch(e) {}
 
 // ─── МАГАЗИН ──────────────────────────────────────────────────────────────────
@@ -217,18 +213,23 @@ if (itemCount === 0) {
   console.log('[Shop] Seed items inserted');
 }
 
-// Миграции товаров — добавляем новые айтемы если ещё нет
+// ── Миграции товаров магазина ──────────────────────────────────────────────
+
+// Добавить theme_black если нет
 try {
   db.prepare(`INSERT OR IGNORE INTO shop_items (id,type,name,description,price_stars,preview_url,sort_order,is_active)
     VALUES ('theme_black','theme','Чёрная тема (контрастная)','Максимально тёмная цветовая схема — чистый чёрный',100,'/shop/previews/theme/frame_theme_black.png',20,1)`).run();
 } catch(e) { console.error('[Shop] migration theme_black:', e.message); }
 
-// Обновляем превью светлой темы на PNG если ещё SVG
+// Обновить превью и название светлой темы
 try {
-  db.prepare(`UPDATE shop_items SET preview_url='/shop/previews/theme/frame_theme_white.png' WHERE id='theme_light' AND preview_url LIKE '%.svg'`).run();
+  db.prepare(`UPDATE shop_items SET
+    preview_url='/shop/previews/theme/frame_theme_white.png',
+    photo_url_tg='/shop/previews/theme/frame_theme_white.png'
+    WHERE id='theme_light'`).run();
 } catch(e) {}
 
-// Обновляем название тёмной темы если она есть в БД
+// Обновить название и превью тёмной темы (по умолчанию)
 try {
   db.prepare(`UPDATE shop_items SET
     name='Тёмная тема (по умолчанию)',
@@ -237,7 +238,7 @@ try {
     WHERE id='theme_dark'`).run();
 } catch(e) {}
 
-// Обновляем название чёрной темы
+// Обновить название и photo_url_tg чёрной темы
 try {
   db.prepare(`UPDATE shop_items SET
     name='Чёрная тема (контрастная)',
@@ -361,20 +362,20 @@ function normalizeId(id) {
   return n.includes('.') ? String(parseInt(n, 10)) : n;
 }
 
-function upsertPlayer(id, name, source = 'tg') {
+function upsertPlayer(id, name) {
   id = normalizeId(id);
   if (!id || id.startsWith('guest_')) return;
   db.prepare(`
-    INSERT INTO players (id, name, source) VALUES (?, ?, ?)
+    INSERT INTO players (id, name) VALUES (?, ?)
     ON CONFLICT(id) DO UPDATE SET name=excluded.name, updated_at=strftime('%s','now')
-  `).run(id, name || 'Игрок', source);
+  `).run(id, name || 'Игрок');
 }
 
-function addBattleHistory(id, result, opponentName, shots, hits, mode = 'online', source = 'tg') {
+function addBattleHistory(id, result, opponentName, shots, hits, mode = 'online') {
   id = normalizeId(id);
   if (!id || id.startsWith('guest_')) return;
-  db.prepare(`INSERT INTO battle_history (player_id, result, opponent, shots, hits, mode, source) VALUES (?,?,?,?,?,?,?)`)
-    .run(id, result, opponentName || '?', shots, hits, mode, source);
+  db.prepare(`INSERT INTO battle_history (player_id, result, opponent, shots, hits, mode) VALUES (?,?,?,?,?,?)`)
+    .run(id, result, opponentName || '?', shots, hits, mode);
 }
 
 function getBattleHistory(id, limit = 30, mode = null) {
@@ -500,7 +501,7 @@ function getXpInfo(id) {
 
 const MAX_LEGIT_ACCURACY = 0.60; // выше 60% — подозрительно, XP не начисляется
 
-function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots = null) {
+function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots = null, isRated = true) {
   id = normalizeId(id);
   if (!id || id.startsWith('guest_')) return null;
   db.prepare(`UPDATE players SET wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?,
@@ -515,11 +516,13 @@ function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots =
       online_shots=online_shots+?, online_hits=online_hits+? WHERE id=?`).run(shots, hits, id);
 
     if (isLegit) {
-      // Честный бой — засчитываем в рейтинг и начисляем XP
-      const p = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
-      if (p?.rating_active === 1) {
-        db.prepare(`UPDATE players SET rated_wins=rated_wins+1,
-          rated_shots=rated_shots+?, rated_hits=rated_hits+? WHERE id=?`).run(shots, hits, id);
+      // Рейтинг — только для случайных боёв (не friend)
+      if (isRated) {
+        const p = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
+        if (p?.rating_active === 1) {
+          db.prepare(`UPDATE players SET rated_wins=rated_wins+1,
+            rated_shots=rated_shots+?, rated_hits=rated_hits+? WHERE id=?`).run(shots, hits, id);
+        }
       }
       const xpReward = calcXpReward('win', sunkenCount, shots, hits, loserShots ?? null);
       xpResult = addXp(id, xpReward);
@@ -538,7 +541,7 @@ function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots =
   return xpResult;
 }
 
-function addLoss(id, shots, hits, isOnline = false, sunkenCount = 0) {
+function addLoss(id, shots, hits, isOnline = false, sunkenCount = 0, isRated = true) {
   id = normalizeId(id);
   if (!id || id.startsWith('guest_')) return null;
   db.prepare(`UPDATE players SET losses=losses+1, total_shots=total_shots+?, total_hits=total_hits+?,
@@ -547,10 +550,13 @@ function addLoss(id, shots, hits, isOnline = false, sunkenCount = 0) {
   if (isOnline) {
     db.prepare(`UPDATE players SET online_losses=online_losses+1,
       online_shots=online_shots+?, online_hits=online_hits+? WHERE id=?`).run(shots, hits, id);
-    const p = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
-    if (p?.rating_active === 1) {
-      db.prepare(`UPDATE players SET rated_losses=rated_losses+1,
-        rated_shots=rated_shots+?, rated_hits=rated_hits+? WHERE id=?`).run(shots, hits, id);
+    // Рейтинг — только для случайных боёв (не friend)
+    if (isRated) {
+      const p = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
+      if (p?.rating_active === 1) {
+        db.prepare(`UPDATE players SET rated_losses=rated_losses+1,
+          rated_shots=rated_shots+?, rated_hits=rated_hits+? WHERE id=?`).run(shots, hits, id);
+      }
     }
     const xpReward = calcXpReward('loss', sunkenCount, shots, hits);
     xpResult = addXp(id, xpReward);
@@ -673,13 +679,10 @@ function startTurnTimer(room) {
       });
       const toSunken  = timedOutPlayer.field ? countSunkenShips(timedOutPlayer.field) : 0;
       const otherSunk = otherPlayer.field    ? countSunkenShips(otherPlayer.field)    : 0;
-      const tBattleMode = room.isFriend ? 'friend' : 'online';
-      const winXpT  = addWin( otherPlayer.playerId,    otherPlayer.shots,    otherPlayer.hits,    true, toSunken);
-      const lossXpT = addLoss(timedOutPlayer.playerId, timedOutPlayer.shots, timedOutPlayer.hits, true, otherSunk);
+      const winXpT  = addWin( otherPlayer.playerId,    otherPlayer.shots,    otherPlayer.hits,    true, toSunken,  null, !room.isFriend);
+      const lossXpT = addLoss(timedOutPlayer.playerId, timedOutPlayer.shots, timedOutPlayer.hits, true, otherSunk, !room.isFriend);
       if (winXpT  && otherPlayer.socketId)    io.to(otherPlayer.socketId).emit('xp_reward', winXpT);
       if (lossXpT && timedOutPlayer.socketId) io.to(timedOutPlayer.socketId).emit('xp_reward', lossXpT);
-      addBattleHistory(otherPlayer.playerId,    'win',  timedOutPlayer.name || '?', otherPlayer.shots,    otherPlayer.hits,    tBattleMode);
-      addBattleHistory(timedOutPlayer.playerId, 'loss', otherPlayer.name    || '?', timedOutPlayer.shots, timedOutPlayer.hits, tBattleMode);
     } else {
       // 1 просрочка — просто передаём ход
       room.turn = otherPlayer.playerId;
@@ -750,7 +753,7 @@ io.on('connection', (socket) => {
     }
     else if (mode === 'friend_create') {
       const roomId = crypto.randomUUID();
-      const room   = { id: roomId, p1: makePlayer(info), p2: null, turn: playerId, started: false, over: false, _turnTimer: null, _warnTimer: null, _emptyTimer: null, isFriend: true };
+      const room   = { id: roomId, p1: makePlayer(info), p2: null, turn: playerId, started: false, over: false, _turnTimer: null, _warnTimer: null, _emptyTimer: null };
       rooms.set(roomId, room);
       socket.join(roomId);
       socket.emit('room_created', { roomId });
@@ -913,12 +916,9 @@ function validateNoTouch(field) {
       // Потопленные корабли = все корабли цели (они все потоплены)
       const shooterSunken = countSunkenShips(target.field);
       const targetSunken  = countSunkenShips(shooter.field);
-      const battleMode = room.isFriend ? 'friend' : 'online';
-      const winXp  = addWin( shooter.playerId, shooter.shots, shooter.hits, true, shooterSunken);
-      const lossXp = addLoss(target.playerId,  target.shots,  target.hits,  true, targetSunken);
+      const winXp  = addWin( shooter.playerId, shooter.shots, shooter.hits, true, shooterSunken, null,          !room.isFriend);
+      const lossXp = addLoss(target.playerId,  target.shots,  target.hits,  true, targetSunken,  !room.isFriend);
       recordDuelResult(shooter.playerId, target.playerId);
-      addBattleHistory(shooter.playerId, 'win',  target.name,  shooter.shots, shooter.hits, battleMode);
-      addBattleHistory(target.playerId,  'loss', shooter.name, target.shots,  target.hits,  battleMode);
       // Отправляем XP каждому игроку
       if (winXp  && shooter.socketId) io.to(shooter.socketId).emit('xp_reward', winXp);
       if (lossXp && target.socketId)  io.to(target.socketId).emit('xp_reward', lossXp);
@@ -956,14 +956,11 @@ function validateNoTouch(field) {
     io.to(surrenderer.socketId).emit('surrender_confirmed');
     const wSunken = surrenderer.field ? countSunkenShips(surrenderer.field) : 0; // корабли, потопленные победителем
     const lSunken = winner.field      ? countSunkenShips(winner.field)      : 0; // корабли, потопленные сдавшимся
-    const battleMode2 = room.isFriend ? 'friend' : 'online';
-    const winXp2  = addWin( winner.playerId,      winner.shots,      winner.hits,      true, wSunken, surrenderer.shots);
-    const lossXp2 = addLoss(surrenderer.playerId, surrenderer.shots, surrenderer.hits, true, lSunken);
+    const winXp2  = addWin( winner.playerId,      winner.shots,      winner.hits,      true, wSunken, surrenderer.shots, !room.isFriend);
+    const lossXp2 = addLoss(surrenderer.playerId, surrenderer.shots, surrenderer.hits, true, lSunken, !room.isFriend);
     if (winXp2  && winner.socketId)      io.to(winner.socketId).emit('xp_reward', winXp2);
     if (lossXp2 && surrenderer.socketId) io.to(surrenderer.socketId).emit('xp_reward', lossXp2);
     recordDuelResult(winner.playerId, surrenderer.playerId);
-    addBattleHistory(winner.playerId,      'win',  surrenderer.name, winner.shots,      winner.hits,      battleMode2);
-    addBattleHistory(surrenderer.playerId, 'loss', winner.name,      surrenderer.shots, surrenderer.hits, battleMode2);
   });
 
   // ── Реванш ───────────────────────────────────────
@@ -1061,14 +1058,11 @@ function validateNoTouch(field) {
         io.to(stayer.socketId).emit('opponent_disconnected_win');
         const dSunkenStayer = leaver.field ? countSunkenShips(leaver.field) : 0;
         const dSunkenLeaver = stayer.field ? countSunkenShips(stayer.field) : 0;
-        const dBattleMode = room.isFriend ? 'friend' : 'online';
-        const dWinXp  = addWin( stayer.playerId, stayer.shots, stayer.hits, true, dSunkenStayer);
-        const dLossXp = addLoss(leaver.playerId, leaver.shots, leaver.hits, true, dSunkenLeaver);
+        const dWinXp  = addWin( stayer.playerId, stayer.shots, stayer.hits, true, dSunkenStayer, null,         !room.isFriend);
+        const dLossXp = addLoss(leaver.playerId, leaver.shots, leaver.hits, true, dSunkenLeaver, !room.isFriend);
         if (dWinXp  && stayer.socketId) io.to(stayer.socketId).emit('xp_reward', dWinXp);
         // leaver отключён — xp_reward не шлём
         recordDuelResult(stayer.playerId, leaver.playerId);
-        addBattleHistory(stayer.playerId, 'win',  leaver.name || '?', stayer.shots, stayer.hits, dBattleMode);
-        addBattleHistory(leaver.playerId, 'loss', stayer.name || '?', leaver.shots, leaver.hits, dBattleMode);
         rooms.delete(roomId);
       } else if (stayer?.socketId) {
         // Игра не началась, второй игрок есть — уведомляем и удаляем
@@ -1164,11 +1158,10 @@ app.post('/api/history', (req, res) => {
 });
 app.get('/api/ensure/:id', (req, res) => {
   try {
-    const id     = normalizeId(req.params.id);
-    const name   = sanitizeStr(req.query.name   || 'Игрок', 32);
-    const source = ['tg','browser'].includes(req.query.source) ? req.query.source : 'tg';
+    const id   = normalizeId(req.params.id);
+    const name = sanitizeStr(req.query.name || 'Игрок', 32);
     if (!id || id.startsWith('guest_')) { res.json({ ok: false }); return; }
-    upsertPlayer(id, name, source);
+    upsertPlayer(id, name);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ ok: false }); }
 });
@@ -1197,32 +1190,11 @@ app.get('/api/admin/analytics', (req, res) => {
     const activeWeek    = db.prepare(`SELECT COUNT(DISTINCT player_id) as n FROM battle_history WHERE date >= ?`).get(since7d).n;
     const activeMonth   = db.prepare(`SELECT COUNT(DISTINCT player_id) as n FROM battle_history WHERE date >= ?`).get(since30d).n;
 
-    // ── Бои онлайн (случайный соперник) ──
-    // Делим на 2: каждый бой пишется двумя строками (победитель + проигравший)
-    const battlesToday  = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since24).n / 2);
-    const battles7d     = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since7d).n / 2);
-    const battles30d    = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since30d).n / 2);
-    const battlesTotal  = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online'`).get().n / 2);
-
-    // ── Бои с другом (по ссылке) — только состоявшиеся ──
-    // Делим на 2: каждый бой пишется двумя строками (победитель + проигравший)
-    const friendToday  = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since24).n / 2);
-    const friend7d     = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since7d).n / 2);
-    const friend30d    = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since30d).n / 2);
-    const friendTotal  = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='friend'`).get().n / 2);
-
-    // ── Бои по дням (последние 7) с разбивкой по типу ──
-    // Делим на 2: каждый бой = 2 строки в battle_history
-    const byDay = db.prepare(`
-      SELECT
-        date(date, 'unixepoch', 'localtime') as day,
-        SUM(CASE WHEN mode='online'  THEN 1 ELSE 0 END) / 2 as online,
-        SUM(CASE WHEN mode='friend'  THEN 1 ELSE 0 END) / 2 as friend,
-        COUNT(*) / 2 as total
-      FROM battle_history
-      WHERE mode IN ('online','friend') AND date >= ?
-      GROUP BY day ORDER BY day ASC
-    `).all(since7d);
+    // ── Бои ──
+    const battlesToday  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since24).n;
+    const battles7d     = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since7d).n;
+    const battles30d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since30d).n;
+    const battlesTotal  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online'`).get().n;
 
     // ── Точность (средняя по всем онлайн-игрокам) ──
     const accRow = db.prepare(`
@@ -1238,7 +1210,7 @@ app.get('/api/admin/analytics', (req, res) => {
       SELECT
         SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
         SUM(CASE WHEN result='loss' THEN 1 ELSE 0 END) as losses
-      FROM battle_history WHERE mode IN ('online','friend')
+      FROM battle_history WHERE mode='online'
     `).get();
     const totalBattleRows = (vrRow.wins || 0) + (vrRow.losses || 0);
     const winrate = totalBattleRows > 0
@@ -1261,36 +1233,15 @@ app.get('/api/admin/analytics', (req, res) => {
       GROUP BY i.item_id ORDER BY cnt DESC LIMIT 5
     `).all();
 
-    // ── TG vs Браузер: игроки ──
-    const tgPlayers      = db.prepare(`SELECT COUNT(*) as n FROM players WHERE id NOT LIKE 'guest_%' AND (source='tg' OR source IS NULL)`).get().n;
-    const browserPlayers = db.prepare(`SELECT COUNT(*) as n FROM players WHERE id NOT LIKE 'guest_%' AND source='browser'`).get().n;
-    const tgNew24h       = db.prepare(`SELECT COUNT(*) as n FROM players WHERE updated_at >= ? AND id NOT LIKE 'guest_%' AND (source='tg' OR source IS NULL)`).get(since24).n;
-    const browserNew24h  = db.prepare(`SELECT COUNT(*) as n FROM players WHERE updated_at >= ? AND id NOT LIKE 'guest_%' AND source='browser'`).get(since24).n;
-
-    // ── TG vs Браузер: бои ──
-    const tgBattlesToday      = Math.floor(db.prepare(`
-      SELECT COUNT(*) as n FROM battle_history bh
-      JOIN players p ON p.id = bh.player_id
-      WHERE bh.date >= ? AND bh.mode IN ('online','friend') AND (p.source='tg' OR p.source IS NULL)
-    `).get(since24).n / 2);
-    const browserBattlesToday = Math.floor(db.prepare(`
-      SELECT COUNT(*) as n FROM battle_history bh
-      JOIN players p ON p.id = bh.player_id
-      WHERE bh.date >= ? AND bh.mode IN ('online','friend') AND p.source='browser'
-    `).get(since24).n / 2);
-    const guestBattlesToday = Math.floor(db.prepare(`
-      SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND mode IN ('online','friend')
-      AND player_id NOT IN (SELECT id FROM players)
-    `).get(since24).n / 2);
-
-    // ── Воронка TG ──
-    const tgActive7d  = db.prepare(`SELECT COUNT(DISTINCT bh.player_id) as n FROM battle_history bh JOIN players p ON p.id=bh.player_id WHERE bh.date >= ? AND (p.source='tg' OR p.source IS NULL)`).get(since7d).n;
-    const tgActive30d = db.prepare(`SELECT COUNT(DISTINCT bh.player_id) as n FROM battle_history bh JOIN players p ON p.id=bh.player_id WHERE bh.date >= ? AND (p.source='tg' OR p.source IS NULL)`).get(since30d).n;
-
-    // ── Воронка Браузер ──
-    const browserActive7d  = db.prepare(`SELECT COUNT(DISTINCT bh.player_id) as n FROM battle_history bh JOIN players p ON p.id=bh.player_id WHERE bh.date >= ? AND p.source='browser'`).get(since7d).n;
-    const browserActive30d = db.prepare(`SELECT COUNT(DISTINCT bh.player_id) as n FROM battle_history bh JOIN players p ON p.id=bh.player_id WHERE bh.date >= ? AND p.source='browser'`).get(since30d).n;
+    // ── Бои по дням (последние 7) ──
+    const byDay = db.prepare(`
+      SELECT
+        date(date, 'unixepoch', 'localtime') as day,
+        COUNT(*) as battles
+      FROM battle_history
+      WHERE mode='online' AND date >= ?
+      GROUP BY day ORDER BY day ASC
+    `).all(since7d);
 
     // ── Онлайн прямо сейчас ──
     const onlineNow = getOnlineCount();
@@ -1299,22 +1250,10 @@ app.get('/api/admin/analytics', (req, res) => {
       ts: now,
       players:   { total: totalPlayers, new_24h: newToday, active_7d: activeWeek, active_30d: activeMonth },
       battles:   { today: battlesToday, week: battles7d, month: battles30d, total: battlesTotal, by_day: byDay },
-      friend_battles: { today: friendToday, week: friend7d, month: friend30d, total: friendTotal },
       accuracy:  { avg_pct: accRow.avg_acc, total_shots: accRow.total_shots, total_hits: accRow.total_hits },
       winrate:   { pct: winrate, wins: vrRow.wins, losses: vrRow.losses },
       purchases: { today: purchasesToday, week: purchases7d, month: purchases30d, total: purchasesTotal, refunds: refundsTotal, top_items: topItems },
       online_now: onlineNow,
-      tg: {
-        players: tgPlayers, new_24h: tgNew24h,
-        active_7d: tgActive7d, active_30d: tgActive30d,
-        battles_today: tgBattlesToday,
-      },
-      browser: {
-        players: browserPlayers, new_24h: browserNew24h,
-        active_7d: browserActive7d, active_30d: browserActive30d,
-        battles_today: browserBattlesToday,
-        guest_battles_today: guestBattlesToday,
-      },
     }});
   } catch(e) { console.error('[analytics]', e); res.status(500).json({ ok: false, error: e.message }); }
 });
