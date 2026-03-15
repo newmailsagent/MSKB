@@ -3590,7 +3590,11 @@ renderShopGrid = function() {
 // Патчим openShopItem — используем getItemPreviewHtml
 const _origOpenShopItem = openShopItem;
 openShopItem = function(itemId) {
-  const item = _shopItems.find(i => i.id === itemId);
+  // theme_dark — виртуальный товар, не в _shopItems
+  let item = _shopItems.find(i => i.id === itemId);
+  if (!item && itemId === 'theme_dark') {
+    item = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
+  }
   if (!item) return;
   _currentShopItemId = itemId;
 
@@ -3614,9 +3618,9 @@ openShopItem = function(itemId) {
     statusEl.textContent = '✓ Применено';
     btnEl.textContent    = 'Снять';
     btnEl.className      = 'btn btn-secondary btn-large';
-  } else if (owned) {
+  } else if (owned || itemId === 'theme_dark') {
     priceEl.textContent  = '';
-    statusEl.textContent = '✓ Куплено';
+    statusEl.textContent = itemId === 'theme_dark' ? '✓ Куплено' : '✓ Куплено';
     btnEl.textContent    = 'Применить';
     btnEl.className      = 'btn btn-primary btn-large';
   } else if (item.price_stars) {
@@ -3633,10 +3637,10 @@ openShopItem = function(itemId) {
 
   document.getElementById('shop-item-back').onclick = () => showScreen('shop', { isBack: true });
 
-  // Слайдер скриншотов — вставляем после кнопки
-  renderShopItemSlider(item);
-
   showScreen('shop-item');
+
+  // Слайдер — после showScreen чтобы DOM был виден
+  requestAnimationFrame(() => renderShopItemSlider(item));
 };
 
 
