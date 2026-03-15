@@ -3394,19 +3394,19 @@ function getItemPreviewHtml(item, large = false) {
     // На странице товара — всегда SVG если есть
     const svgUrl = item.preview_url ? item.preview_url.replace(/\.(png|jpg)$/i, '.svg') : null;
     if (svgUrl) {
-      return `<img src="${svgUrl}" alt="${item.name}" loading="lazy" style="width:80%;height:80%;object-fit:contain;">`;
+      return `<img src="${svgUrl}" alt="${item.name}" loading="lazy" class="shop-preview-lg-img">`;
     }
     if (FAKE_PREVIEWS[item.id]) {
-      return `<div style="width:80%;height:80%;display:flex;align-items:center;justify-content:center">${FAKE_PREVIEWS[item.id]}</div>`;
+      return `<div class="shop-preview-lg-svg">${FAKE_PREVIEWS[item.id]}</div>`;
     }
     return '🎁';
   }
-  // В карточке сетки — PNG
+  // В карточке сетки — PNG, без inline стилей (CSS управляет размером)
   if (item.preview_url) {
-    return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`;
+    return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" class="shop-card-img">`;
   }
   if (FAKE_PREVIEWS[item.id]) {
-    return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">${FAKE_PREVIEWS[item.id]}</div>`;
+    return `<div class="shop-card-svg">${FAKE_PREVIEWS[item.id]}</div>`;
   }
   return '🎁';
 }
@@ -3672,14 +3672,14 @@ function renderShopItemSlider(item) {
   const slides = ITEM_SCREENSHOTS[item.id];
   if (!slides || !slides.length) return;
 
-  const btnEl = document.getElementById('shop-item-btn');
-  if (!btnEl) return;
+  // Вставляем в контейнер страницы товара — он всегда есть в DOM
+  const detail = document.querySelector('#screen-shop-item .shop-item-detail');
+  if (!detail) return;
 
-  // Создаём враппер, но показываем только когда хотя бы 1 картинка загрузилась
   const slider = document.createElement('div');
   slider.id = 'shop-item-slider';
   slider.className = 'shop-item-slider';
-  slider.style.display = 'none'; // скрыт пока не загрузится хоть одно фото
+  slider.style.display = 'none';
 
   const track = document.createElement('div');
   track.className = 'shop-item-slider-track';
@@ -3689,7 +3689,7 @@ function renderShopItemSlider(item) {
   dotsWrap.className = 'shop-item-slider-dots';
   slider.appendChild(dotsWrap);
 
-  btnEl.insertAdjacentElement('afterend', slider);
+  detail.appendChild(slider);
 
   let loadedCount = 0;
   let cur = 0;
@@ -3710,24 +3710,18 @@ function renderShopItemSlider(item) {
 
     const img = document.createElement('img');
     img.loading = 'lazy';
-    // При успешной загрузке — показываем слайдер
     img.onload = () => {
       loadedCount++;
-      if (loadedCount === 1) {
-        slider.style.display = '';
-        // Добавляем точки только если реально загрузилось > 1 фото
-        // (ждём немного остальных)
-        setTimeout(() => {
-          if (loadedCount > 1 && dotEls.length === 0) buildDots();
-        }, 300);
-      }
+      slider.style.display = '';
       if (loadedCount > 1 && dotEls.length === 0) buildDots();
+      if (loadedCount === 1) {
+        setTimeout(() => { if (loadedCount > 1 && dotEls.length === 0) buildDots(); }, 400);
+      }
     };
-    // Если файл не найден — убираем слайд
     img.onerror = () => {
+      const idx = slideEls.indexOf(slide);
+      if (idx > -1) slideEls.splice(idx, 1);
       slide.remove();
-      slideEls.splice(slideEls.indexOf(slide), 1);
-      // Если не осталось ни одного — прячем весь слайдер
       if (slideEls.length === 0) slider.style.display = 'none';
     };
     img.src = src;
@@ -3735,7 +3729,7 @@ function renderShopItemSlider(item) {
   });
 
   function buildDots() {
-    if (slides.length <= 1) return;
+    if (slideEls.length <= 1) return;
     dotsWrap.innerHTML = '';
     dotEls.length = 0;
     slideEls.forEach((_, i) => {
@@ -3755,7 +3749,6 @@ function renderShopItemSlider(item) {
     if (Math.abs(dx) > 40) goTo(dx < 0 ? cur + 1 : cur - 1);
   }, { passive: true });
 }
-
 
 /* ─── ПРИМЕНЕНИЕ ТЕМ ─────────────────────────────── */
 
