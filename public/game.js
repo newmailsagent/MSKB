@@ -1279,6 +1279,8 @@ function startGame(mode, myBoard, myShips, enemyBoard, enemyShips, opponent) {
   renderGameBoard();
   updateEnemyFleet();
   showScreen('game');
+  // Переприменяем тему — убеждаемся что класс на body не слетел
+  applyEquippedThemeFromState();
   updateGameStatus();
 }
 
@@ -2957,6 +2959,9 @@ function _prevBackTarget() {
     case 'mode':        return 'menu';
     case 'placement':   return 'mode';
     case 'leaderboard': return 'menu';
+    case 'profile':     return 'menu';
+    case 'shop':        return 'menu';
+    case 'shop-item':   return _shopItemBackTarget || 'shop';
     case 'stats':       return 'profile';
     case 'settings':    return document.getElementById('settings-back-btn')?.dataset.screen || 'menu';
     case 'gameover':    return 'menu';
@@ -3110,6 +3115,7 @@ let _shopInventory = {};   // { itemId: true } — что куплено
 let _shopEquipped  = {};   // { slot: itemId } — что надето
 let _shopFilter    = 'all';
 let _currentShopItemId = null;
+let _shopItemBackTarget = 'shop'; // откуда открыли страницу товара
 
 // Загрузить каталог и инвентарь
 async function loadShopData() {
@@ -3233,8 +3239,9 @@ function openShopItem(itemId) {
     btnEl.className      = 'btn btn-primary btn-large';
   }
 
-  // Кнопка назад возвращает в магазин
-  document.getElementById('shop-item-back').onclick = () => showScreen('shop', { isBack: true });
+  // Кнопка назад возвращает туда откуда пришли
+  _shopItemBackTarget = currentScreen === 'profile' ? 'profile' : 'shop';
+  document.getElementById('shop-item-back').onclick = () => showScreen(_shopItemBackTarget, { isBack: true });
 
   showScreen('shop-item');
 }
@@ -3279,6 +3286,7 @@ async function handleShopItemBtn() {
     _shopEquipped[item.type] = itemId;
     if (item.type === 'theme') {
       showLoaderOverMenu(hide => {
+        resetTheme();
         applyEquippedTheme(itemId);
         setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
       });
@@ -3468,6 +3476,7 @@ function renderInventory() {
         if (id === 'theme_dark' && !_shopItems.find(i => i.id === 'theme_dark')) {
           _shopItems.unshift({ id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' });
         }
+        _shopItemBackTarget = 'profile';
         showScreen('shop-item');
         openShopItem(id);
       });
@@ -3510,6 +3519,7 @@ function renderInventory() {
           });
           _shopEquipped[item.type] = itemId;
           showLoaderOverMenu(hide => {
+            resetTheme();
             applyEquippedTheme(itemId);
             setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
           });
@@ -3635,7 +3645,7 @@ openShopItem = function(itemId) {
     btnEl.className      = 'btn btn-primary btn-large';
   }
 
-  document.getElementById('shop-item-back').onclick = () => showScreen('shop', { isBack: true });
+  document.getElementById('shop-item-back').onclick = () => showScreen(_shopItemBackTarget, { isBack: true });
 
   showScreen('shop-item');
 
