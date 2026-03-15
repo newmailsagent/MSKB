@@ -1170,24 +1170,27 @@ app.get('/api/admin/analytics', (req, res) => {
     const activeMonth   = db.prepare(`SELECT COUNT(DISTINCT player_id) as n FROM battle_history WHERE date >= ?`).get(since30d).n;
 
     // ── Бои онлайн (случайный соперник) ──
-    const battlesToday  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since24).n;
-    const battles7d     = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since7d).n;
-    const battles30d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since30d).n;
-    const battlesTotal  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online'`).get().n;
+    // Делим на 2: каждый бой пишется двумя строками (победитель + проигравший)
+    const battlesToday  = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since24).n / 2);
+    const battles7d     = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since7d).n / 2);
+    const battles30d    = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since30d).n / 2);
+    const battlesTotal  = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online'`).get().n / 2);
 
     // ── Бои с другом (по ссылке) — только состоявшиеся ──
-    const friendToday  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since24).n;
-    const friend7d     = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since7d).n;
-    const friend30d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since30d).n;
-    const friendTotal  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='friend'`).get().n;
+    // Делим на 2: каждый бой пишется двумя строками (победитель + проигравший)
+    const friendToday  = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since24).n / 2);
+    const friend7d     = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since7d).n / 2);
+    const friend30d    = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since30d).n / 2);
+    const friendTotal  = Math.floor(db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='friend'`).get().n / 2);
 
     // ── Бои по дням (последние 7) с разбивкой по типу ──
+    // Делим на 2: каждый бой = 2 строки в battle_history
     const byDay = db.prepare(`
       SELECT
         date(date, 'unixepoch', 'localtime') as day,
-        SUM(CASE WHEN mode='online'  THEN 1 ELSE 0 END) as online,
-        SUM(CASE WHEN mode='friend'  THEN 1 ELSE 0 END) as friend,
-        COUNT(*) as total
+        SUM(CASE WHEN mode='online'  THEN 1 ELSE 0 END) / 2 as online,
+        SUM(CASE WHEN mode='friend'  THEN 1 ELSE 0 END) / 2 as friend,
+        COUNT(*) / 2 as total
       FROM battle_history
       WHERE mode IN ('online','friend') AND date >= ?
       GROUP BY day ORDER BY day ASC
@@ -1237,22 +1240,21 @@ app.get('/api/admin/analytics', (req, res) => {
     const browserNew24h  = db.prepare(`SELECT COUNT(*) as n FROM players WHERE updated_at >= ? AND id NOT LIKE 'guest_%' AND source='browser'`).get(since24).n;
 
     // ── TG vs Браузер: бои ──
-    const tgBattlesToday      = db.prepare(`
+    const tgBattlesToday      = Math.floor(db.prepare(`
       SELECT COUNT(*) as n FROM battle_history bh
       JOIN players p ON p.id = bh.player_id
       WHERE bh.date >= ? AND bh.mode IN ('online','friend') AND (p.source='tg' OR p.source IS NULL)
-    `).get(since24).n;
-    const browserBattlesToday = db.prepare(`
+    `).get(since24).n / 2);
+    const browserBattlesToday = Math.floor(db.prepare(`
       SELECT COUNT(*) as n FROM battle_history bh
       JOIN players p ON p.id = bh.player_id
       WHERE bh.date >= ? AND bh.mode IN ('online','friend') AND p.source='browser'
-    `).get(since24).n;
-    // Гостевые сессии (browser, незарегистрированные) — только из battle_history без player
-    const guestBattlesToday = db.prepare(`
+    `).get(since24).n / 2);
+    const guestBattlesToday = Math.floor(db.prepare(`
       SELECT COUNT(*) as n FROM battle_history
       WHERE date >= ? AND mode IN ('online','friend')
       AND player_id NOT IN (SELECT id FROM players)
-    `).get(since24).n;
+    `).get(since24).n / 2);
 
     // ── Воронка TG ──
     const tgActive7d  = db.prepare(`SELECT COUNT(DISTINCT bh.player_id) as n FROM battle_history bh JOIN players p ON p.id=bh.player_id WHERE bh.date >= ? AND (p.source='tg' OR p.source IS NULL)`).get(since7d).n;
