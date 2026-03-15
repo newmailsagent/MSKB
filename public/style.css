@@ -657,28 +657,28 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   display: flex; align-items: center; justify-content: center;
   font-size: 64px; overflow: hidden;
 }
-.shop-item-preview-lg img { width: 80%; height: 80%; object-fit: contain; border-radius: 12px; }
+/* 80% масштаб — отступы по краям для любого превью */
+.shop-item-preview-lg img,
+.shop-item-preview-lg svg { width: 80%; height: 80%; object-fit: contain; border-radius: 12px; }
 
 /* Слайдер скриншотов */
 .shop-item-slider {
   width: calc(100% + 32px); margin-left: -16px;
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; gap: 0;
   overflow: hidden;
 }
 .shop-item-slider-track {
   display: flex; position: relative;
   touch-action: pan-y;
 }
-.shop-item-slide {
-  min-width: 100%; display: none;
-}
+.shop-item-slide { min-width: 100%; display: none; }
 .shop-item-slide.active { display: block; }
 .shop-item-slide img {
   width: 100%; height: auto; display: block;
-  object-fit: cover;
+  object-fit: cover; image-rendering: -webkit-optimize-contrast;
 }
 .shop-item-slider-dots {
-  display: flex; justify-content: center; gap: 6px; padding: 4px 0 8px;
+  display: flex; justify-content: center; gap: 6px; padding: 8px 0;
 }
 .slider-dot {
   width: 6px; height: 6px; border-radius: 50%;
@@ -1547,114 +1547,142 @@ body.theme-light #btn-shop {
 body.theme-light #btn-shop:active {
   background: rgba(0,0,0,.12) !important;
 }
+
 /* ─── ТЕМА: theme_black ─── */
 body.theme_black {
   --bg: #000000;
+  --bg2: #0a0a0a;
+  --cell-empty: #000000;
+  --cell-ship: #ffffff;
+  --cell-miss: #111111;
+  --cell-hit-bg: #000000;
+  --cell-preview: rgba(255,255,255,.15);
+  --cell-invalid: rgba(255,60,60,.25);
 }
+
+/* Базовые ячейки */
 body.theme_black .cell {
   border-style: solid;
   border-color: #1f1f1f;
   background-color: #000000;
 }
-body.theme_black .ship-piece {
-  background-color: #000000;
-  color: #000000;
+
+/* Промах — без обводки */
+body.theme_black .cell.miss {
+  border-color: #000000;
 }
-body.theme_black .mode-card {
-  background-color: #000000;
-  border-style: solid;
-  border-color: #303030;
-}
-body.theme_black .tg-promo-banner {
-  background-color: #000000;
-}
+
+/* Попадание — белая штриховка, без верхней рамки */
 body.theme_black .cell.hit {
   background-color: #000000;
   border-color: #000000;
-  color: #f0f0f0;
-  border-top-color: #747474;
 }
 body.theme_black .cell.hit::after {
+  background: repeating-linear-gradient(
+    45deg,
+    #ffffff 0px, #ffffff 2px,
+    transparent 2px, transparent 6px
+  );
+  opacity: .7;
+  border: none;
+}
+
+/* Потопленный — белый на вражеском поле */
+body.theme_black .enemy-board .cell.sunk {
+  background-color: #ffffff;
+  border-color: #ffffff;
+}
+body.theme_black .enemy-board .cell.sunk::after { display: none; }
+
+/* Потопленный — светло-серый на своём поле */
+body.theme_black #my-board .cell.sunk {
+  background-color: #cccccc;
+  border-color: #cccccc;
+}
+body.theme_black #my-board .cell.sunk::after { display: none; }
+
+/* Подбитый на своём поле — серовато-белая штриховка */
+body.theme_black #my-board .cell.hit {
   background-color: #000000;
   border-color: #000000;
-  color: #f0f0f0;
-  border-top-color: #747474;
 }
-body.theme_black .xp-reward-block {
+body.theme_black #my-board .cell.hit::after {
+  background: repeating-linear-gradient(
+    45deg,
+    #999999 0px, #999999 2px,
+    transparent 2px, transparent 6px
+  );
+  opacity: .7;
+}
+
+/* Убираем верхнюю рамку у подбитых клеток */
+body.theme_black .cell.hit,
+body.theme_black #my-board .cell.hit {
+  border-top-color: #000000;
+}
+
+/* Корабли при расстановке — белые */
+body.theme_black .cell.ship { background-color: #ffffff; }
+body.theme_black .ship-piece { background-color: #111111; }
+body.theme_black .ship-cell { background-color: #ffffff; }
+
+/* Флот внизу */
+body.theme_black .fleet-cell { background-color: #ffffff; }
+body.theme_black .fleet-ship.sunk .fleet-cell { background-color: #555555; }
+
+/* SVG заголовок — красные → белые */
+body.theme_black .hero-title-svg svg path[fill="#ED2822"] { fill: #ffffff !important; }
+body.theme_black .hero-title-svg svg path[stroke="#ED2822"] { stroke: #ffffff !important; }
+
+/* Фоновая анимация — красное → 50% серое */
+body.theme_black .hero-grid-cell.hit::after {
+  background: repeating-linear-gradient(
+    45deg, #808080 0px, #808080 2px, transparent 2px, transparent 6px
+  );
+  opacity: .5;
+}
+
+/* Кнопки главного экрана — чёрная заливка */
+body.theme_black .btn-primary,
+body.theme_black .btn-primary.btn-large {
   background-color: #000000;
-  border-style: solid;
-  border-color: #292929;
+  color: #ffffff;
+  border: 1px solid #2a2a2a;
 }
 body.theme_black .btn-secondary {
   background-color: #000000;
+  border: 1px solid #2a2a2a;
 }
 body.theme_black .btn-ghost {
   background-color: #000000;
 }
-body.theme_black .btn-sound {
-  background-color: #000000;
-}
-body.theme_black .btn-burger-menu {
-  background-color: #000000;
-}
-body.theme_black .btn-primary.btn-large {
-  background-color: #000000;
-}
-body.theme_black .lb-item {
-  background-color: #000000;
-  border-style: solid;
-  border-color: #1c1c1c;
-}
-body.theme_black .my-record-card {
-  background-color: #141414;
-}
-body.theme_black .consent-banner {
-  background-color: #000000;
-}
-body.theme_black .btn-primary {
-  background-color: #000000;
-  color: #ffffff;
-  border-style: solid;
-  border-color: #292929;
-}
-body.theme_black .btn-primary.btn-large {
-  background-color: #000000;
-  color: #ffffff;
-  border-style: solid;
-  border-color: #292929;
-}
-body.theme_black .modal {
-  background-color: #121212;
-}
-body.theme_black .btn-danger {
-  background-color: #333333;
-}
-body.theme_black .search-cell {
-  background-color: #000000;
-}
-body.theme_black .burger-menu {
-  background-color: #000000;
-}
-body.theme_black .shop-card {
-  background-color: #030303;
-}
-body.theme_black .fleet-cell {
-  background-color: #d1d1d1;
-}
-body.theme_black .fleet-ship.sunk .fleet-cell {
-  background-color: #d1d1d1;
-}
+body.theme_black .btn-sound   { background-color: #000000; }
+body.theme_black .btn-burger-menu { background-color: #000000; }
 body.theme_black .btn-place-random {
   background-color: #000000;
   color: #ffffff;
   border-color: #212121;
   border-style: solid;
 }
-body.theme_black .profile-tabs {
+
+/* Режимы игры */
+body.theme_black .mode-card {
   background-color: #000000;
+  border-style: solid;
+  border-color: #303030;
 }
-body.theme_black .cell.miss {
-  border-color: #000000;
-}
+
+/* Прочие элементы */
+body.theme_black .tg-promo-banner  { background-color: #000000; }
+body.theme_black .xp-reward-block  { background-color: #000000; border-style: solid; border-color: #292929; }
+body.theme_black .lb-item          { background-color: #000000; border-style: solid; border-color: #1c1c1c; }
+body.theme_black .my-record-card   { background-color: #141414; }
+body.theme_black .consent-banner   { background-color: #000000; }
+body.theme_black .modal            { background-color: #121212; }
+body.theme_black .btn-danger       { background-color: #333333; }
+body.theme_black .search-cell      { background-color: #000000; }
+body.theme_black .burger-menu      { background-color: #000000; }
+body.theme_black .shop-card        { background-color: #030303; }
+body.theme_black .profile-tabs     { background-color: #000000; }
 
 /* game.js applyEquippedTheme(): document.body.classList.add('theme_black') */

@@ -3388,16 +3388,23 @@ const FAKE_PREVIEWS = {
   </svg>`,
 };
 
-// Патчим getPreviewHtml — возвращает inline SVG если есть фейк, иначе img
+// Патчим getPreviewHtml — SVG для страницы товара (large=true), PNG для карточки
 function getItemPreviewHtml(item, large = false) {
-  // Если есть реальный preview_url — используем его (80% в large, cover в grid)
-  if (item.preview_url) {
-    if (large) {
-      return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" style="width:80%;height:80%;object-fit:contain;border-radius:12px;">`;
+  if (large) {
+    // На странице товара — всегда SVG если есть
+    const svgUrl = item.preview_url ? item.preview_url.replace(/\.(png|jpg)$/i, '.svg') : null;
+    if (svgUrl) {
+      return `<img src="${svgUrl}" alt="${item.name}" loading="lazy" style="width:80%;height:80%;object-fit:contain;">`;
     }
+    if (FAKE_PREVIEWS[item.id]) {
+      return `<div style="width:80%;height:80%;display:flex;align-items:center;justify-content:center">${FAKE_PREVIEWS[item.id]}</div>`;
+    }
+    return '🎁';
+  }
+  // В карточке сетки — PNG
+  if (item.preview_url) {
     return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`;
   }
-  // Иначе SVG-заглушка
   if (FAKE_PREVIEWS[item.id]) {
     return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">${FAKE_PREVIEWS[item.id]}</div>`;
   }
@@ -3451,17 +3458,14 @@ function renderInventory() {
     </div>`;
   }).join('');
 
-  // Клик по карточке — открыть страницу в магазине
+  // Клик по карточке — открыть страницу в магазине (кроме theme_dark)
   grid.querySelectorAll('[data-inv-item]').forEach(card => {
     card.addEventListener('click', e => {
       if (e.target.closest('[data-inv-action]')) return; // клик по кнопке — не открывать
       const id = card.dataset.invItem;
+      if (id === 'theme_dark') return;
       // Загружаем магазин если нужно, потом открываем товар
       (_shopItems.length ? Promise.resolve() : loadShopData()).then(() => {
-        // theme_dark — виртуальный, добавляем в _shopItems временно если нет
-        if (id === 'theme_dark' && !_shopItems.find(i => i.id === 'theme_dark')) {
-          _shopItems.unshift({ id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' });
-        }
         showScreen('shop-item');
         openShopItem(id);
       });
@@ -3473,7 +3477,7 @@ function renderInventory() {
     const itemId = btn.dataset.invAction;
     // theme_dark — виртуальный, не из _shopItems
     const item = itemId === 'theme_dark'
-      ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' }
+      ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема' }
       : _shopItems.find(i => i.id === itemId);
     if (!item) return;
     const activeTheme = _shopEquipped['theme'] || null;
@@ -3627,7 +3631,7 @@ openShopItem = function(itemId) {
 
   document.getElementById('shop-item-back').onclick = () => showScreen('shop', { isBack: true });
 
-  // Слайдер скриншотов
+  // Слайдер скриншотов — вставляем после кнопки
   renderShopItemSlider(item);
 
   showScreen('shop-item');
@@ -3636,7 +3640,6 @@ openShopItem = function(itemId) {
 
 /* ─── СЛАЙДЕР СКРИНШОТОВ ТОВАРА ──────────────────── */
 
-// Маппинг item.id → массив путей к скриншотам
 const ITEM_SCREENSHOTS = {
   theme_dark:  [
     '/shop/previews/theme/preview_dark_1.png',
@@ -3666,49 +3669,85 @@ function renderShopItemSlider(item) {
   const btnEl = document.getElementById('shop-item-btn');
   if (!btnEl) return;
 
+  // Создаём враппер, но показываем только когда хотя бы 1 картинка загрузилась
   const slider = document.createElement('div');
   slider.id = 'shop-item-slider';
   slider.className = 'shop-item-slider';
-  slider.innerHTML = `
-    <div class="shop-item-slider-track" id="slider-track-${item.id}">
-      ${slides.map((src, i) => `
-        <div class="shop-item-slide ${i === 0 ? 'active' : ''}">
-          <img src="${src}" alt="Скриншот ${i+1}" loading="lazy">
-        </div>
-      `).join('')}
-    </div>
-    ${slides.length > 1 ? `
-      <div class="shop-item-slider-dots">
-        ${slides.map((_, i) => `<span class="slider-dot ${i === 0 ? 'active' : ''}" data-idx="${i}"></span>`).join('')}
-      </div>
-    ` : ''}
-  `;
+  slider.style.display = 'none'; // скрыт пока не загрузится хоть одно фото
 
-  // Вставляем после кнопки
+  const track = document.createElement('div');
+  track.className = 'shop-item-slider-track';
+  slider.appendChild(track);
+
+  const dotsWrap = document.createElement('div');
+  dotsWrap.className = 'shop-item-slider-dots';
+  slider.appendChild(dotsWrap);
+
   btnEl.insertAdjacentElement('afterend', slider);
 
-  // Логика свайпа и точек
-  if (slides.length > 1) {
-    let cur = 0;
-    const track = slider.querySelector('.shop-item-slider-track');
-    const dots  = slider.querySelectorAll('.slider-dot');
+  let loadedCount = 0;
+  let cur = 0;
+  const slideEls = [];
+  const dotEls   = [];
 
-    function goTo(idx) {
-      cur = (idx + slides.length) % slides.length;
-      track.querySelectorAll('.shop-item-slide').forEach((s, i) => s.classList.toggle('active', i === cur));
-      dots.forEach((d, i) => d.classList.toggle('active', i === cur));
-    }
-
-    dots.forEach(d => d.addEventListener('click', () => goTo(+d.dataset.idx)));
-
-    // Touch swipe
-    let tx = 0;
-    track.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
-    track.addEventListener('touchend',   e => {
-      const dx = e.changedTouches[0].clientX - tx;
-      if (Math.abs(dx) > 40) goTo(dx < 0 ? cur + 1 : cur - 1);
-    }, { passive: true });
+  function goTo(idx) {
+    cur = (idx + slideEls.length) % slideEls.length;
+    slideEls.forEach((s, i) => s.classList.toggle('active', i === cur));
+    dotEls.forEach((d, i)   => d.classList.toggle('active', i === cur));
   }
+
+  slides.forEach((src, i) => {
+    const slide = document.createElement('div');
+    slide.className = 'shop-item-slide' + (i === 0 ? ' active' : '');
+    track.appendChild(slide);
+    slideEls.push(slide);
+
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    // При успешной загрузке — показываем слайдер
+    img.onload = () => {
+      loadedCount++;
+      if (loadedCount === 1) {
+        slider.style.display = '';
+        // Добавляем точки только если реально загрузилось > 1 фото
+        // (ждём немного остальных)
+        setTimeout(() => {
+          if (loadedCount > 1 && dotEls.length === 0) buildDots();
+        }, 300);
+      }
+      if (loadedCount > 1 && dotEls.length === 0) buildDots();
+    };
+    // Если файл не найден — убираем слайд
+    img.onerror = () => {
+      slide.remove();
+      slideEls.splice(slideEls.indexOf(slide), 1);
+      // Если не осталось ни одного — прячем весь слайдер
+      if (slideEls.length === 0) slider.style.display = 'none';
+    };
+    img.src = src;
+    slide.appendChild(img);
+  });
+
+  function buildDots() {
+    if (slides.length <= 1) return;
+    dotsWrap.innerHTML = '';
+    dotEls.length = 0;
+    slideEls.forEach((_, i) => {
+      const d = document.createElement('span');
+      d.className = 'slider-dot' + (i === 0 ? ' active' : '');
+      d.addEventListener('click', () => goTo(i));
+      dotsWrap.appendChild(d);
+      dotEls.push(d);
+    });
+  }
+
+  // Touch swipe
+  let tx = 0;
+  track.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  track.addEventListener('touchend',   e => {
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 40) goTo(dx < 0 ? cur + 1 : cur - 1);
+  }, { passive: true });
 }
 
 
@@ -3728,6 +3767,7 @@ function applyEquippedTheme(itemId) {
 // Снимает все темы (возврат к тёмной по умолчанию)
 function resetTheme() {
   document.body.classList.remove('theme-light', 'theme_black');
+}
   // добавлять новые классы тем сюда
 }
 
