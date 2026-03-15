@@ -3682,14 +3682,14 @@ function renderShopItemSlider(item) {
   const slides = ITEM_SCREENSHOTS[item.id];
   if (!slides || !slides.length) return;
 
-  // Вставляем в контейнер страницы товара — он всегда есть в DOM
   const detail = document.querySelector('#screen-shop-item .shop-item-detail');
   if (!detail) return;
 
   const slider = document.createElement('div');
   slider.id = 'shop-item-slider';
   slider.className = 'shop-item-slider';
-  slider.style.display = 'none';
+  // Показываем сразу — скрываем только если все картинки не нашлись
+  slider.style.display = '';
 
   const track = document.createElement('div');
   track.className = 'shop-item-slider-track';
@@ -3702,6 +3702,7 @@ function renderShopItemSlider(item) {
   detail.appendChild(slider);
 
   let loadedCount = 0;
+  let errorCount  = 0;
   let cur = 0;
   const slideEls = [];
   const dotEls   = [];
@@ -3711,32 +3712,6 @@ function renderShopItemSlider(item) {
     slideEls.forEach((s, i) => s.classList.toggle('active', i === cur));
     dotEls.forEach((d, i)   => d.classList.toggle('active', i === cur));
   }
-
-  slides.forEach((src, i) => {
-    const slide = document.createElement('div');
-    slide.className = 'shop-item-slide' + (i === 0 ? ' active' : '');
-    track.appendChild(slide);
-    slideEls.push(slide);
-
-    const img = document.createElement('img');
-    img.loading = 'lazy';
-    img.onload = () => {
-      loadedCount++;
-      slider.style.display = '';
-      if (loadedCount > 1 && dotEls.length === 0) buildDots();
-      if (loadedCount === 1) {
-        setTimeout(() => { if (loadedCount > 1 && dotEls.length === 0) buildDots(); }, 400);
-      }
-    };
-    img.onerror = () => {
-      const idx = slideEls.indexOf(slide);
-      if (idx > -1) slideEls.splice(idx, 1);
-      slide.remove();
-      if (slideEls.length === 0) slider.style.display = 'none';
-    };
-    img.src = src;
-    slide.appendChild(img);
-  });
 
   function buildDots() {
     if (slideEls.length <= 1) return;
@@ -3750,6 +3725,32 @@ function renderShopItemSlider(item) {
       dotEls.push(d);
     });
   }
+
+  slides.forEach((src, i) => {
+    const slide = document.createElement('div');
+    slide.className = 'shop-item-slide' + (i === 0 ? ' active' : '');
+    track.appendChild(slide);
+    slideEls.push(slide);
+
+    const img = new Image();
+    img.onload = () => {
+      loadedCount++;
+      slide.appendChild(img);
+      if (loadedCount === slides.length - errorCount) {
+        buildDots();
+      }
+    };
+    img.onerror = () => {
+      errorCount++;
+      const idx = slideEls.indexOf(slide);
+      if (idx > -1) slideEls.splice(idx, 1);
+      slide.remove();
+      if (errorCount === slides.length) {
+        slider.remove(); // все картинки не найдены — убираем слайдер
+      }
+    };
+    img.src = src;
+  });
 
   // Touch swipe
   let tx = 0;

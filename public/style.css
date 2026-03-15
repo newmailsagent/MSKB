@@ -1603,25 +1603,35 @@ body.theme_black .enemy-board .cell.sunk {
 body.theme_black .enemy-board .cell.sunk::after { display: none; }
 
 /* Потопленный — 70% белого на своём поле */
-body.theme_black #my-board .cell.sunk {
+body.theme_black #my-board .cell.sunk,
+body.theme_black #game-board:not(.enemy-board) .cell.sunk {
   background-color: #b3b3b3 !important;
   border-color: #b3b3b3 !important;
 }
-body.theme_black #my-board .cell.sunk::after { display: none !important; }
+body.theme_black #my-board .cell.sunk::after,
+body.theme_black #game-board:not(.enemy-board) .cell.sunk::after { display: none !important; }
 
 /* Подбитый на своём поле — 50% белого штриховка */
-body.theme_black #my-board .cell.hit {
+body.theme_black #my-board .cell.hit,
+body.theme_black #game-board:not(.enemy-board) .cell.hit {
   background-color: #000000 !important;
   border-color: #000000 !important;
   border-top-color: #000000 !important;
 }
-body.theme_black #my-board .cell.hit::after {
+body.theme_black #my-board .cell.hit::after,
+body.theme_black #game-board:not(.enemy-board) .cell.hit::after {
   background: repeating-linear-gradient(
     45deg,
     #808080 0px, #808080 2px,
     transparent 2px, transparent 6px
   ) !important;
   opacity: 1 !important;
+}
+
+/* Корабли на своём поле — 30% белого */
+body.theme_black #my-board .cell.ship,
+body.theme_black #game-board:not(.enemy-board) .cell.ship {
+  background-color: #4d4d4d !important;
 }
 
 /* Корабли при расстановке и во время боя — 30% белого */
