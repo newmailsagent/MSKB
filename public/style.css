@@ -1594,31 +1594,26 @@ body.theme_black .enemy-board .cell.sunk {
 }
 body.theme_black .enemy-board .cell.sunk::after { display: none; }
 
-/* Потопленный — светло-серый на своём поле */
+/* Потопленный — 70% белого на своём поле */
 body.theme_black #my-board .cell.sunk {
-  background-color: #cccccc;
-  border-color: #cccccc;
+  background-color: #b3b3b3;
+  border-color: #b3b3b3;
 }
 body.theme_black #my-board .cell.sunk::after { display: none; }
 
-/* Подбитый на своём поле — серовато-белая штриховка */
+/* Подбитый на своём поле — 50% белого штриховка */
 body.theme_black #my-board .cell.hit {
   background-color: #000000;
   border-color: #000000;
+  border-top-color: #000000;
 }
 body.theme_black #my-board .cell.hit::after {
   background: repeating-linear-gradient(
     45deg,
-    #999999 0px, #999999 2px,
+    #808080 0px, #808080 2px,
     transparent 2px, transparent 6px
   );
-  opacity: .7;
-}
-
-/* Убираем верхнюю рамку у подбитых клеток */
-body.theme_black .cell.hit,
-body.theme_black #my-board .cell.hit {
-  border-top-color: #000000;
+  opacity: .9;
 }
 
 /* Корабли при расстановке — белые */

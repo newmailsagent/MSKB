@@ -3420,7 +3420,7 @@ function renderInventory() {
   if (!grid) return;
 
   // Тёмная тема всегда в инвентаре для авторизованных
-  const darkTheme = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема', description: 'Стандартная тёмная цветовая схема' };
+  const darkTheme = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
   const ownedIds  = new Set(Object.keys(_shopInventory));
   const owned     = [darkTheme, ..._shopItems.filter(i => ownedIds.has(i.id))];
 
@@ -3458,14 +3458,16 @@ function renderInventory() {
     </div>`;
   }).join('');
 
-  // Клик по карточке — открыть страницу в магазине (кроме theme_dark)
+  // Клик по карточке — открыть страницу товара
   grid.querySelectorAll('[data-inv-item]').forEach(card => {
     card.addEventListener('click', e => {
-      if (e.target.closest('[data-inv-action]')) return; // клик по кнопке — не открывать
+      if (e.target.closest('[data-inv-action]')) return;
       const id = card.dataset.invItem;
-      if (id === 'theme_dark') return;
-      // Загружаем магазин если нужно, потом открываем товар
       (_shopItems.length ? Promise.resolve() : loadShopData()).then(() => {
+        // theme_dark — виртуальный, добавляем в _shopItems если нет
+        if (id === 'theme_dark' && !_shopItems.find(i => i.id === 'theme_dark')) {
+          _shopItems.unshift({ id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' });
+        }
         showScreen('shop-item');
         openShopItem(id);
       });
@@ -3477,7 +3479,7 @@ function renderInventory() {
     const itemId = btn.dataset.invAction;
     // theme_dark — виртуальный, не из _shopItems
     const item = itemId === 'theme_dark'
-      ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема' }
+      ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' }
       : _shopItems.find(i => i.id === itemId);
     if (!item) return;
     const activeTheme = _shopEquipped['theme'] || null;

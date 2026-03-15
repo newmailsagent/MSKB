@@ -220,7 +220,7 @@ if (itemCount === 0) {
 // Миграции товаров — добавляем новые айтемы если ещё нет
 try {
   db.prepare(`INSERT OR IGNORE INTO shop_items (id,type,name,description,price_stars,preview_url,sort_order,is_active)
-    VALUES ('theme_black','theme','Чёрная тема','Максимально тёмная цветовая схема — чистый чёрный',100,'/shop/previews/theme/frame_theme_black.png',20,1)`).run();
+    VALUES ('theme_black','theme','Чёрная тема (контрастная)','Максимально тёмная цветовая схема — чистый чёрный',100,'/shop/previews/theme/frame_theme_black.png',20,1)`).run();
 } catch(e) { console.error('[Shop] migration theme_black:', e.message); }
 
 // Обновляем превью светлой темы на PNG если ещё SVG
@@ -232,8 +232,17 @@ try {
 try {
   db.prepare(`UPDATE shop_items SET
     name='Тёмная тема (по умолчанию)',
-    preview_url='/shop/previews/theme/frame_theme_dark.png'
+    preview_url='/shop/previews/theme/frame_theme_dark.png',
+    photo_url_tg='/shop/previews/theme/frame_theme_dark.png'
     WHERE id='theme_dark'`).run();
+} catch(e) {}
+
+// Обновляем название чёрной темы
+try {
+  db.prepare(`UPDATE shop_items SET
+    name='Чёрная тема (контрастная)',
+    photo_url_tg='/shop/previews/theme/frame_theme_black.png'
+    WHERE id='theme_black'`).run();
 } catch(e) {}
 
 // Хелперы магазина
