@@ -3222,7 +3222,7 @@ function openShopItem(itemId) {
     btnEl.textContent    = 'Надеть';
     btnEl.className      = 'btn btn-primary btn-large';
   } else if (item.price_stars) {
-    priceEl.textContent  = `⭐ ${item.price_stars} звёзд`;
+    priceEl.textContent  = `⭐ ${item.price_stars}`;
     statusEl.textContent = '';
     btnEl.textContent    = 'Купить';
     btnEl.className      = 'btn btn-primary btn-large';
@@ -3390,11 +3390,16 @@ const FAKE_PREVIEWS = {
 
 // Патчим getPreviewHtml — возвращает inline SVG если есть фейк, иначе img
 function getItemPreviewHtml(item, large = false) {
+  // Если есть реальный preview_url — используем его (80% в large, cover в grid)
+  if (item.preview_url) {
+    if (large) {
+      return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" style="width:80%;height:80%;object-fit:contain;border-radius:12px;">`;
+    }
+    return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`;
+  }
+  // Иначе SVG-заглушка
   if (FAKE_PREVIEWS[item.id]) {
     return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">${FAKE_PREVIEWS[item.id]}</div>`;
-  }
-  if (item.preview_url) {
-    return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" style="width:100%;height:100%;object-fit:${large?'contain':'cover'}">`;
   }
   return '🎁';
 }
@@ -3446,14 +3451,17 @@ function renderInventory() {
     </div>`;
   }).join('');
 
-  // Клик по карточке — открыть страницу в магазине (кроме theme_dark)
+  // Клик по карточке — открыть страницу в магазине
   grid.querySelectorAll('[data-inv-item]').forEach(card => {
     card.addEventListener('click', e => {
       if (e.target.closest('[data-inv-action]')) return; // клик по кнопке — не открывать
       const id = card.dataset.invItem;
-      if (id === 'theme_dark') return;
       // Загружаем магазин если нужно, потом открываем товар
       (_shopItems.length ? Promise.resolve() : loadShopData()).then(() => {
+        // theme_dark — виртуальный, добавляем в _shopItems временно если нет
+        if (id === 'theme_dark' && !_shopItems.find(i => i.id === 'theme_dark')) {
+          _shopItems.unshift({ id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' });
+        }
         showScreen('shop-item');
         openShopItem(id);
       });
@@ -3465,7 +3473,7 @@ function renderInventory() {
     const itemId = btn.dataset.invAction;
     // theme_dark — виртуальный, не из _shopItems
     const item = itemId === 'theme_dark'
-      ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема' }
+      ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' }
       : _shopItems.find(i => i.id === itemId);
     if (!item) return;
     const activeTheme = _shopEquipped['theme'] || null;
@@ -3606,7 +3614,7 @@ openShopItem = function(itemId) {
     btnEl.textContent    = 'Применить';
     btnEl.className      = 'btn btn-primary btn-large';
   } else if (item.price_stars) {
-    priceEl.textContent  = `⭐ ${item.price_stars} звёзд`;
+    priceEl.textContent  = `⭐ ${item.price_stars}`;
     statusEl.textContent = '';
     btnEl.textContent    = 'Купить';
     btnEl.className      = 'btn btn-primary btn-large';
@@ -3618,8 +3626,90 @@ openShopItem = function(itemId) {
   }
 
   document.getElementById('shop-item-back').onclick = () => showScreen('shop', { isBack: true });
+
+  // Слайдер скриншотов
+  renderShopItemSlider(item);
+
   showScreen('shop-item');
 };
+
+
+/* ─── СЛАЙДЕР СКРИНШОТОВ ТОВАРА ──────────────────── */
+
+// Маппинг item.id → массив путей к скриншотам
+const ITEM_SCREENSHOTS = {
+  theme_dark:  [
+    '/shop/previews/theme/preview_dark_1.png',
+    '/shop/previews/theme/preview_dark_2.png',
+    '/shop/previews/theme/preview_dark_3.png',
+  ],
+  theme_light: [
+    '/shop/previews/theme/preview_white_1.png',
+    '/shop/previews/theme/preview_white_2.png',
+    '/shop/previews/theme/preview_white_3.png',
+  ],
+  theme_black: [
+    '/shop/previews/theme/preview_black_1.png',
+    '/shop/previews/theme/preview_black_2.png',
+    '/shop/previews/theme/preview_black_3.png',
+  ],
+};
+
+function renderShopItemSlider(item) {
+  // Удаляем старый слайдер если был
+  const old = document.getElementById('shop-item-slider');
+  if (old) old.remove();
+
+  const slides = ITEM_SCREENSHOTS[item.id];
+  if (!slides || !slides.length) return;
+
+  const btnEl = document.getElementById('shop-item-btn');
+  if (!btnEl) return;
+
+  const slider = document.createElement('div');
+  slider.id = 'shop-item-slider';
+  slider.className = 'shop-item-slider';
+  slider.innerHTML = `
+    <div class="shop-item-slider-track" id="slider-track-${item.id}">
+      ${slides.map((src, i) => `
+        <div class="shop-item-slide ${i === 0 ? 'active' : ''}">
+          <img src="${src}" alt="Скриншот ${i+1}" loading="lazy">
+        </div>
+      `).join('')}
+    </div>
+    ${slides.length > 1 ? `
+      <div class="shop-item-slider-dots">
+        ${slides.map((_, i) => `<span class="slider-dot ${i === 0 ? 'active' : ''}" data-idx="${i}"></span>`).join('')}
+      </div>
+    ` : ''}
+  `;
+
+  // Вставляем после кнопки
+  btnEl.insertAdjacentElement('afterend', slider);
+
+  // Логика свайпа и точек
+  if (slides.length > 1) {
+    let cur = 0;
+    const track = slider.querySelector('.shop-item-slider-track');
+    const dots  = slider.querySelectorAll('.slider-dot');
+
+    function goTo(idx) {
+      cur = (idx + slides.length) % slides.length;
+      track.querySelectorAll('.shop-item-slide').forEach((s, i) => s.classList.toggle('active', i === cur));
+      dots.forEach((d, i) => d.classList.toggle('active', i === cur));
+    }
+
+    dots.forEach(d => d.addEventListener('click', () => goTo(+d.dataset.idx)));
+
+    // Touch swipe
+    let tx = 0;
+    track.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+    track.addEventListener('touchend',   e => {
+      const dx = e.changedTouches[0].clientX - tx;
+      if (Math.abs(dx) > 40) goTo(dx < 0 ? cur + 1 : cur - 1);
+    }, { passive: true });
+  }
+}
 
 
 /* ─── ПРИМЕНЕНИЕ ТЕМ ─────────────────────────────── */
@@ -3628,6 +3718,8 @@ openShopItem = function(itemId) {
 function applyEquippedTheme(itemId) {
   if (itemId === 'theme_light') {
     document.body.classList.add('theme-light');
+  } else if (itemId === 'theme_black') {
+    document.body.classList.add('theme_black');
   }
   // Сюда добавлять новые темы по мере появления:
   // else if (itemId === 'theme_ocean') { ... }
@@ -3635,7 +3727,7 @@ function applyEquippedTheme(itemId) {
 
 // Снимает все темы (возврат к тёмной по умолчанию)
 function resetTheme() {
-  document.body.classList.remove('theme-light');
+  document.body.classList.remove('theme-light', 'theme_black');
   // добавлять новые классы тем сюда
 }
 

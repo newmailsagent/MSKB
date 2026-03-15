@@ -208,7 +208,7 @@ if (itemCount === 0) {
       name:        'Светлая тема',
       description: 'Светлая цветовая схема',
       price_stars: 100,
-      preview_url: '/shop/previews/theme/frame_theme_white.svg',
+      preview_url: '/shop/previews/theme/frame_theme_white.png',
       sort_order:  10,
     },
   ];
@@ -216,6 +216,25 @@ if (itemCount === 0) {
   for (const it of seedItems) insertItem.run(it.id, it.type, it.name, it.description, it.price_stars, it.preview_url, it.sort_order);
   console.log('[Shop] Seed items inserted');
 }
+
+// Миграции товаров — добавляем новые айтемы если ещё нет
+try {
+  db.prepare(`INSERT OR IGNORE INTO shop_items (id,type,name,description,price_stars,preview_url,sort_order,is_active)
+    VALUES ('theme_black','theme','Чёрная тема','Максимально тёмная цветовая схема — чистый чёрный',100,'/shop/previews/theme/frame_theme_black.png',20,1)`).run();
+} catch(e) { console.error('[Shop] migration theme_black:', e.message); }
+
+// Обновляем превью светлой темы на PNG если ещё SVG
+try {
+  db.prepare(`UPDATE shop_items SET preview_url='/shop/previews/theme/frame_theme_white.png' WHERE id='theme_light' AND preview_url LIKE '%.svg'`).run();
+} catch(e) {}
+
+// Обновляем название тёмной темы если она есть в БД
+try {
+  db.prepare(`UPDATE shop_items SET
+    name='Тёмная тема (по умолчанию)',
+    preview_url='/shop/previews/theme/frame_theme_dark.png'
+    WHERE id='theme_dark'`).run();
+} catch(e) {}
 
 // Хелперы магазина
 function getInventory(userId) {
