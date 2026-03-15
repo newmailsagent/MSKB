@@ -3768,8 +3768,6 @@ function applyEquippedTheme(itemId) {
 function resetTheme() {
   document.body.classList.remove('theme-light', 'theme_black');
 }
-  // добавлять новые классы тем сюда
-}
 
 // Применяет тему из текущей экипировки игрока
 function applyEquippedThemeFromState() {
