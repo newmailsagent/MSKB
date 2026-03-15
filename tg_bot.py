@@ -122,17 +122,23 @@ async def fetch_analytics() -> dict | None:
 
 def fmt_analytics(data: dict, title: str = "Аналитика") -> str:
     """Форматирует данные аналитики в читаемый текст для Telegram."""
-    p   = data.get("players",   {})
-    b   = data.get("battles",   {})
-    acc = data.get("accuracy",  {})
-    wr  = data.get("winrate",   {})
-    pu  = data.get("purchases", {})
+    p   = data.get("players",        {})
+    b   = data.get("battles",        {})
+    fb  = data.get("friend_battles", {})
+    acc = data.get("accuracy",       {})
+    wr  = data.get("winrate",        {})
+    pu  = data.get("purchases",      {})
+    tg  = data.get("tg",             {})
+    br  = data.get("browser",        {})
     now_str = datetime.now(tz=timezone(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M МСК")
 
     # Бои по дням
     by_day_lines = ""
     for row in (b.get("by_day") or []):
-        by_day_lines += f"  {row['day']}: {row['battles']} боёв\n"
+        online_cnt = row.get('online', row.get('battles', 0))
+        friend_cnt = row.get('friend', 0)
+        friend_str = f" | 👥 {friend_cnt}" if friend_cnt else ""
+        by_day_lines += f"  {row['day']}: 🎮 {online_cnt}{friend_str}\n"
 
     # Топ товаров
     top_items_lines = ""
@@ -148,21 +154,42 @@ def fmt_analytics(data: dict, title: str = "Аналитика") -> str:
         "",
         f"<b>Онлайн прямо сейчас:</b> {online}",
         "",
-        "<b>Игроки</b>",
-        f"  Всего зарегистрировано: {p.get('total', 0)}",
+        "<b>Игроки (всего)</b>",
+        f"  Зарегистрировано: {p.get('total', 0)}",
         f"  Новых за 24 ч: {p.get('new_24h', 0)}",
         f"  Активных за 7 дней: {p.get('active_7d', 0)}",
         f"  Активных за 30 дней: {p.get('active_30d', 0)}",
         "",
-        "<b>Бои (онлайн)</b>",
+        "📱 <b>Telegram</b>",
+        f"  Игроков: {tg.get('players', 0)}",
+        f"  Новых за 24 ч: {tg.get('new_24h', 0)}",
+        f"  Активных за 7 дней: {tg.get('active_7d', 0)}",
+        f"  Активных за 30 дней: {tg.get('active_30d', 0)}",
+        f"  Боёв сегодня: {tg.get('battles_today', 0)}",
+        "",
+        "🌐 <b>Браузер (morskoy-boy.ru)</b>",
+        f"  Зарегистрированных: {br.get('players', 0)}",
+        f"  Новых за 24 ч: {br.get('new_24h', 0)}",
+        f"  Активных за 7 дней: {br.get('active_7d', 0)}",
+        f"  Активных за 30 дней: {br.get('active_30d', 0)}",
+        f"  Боёв сегодня (рег.): {br.get('battles_today', 0)}",
+        f"  Боёв сегодня (гости): {br.get('guest_battles_today', 0)}",
+        "",
+        "<b>Бои онлайн (случайный)</b>",
         f"  За сегодня: {b.get('today', 0)}",
         f"  За 7 дней: {b.get('week', 0)}",
         f"  За 30 дней: {b.get('month', 0)}",
         f"  Всего: {b.get('total', 0)}",
+        "",
+        "<b>Бои с другом (по ссылке)</b>",
+        f"  За сегодня: {fb.get('today', 0)}",
+        f"  За 7 дней: {fb.get('week', 0)}",
+        f"  За 30 дней: {fb.get('month', 0)}",
+        f"  Всего: {fb.get('total', 0)}",
     ]
 
     if by_day_lines:
-        lines += ["", "<b>Бои по дням (7д):</b>", by_day_lines.rstrip()]
+        lines += ["", "<b>По дням (7д) 🎮=онлайн 👥=друг:</b>", by_day_lines.rstrip()]
 
     lines += [
         "",
