@@ -2970,6 +2970,13 @@ function _prevBackTarget() {
 }
 
 function handleSwipeBack() {
+  // Если уходим со страницы темы — восстанавливаем реальную тему
+  if (currentScreen === 'shop-item') {
+    const item = _shopItems.find(i => i.id === _currentShopItemId);
+    if (item?.type === 'theme' || _currentShopItemId === 'theme_dark') {
+      applyEquippedThemeFromState();
+    }
+  }
   showScreen(_prevBackTarget(), { isBack: true });
 }
 
@@ -3645,7 +3652,24 @@ openShopItem = function(itemId) {
     btnEl.className      = 'btn btn-primary btn-large';
   }
 
-  document.getElementById('shop-item-back').onclick = () => showScreen(_shopItemBackTarget, { isBack: true });
+  // ── Предпросмотр темы ──────────────────────────────────────────────────
+  // Если это страница темы — применяем её временно для предпросмотра
+  if (item.type === 'theme') {
+    resetTheme();
+    if (itemId === 'theme_dark') {
+      // тёмная — это дефолт, просто сбрасываем
+    } else {
+      applyEquippedTheme(itemId);
+    }
+    // При уходе со страницы — восстанавливаем реальную тему
+    const restoreTheme = () => applyEquippedThemeFromState();
+    document.getElementById('shop-item-back').onclick = () => {
+      restoreTheme();
+      showScreen(_shopItemBackTarget, { isBack: true });
+    };
+  } else {
+    document.getElementById('shop-item-back').onclick = () => showScreen(_shopItemBackTarget, { isBack: true });
+  }
 
   showScreen('shop-item');
 
