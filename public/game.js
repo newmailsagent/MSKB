@@ -15,46 +15,6 @@ const SHIP_DEFS  = [
 ];
 const CELL_EMPTY = 0, CELL_SHIP = 1, CELL_HIT = 2, CELL_MISS = 3, CELL_SUNK = 4;
 
-
-/* ─── XP / УРОВНИ (клиент) ──────────────────────── */
-const XP_LEVELS = [0,1000,2250,3813,5766,8208,11260,15075,19844,25805,33256,
-  42570,54212,68765,86956,109695,138118,173647,218058,273572,342964,
-  429704,538129,673660,843074,1054841,1319550,1650437,2064045,2581055,3227318];
-
-const RANKS = [
-  { minLevel: 1,  name: 'Новобранец Неона' },
-  { minLevel: 5,  name: 'Хакер Дронов' },
-  { minLevel: 10, name: 'Неоновый Рейдер' },
-  { minLevel: 20, name: 'Кибер-Титан' },
-  { minLevel: 30, name: 'Абсолютный Доминайтор' },
-];
-
-function calcLevel(xp) {
-  xp = xp || 0;
-  let level = 1;
-  for (let i = 1; i < XP_LEVELS.length; i++) {
-    if (xp >= XP_LEVELS[i]) level = i + 1; else break;
-  }
-  return Math.min(level, 30);
-}
-
-function calcRank(level) {
-  let rank = RANKS[0].name;
-  for (const r of RANKS) { if (level >= r.minLevel) rank = r.name; }
-  return rank;
-}
-
-function getXpProgress(xp) {
-  const level    = calcLevel(xp);
-  const rank     = calcRank(level);
-  const xpForThis = XP_LEVELS[level - 1] || 0;
-  const xpForNext = XP_LEVELS[level]     || XP_LEVELS[XP_LEVELS.length - 1];
-  const xpInLevel = xp - xpForThis;
-  const xpNeeded  = xpForNext - xpForThis;
-  const pct       = xpNeeded > 0 ? Math.min(100, Math.round(xpInLevel / xpNeeded * 100)) : 100;
-  return { xp, level, rank, xpInLevel, xpNeeded, xpForNext, pct };
-}
-
 /* ─── ПРИЛОЖЕНИЕ ─────────────────────────────────── */
 const App = {
   user:     null,
@@ -218,52 +178,17 @@ const allSunk = ships => ships.every(s => s.sunk);
 let currentScreen = 'loading';
 let _prevScreen   = null;
 
-// Возврат в меню с лоадером и синхронизацией данных
-async function goToMenu() {
-  const loader = document.getElementById('screen-loading');
-  const progEl = document.getElementById('loading-progress');
-
-  if (loader) {
-    loader.style.display = '';
-    if (progEl) progEl.textContent = '0%';
-  }
-  startLoadingCellAnim();
-
-  let pct = 0;
-  const t = setInterval(() => {
-    pct = Math.min(pct + Math.random() * 20 + 8, 85);
-    if (progEl) progEl.textContent = Math.round(pct) + '%';
-  }, 120);
-
-  await syncStatsFromServer().catch(() => {});
-  clearInterval(t);
-  if (progEl) progEl.textContent = '100%';
-  updateMenuUI();
-  await new Promise(r => setTimeout(r, 300));
-
-  stopLoadingCellAnim();
-  if (loader) loader.style.display = 'none';
-  showScreen('menu');
-}
-
 function showScreen(name, opts = {}) {
   const isBack = opts.isBack || false;
   const prev   = document.getElementById('screen-' + currentScreen);
   const next   = document.getElementById('screen-' + name);
   if (!next || currentScreen === name) return;
 
-  // Если уходим с расстановки или ожидания в онлайн-режиме — уведомляем сервер
-  if (['placement', 'waiting'].includes(currentScreen) &&
-      !['placement', 'waiting', 'game'].includes(name) &&
-      pendingGameMode === 'online' && WS.socket && WS.roomId && !Game.active) {
-    WS.socket.emit('leave_room', { roomId: WS.roomId });
-    WS.disconnect();
-  }
-
   // Лоадер убираем насовсем через display:none
   const loader = document.getElementById('screen-loading');
-  stopLoadingCellAnim();
-  if (loader) loader.style.display = 'none';
+  if (loader && currentScreen === 'loading') {
+    loader.style.display = 'none';
+  }
 
   // Снимаем классы анимации (но не трогаем лоадер)
   document.querySelectorAll('.screen:not(#screen-loading)').forEach(s => {
@@ -310,15 +235,6 @@ function isDesktop() {
   return window.innerWidth >= 768;
 }
 
-/* ─── АВТОРИЗОВАННЫЙ FETCH ───────────────────────── */
-// Добавляет X-Telegram-Init-Data для эндпоинтов требующих верификации
-function authFetch(url, options = {}) {
-  const initData = window.Telegram?.WebApp?.initData;
-  const headers  = { ...(options.headers || {}) };
-  if (initData) headers['X-Telegram-Init-Data'] = initData;
-  return fetch(url, { ...options, headers });
-}
-
 /* ─── ПОЛЬЗОВАТЕЛЬ ───────────────────────────────── */
 /* ─── ОПРЕДЕЛЯЕМ — мы в TG или нет ─────────────── */
 function isInsideTelegram() {
@@ -344,7 +260,7 @@ function initUser() {
     const cleanId = String(parseInt(tgUser.id, 10));
     App.user = {
       id:       cleanId,
-      name:     tgUser.first_name || tgUser.username || 'Игрок',
+      name:     tgUser.first_name || 'Игрок',
       username: tgUser.username ? '@' + tgUser.username : '',
       photo:    tgUser.photo_url || null,
       isGuest:  false,
@@ -376,33 +292,9 @@ function initSettings() {
     }
   });
   document.getElementById('btn-reset-stats')?.addEventListener('click', () => {
-    const mode = App._statsMode || 'online';
-    const label = mode === 'online' ? 'онлайн-статистику' : 'статистику против ботов';
-    showModal('Сбросить статистику?', `Удалить ${label}? Действие нельзя отменить.`, [
+    showModal('Сбросить статистику?', 'Все данные будут удалены.', [
       { label: 'Отмена',   cls: 'btn-ghost',  action: closeModal },
-      { label: 'Сбросить', cls: 'btn-danger', action: async () => {
-        closeModal();
-        if (mode === 'online') {
-          // Сбрасываем онлайн: сервер + локальный кэш
-          if (!App.user.isGuest) {
-            await fetch('/api/stats/reset', {
-              method: 'POST',
-              headers: {'Content-Type':'application/json'},
-              body: JSON.stringify({ id: App.user.id }),
-            }).catch(() => {});
-          }
-          App.stats   = defaultStats();
-          App.history = [];
-        } else {
-          // Сбрасываем боты: только localStorage
-          App.statsBots   = defaultStats();
-          App.historyBots = [];
-          saveJSON('bs_stats_bots',   App.statsBots);
-          saveJSON('bs_history_bots', App.historyBots);
-        }
-        updateMenuStats();
-        renderStatsScreen(mode);
-      }},
+      { label: 'Сбросить', cls: 'btn-danger', action: () => { App.stats = defaultStats(); App.history = []; saveJSON('bs_stats', App.stats); saveJSON('bs_history', App.history); updateMenuStats(); closeModal(); }},
     ]);
   });
 }
@@ -428,16 +320,11 @@ async function syncStatsFromServer() {
     const histJson  = await histRes.json();
 
     if (statsJson.ok && statsJson.data) {
+      // Показываем только онлайн-статистику (online_wins/losses)
       App.stats.wins       = statsJson.data.online_wins   || 0;
       App.stats.losses     = statsJson.data.online_losses || 0;
       App.stats.totalShots = statsJson.data.online_shots  || 0;
       App.stats.totalHits  = statsJson.data.online_hits   || 0;
-      // XP данные
-      if (statsJson.data.xp !== undefined) {
-        App.user.xp = statsJson.data.xp || 0;
-        saveJSON('bs_user', App.user);
-        updateMenuLevel();
-      }
       updateMenuStats();
     }
 
@@ -642,6 +529,7 @@ function renderRatingList(data) {
   if (!list) return;
   const medals = ['gold','silver','bronze'];
   list.innerHTML = '';
+  // Показываем только тех у кого есть хотя бы 1 победа
   const filtered = data.filter(e => (e.rated_wins || 0) >= 1);
   if (!filtered.length) { list.innerHTML = '<p class="empty-state">Пока никто не набрал побед. Сыграй сетевой бой!</p>'; return; }
   filtered.forEach((entry, i) => {
@@ -649,19 +537,17 @@ function renderRatingList(data) {
     const rl  = entry.rated_losses || 0;
     const rs  = entry.rated_shots  || 0;
     const rh  = entry.rated_hits   || 0;
+    const acc = rs > 0 ? Math.round(rh/rs*100) : 0;
     const tot = rw + rl;
     const wr  = tot ? Math.round(rw/tot*100) : 0;
     const isMe = entry.id === App.user?.id;
-    const level = entry.level || 1;
-    const rank  = entry.rank  || 'Новобранец Неона';
     const div  = document.createElement('div');
     div.className = 'lb-item' + (isMe ? ' lb-item-me' : '');
     div.innerHTML =
       '<div class="lb-rank ' + (medals[i]||'') + '">' + (i < 3 ? ['🥇','🥈','🥉'][i] : i+1) + '</div>' +
-      '<div class="lb-avatar-wrap"><div class="lb-avatar">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
-      '<div class="lb-level-dot level-bg-' + level + '">' + level + '</div></div>' +
+      '<div class="lb-avatar">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
       '<div class="lb-info"><strong>' + (entry.name||'Игрок') + (isMe ? ' <small>(вы)</small>' : '') + '</strong>' +
-      '<small class="lb-rank-name">' + rank + ' · ' + rw + 'W · ' + wr + '% WR</small></div>' +
+      '<small>' + rw + 'W · ' + wr + '% WR</small></div>' +
       '<div class="lb-wins">' + rw + '</div>';
     list.appendChild(div);
   });
@@ -673,22 +559,58 @@ async function renderStatsScreen(mode) {
   if (!mode) mode = App._statsMode || 'online';
   App._statsMode = mode;
 
-  const statsBody    = document.getElementById('profile-stats-body');
+  const statsGrid    = document.querySelector('.stats-grid');
+  const statsProfile = document.querySelector('.stats-profile');
+  const sectionTitle = document.querySelector('.section-title');
   const historyList  = document.getElementById('history-list');
 
   if (isGuest) {
-    if (statsBody) statsBody.style.display = 'none';
+    if (statsGrid)    statsGrid.style.display    = 'none';
+    if (statsProfile) statsProfile.style.display = 'none';
+    if (sectionTitle) sectionTitle.style.display = 'none';
+    if (historyList)  historyList.innerHTML = '';
     return;
   }
-  if (statsBody) statsBody.style.display = '';
 
+  if (statsGrid)    statsGrid.style.display    = '';
+  if (statsProfile) statsProfile.style.display = '';
+  if (sectionTitle) sectionTitle.style.display = '';
+
+  // Аватар
+  const statsAvatar = document.getElementById('stats-avatar');
+  if (statsAvatar) {
+    if (App.user.photo) {
+      statsAvatar.innerHTML = `<img src="${App.user.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+    } else {
+      statsAvatar.textContent = (App.user.name[0]||'?').toUpperCase();
+    }
+  }
+  setText('stats-name', App.user.name);
+
+  // Тумблер режима
+  let toggle = document.getElementById('stats-mode-toggle');
+  if (!toggle) {
+    const header = document.querySelector('#screen-stats .page-header');
+    if (header) {
+      toggle = document.createElement('div');
+      toggle.id = 'stats-mode-toggle';
+      toggle.className = 'stats-mode-toggle';
+      toggle.innerHTML =
+        '<button class="stm-btn" data-mode="online">По сети</button>' +
+        '<button class="stm-btn" data-mode="bot">Против ботов</button>';
+      header.appendChild(toggle);
+      toggle.addEventListener('click', e => {
+        const btn = e.target.closest('[data-mode]');
+        if (btn) renderStatsScreen(btn.dataset.mode);
+      });
+    }
+  }
   // Подсвечиваем активный режим
-  document.querySelectorAll('#profile-stats-mode-toggle .stm-btn')
-    .forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.querySelectorAll('.stm-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
 
   let wins, losses, totalShots, totalHits, histToShow;
 
-  if (mode === 'online') {
+  if (isOnlineMode(mode)) {
     await syncStatsFromServer();
     wins       = App.stats.wins;
     losses     = App.stats.losses;
@@ -877,10 +799,6 @@ const Placement = {
       }
     }, 600);
 
-    // setPointerCapture — все pointermove/up гарантированно приходят на этот элемент
-    // даже когда палец ушёл далеко за пределы доски
-    try { e.target.setPointerCapture(e.pointerId); } catch(_) {}
-
     const onMove = (ev) => this._onBoardMove(ev);
     const onUp   = (ev) => { this._onBoardUp(ev); document.removeEventListener('pointermove', onMove); document.removeEventListener('pointerup', onUp); document.removeEventListener('pointercancel', onUp); };
 
@@ -893,7 +811,6 @@ const Placement = {
       pointerId: e.pointerId,
       longTimer, moved: false,
       startX: e.clientX, startY: e.clientY,
-      target: e.target,   // сохраняем для releasePointerCapture
     };
   },
 
@@ -915,6 +832,8 @@ const Placement = {
       ship.cells.forEach(({ r, c }) => { this.board[r][c] = CELL_EMPTY; });
       ship.placed = false; ship.cells = [];
       this.selected = ship;
+
+      // Ghost не нужен — ориентир показывается preview на поле
       this._drag.ghost = null;
 
       // renderBoard — убираем корабль с поля визуально
@@ -923,6 +842,7 @@ const Placement = {
     }
 
     if (this._drag.moved) {
+      this._moveGhost(e.clientX, e.clientY);
       this._showPreview(e.clientX, e.clientY);
     }
   },
@@ -1019,9 +939,6 @@ const Placement = {
     const boardEl = document.getElementById('placement-board');
     if (!boardEl) return;
     boardEl.innerHTML = '';
-    // DOM пересоздан — сбрасываем кэш ссылок на ячейки превью
-    this._previewCells = [];
-    this._previewR = undefined; this._previewC = undefined; this._previewV = undefined;
     const cellShipMap = {};
     this.ships.forEach(ship => {
       if (ship.placed) ship.cells.forEach(({ r, c }) => { cellShipMap[r+','+c] = ship.id; });
@@ -1045,40 +962,13 @@ const Placement = {
 
   _makeGhost(ship, vertical) {
     const v = vertical !== undefined ? vertical : ship.vertical;
-
-    // Берём реальный размер ячейки с доски
-    const boardEl = document.getElementById('placement-board');
-    const sampleCell = boardEl?.querySelector('.cell');
-    const cellSize = sampleCell ? sampleCell.getBoundingClientRect().width : 32;
-    const gap = 2; // gap между ячейками (из CSS)
-
     const g = document.createElement('div');
-    g.className = 'drag-ghost';
-    g.style.cssText = [
-      'position:fixed',
-      'z-index:9999',
-      'pointer-events:none',
-      'touch-action:none',
-      'display:flex',
-      v ? 'flex-direction:column' : 'flex-direction:row',
-      `gap:${gap}px`,
-      'border-radius:5px',
-      'opacity:0.85',
-      // Центрируем ghost по пальцу (середина первой ячейки)
-      'transform:translate(-50%,-50%)',
-    ].join(';');
-
+    g.className = 'ship-piece' + (v ? ' vertical' : '');
+    g.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;opacity:0.7;' +
+      'transform:translate(-50%,-50%);border:2px solid var(--accent);' +
+      'background:var(--bg2);border-radius:5px;padding:4px;touch-action:none;';
     for (let i = 0; i < ship.size; i++) {
-      const c = document.createElement('div');
-      c.style.cssText = [
-        `width:${cellSize}px`,
-        `height:${cellSize}px`,
-        'background:var(--cell-ship)',
-        'border-radius:3px',
-        'border:1.5px solid var(--accent)',
-        'box-sizing:border-box',
-      ].join(';');
-      g.appendChild(c);
+      const c = document.createElement('div'); c.className = 'ship-cell'; g.appendChild(c);
     }
     return g;
   },
@@ -1090,93 +980,45 @@ const Placement = {
   },
 
   _showPreview(cx, cy) {
+    this.clearPreview();
     if (!this.selected) return;
-
-    const boardEl = document.getElementById('placement-board');
-    if (!boardEl) return;
-    const rect = boardEl.getBoundingClientRect();
-
-    // Зажимаем координаты внутри доски — превью не исчезает при выходе пальца за край
-    const clampedX = Math.max(rect.left, Math.min(rect.right  - 1, cx));
-    const clampedY = Math.max(rect.top,  Math.min(rect.bottom - 1, cy));
-
-    const cellW = (rect.width  - 2 * 9) / BOARD_SIZE;
-    const cellH = (rect.height - 2 * 9) / BOARD_SIZE;
-    let c = Math.floor((clampedX - rect.left) / (cellW + 2));
-    let r = Math.floor((clampedY - rect.top)  / (cellH + 2));
-    c = Math.max(0, Math.min(BOARD_SIZE - 1, c));
-    r = Math.max(0, Math.min(BOARD_SIZE - 1, r));
-
+    const el = document.elementFromPoint(cx, cy);
+    if (!el) return;
+    const cell = el.closest('[data-r][data-c]');
+    if (!cell || !document.getElementById('placement-board')?.contains(cell)) return;
+    let r = +cell.dataset.r, c = +cell.dataset.c;
     const size = this.selected.size;
     if (this.vertical) r = Math.min(r, BOARD_SIZE - size);
     else               c = Math.min(c, BOARD_SIZE - size);
-
-    // Не перерисовываем если ячейка не изменилась — убирает мигание
-    if (this._previewR === r && this._previewC === c && this._previewV === this.vertical) return;
-    this._previewR = r; this._previewC = c; this._previewV = this.vertical;
-
-    // Снимаем классы только с закэшированных ячеек (быстрее querySelectorAll по всей доске)
-    if (this._previewCells) {
-      this._previewCells.forEach(el => el.classList.remove('preview', 'invalid'));
-    }
-    this._previewCells = [];
-
+    r = Math.max(0, r); c = Math.max(0, c);
     const valid = canPlace(this.board, r, c, size, this.vertical);
     for (let i = 0; i < size; i++) {
       const nr = this.vertical ? r+i : r, nc = this.vertical ? c : c+i;
       if (!inBounds(nr, nc)) continue;
-      const cl = boardEl.querySelector(`[data-r="${nr}"][data-c="${nc}"]`);
-      if (cl) { cl.classList.add(valid ? 'preview' : 'invalid'); this._previewCells.push(cl); }
+      const cl = document.querySelector(`#placement-board [data-r="${nr}"][data-c="${nc}"]`);
+      if (cl) cl.classList.add(valid ? 'preview' : 'invalid');
     }
   },
 
   _dropAt(cx, cy, ship) {
+    const el = document.elementFromPoint(cx, cy);
+    const cell = el?.closest('[data-r][data-c]');
     const boardEl = document.getElementById('placement-board');
-    if (!boardEl) {
-      ship.placed = false; ship.cells = []; ship.vertical = false;
-      this.vertical = false; this.selected = null; return;
-    }
-
-    const rect  = boardEl.getBoundingClientRect();
-    const cellW = (rect.width  - 2 * 9) / BOARD_SIZE;
-    const cellH = (rect.height - 2 * 9) / BOARD_SIZE;
-    const size  = ship.size;
-
-    // Зажимаем координаты внутри доски — работает даже если палец отпущен за краем
-    const clampedX = Math.max(rect.left, Math.min(rect.right  - 1, cx));
-    const clampedY = Math.max(rect.top,  Math.min(rect.bottom - 1, cy));
-
-    let baseC = Math.max(0, Math.min(BOARD_SIZE - 1, Math.floor((clampedX - rect.left) / (cellW + 2))));
-    let baseR = Math.max(0, Math.min(BOARD_SIZE - 1, Math.floor((clampedY - rect.top)  / (cellH + 2))));
-    if (this.vertical) baseR = Math.min(baseR, BOARD_SIZE - size);
-    else               baseC = Math.min(baseC, BOARD_SIZE - size);
-
-    // Сначала пробуем точную позицию
-    if (canPlace(this.board, baseR, baseC, size, this.vertical)) {
-      ship.vertical = this.vertical;
-      ship.cells = placeShip(this.board, baseR, baseC, size, this.vertical);
-      ship.placed = true; this.selected = null;
-      Sound.place(); vibrate([15]); return;
-    }
-
-    // Ищем ближайшую свободную клетку по спирали вокруг базовой точки
-    let bestR = -1, bestC = -1, bestDist = Infinity;
-    for (let r = 0; r <= BOARD_SIZE - (this.vertical ? size : 1); r++) {
-      for (let c = 0; c <= BOARD_SIZE - (this.vertical ? 1 : size); c++) {
-        if (!canPlace(this.board, r, c, size, this.vertical)) continue;
-        const dist = Math.hypot(r - baseR, c - baseC);
-        if (dist < bestDist) { bestDist = dist; bestR = r; bestC = c; }
+    if (cell && boardEl?.contains(cell)) {
+      let r = +cell.dataset.r, c = +cell.dataset.c;
+      const size = ship.size;
+      if (this.vertical) r = Math.min(r, BOARD_SIZE - size);
+      else               c = Math.min(c, BOARD_SIZE - size);
+      r = Math.max(0, r); c = Math.max(0, c);
+      if (canPlace(this.board, r, c, size, this.vertical)) {
+        ship.vertical = this.vertical;
+        ship.cells = placeShip(this.board, r, c, size, this.vertical);
+        ship.placed = true;
+        this.selected = null;
+        Sound.place(); vibrate([15]); return;
       }
     }
-
-    if (bestR !== -1) {
-      ship.vertical = this.vertical;
-      ship.cells = placeShip(this.board, bestR, bestC, size, this.vertical);
-      ship.placed = true; this.selected = null;
-      Sound.place(); vibrate([15]); return;
-    }
-
-    // Совсем нет места — возвращаем в dok
+    // Промах — в dok
     vibrate([20,10,20]);
     ship.placed = false; ship.cells = []; ship.vertical = false;
     this.vertical = false; this.selected = null;
@@ -1208,14 +1050,8 @@ const Placement = {
   },
 
   clearPreview() {
-    if (this._previewCells && this._previewCells.length) {
-      this._previewCells.forEach(el => el.classList.remove('preview', 'invalid'));
-      this._previewCells = [];
-    } else {
-      document.querySelectorAll('#placement-board .preview, #placement-board .invalid')
-        .forEach(c => c.classList.remove('preview','invalid'));
-    }
-    this._previewR = undefined; this._previewC = undefined; this._previewV = undefined;
+    document.querySelectorAll('#placement-board .preview, #placement-board .invalid')
+      .forEach(c => c.classList.remove('preview','invalid'));
   },
 
   clear() {
@@ -1239,6 +1075,7 @@ const Placement = {
 };
 /* ─── ИГРОВОЙ ПРОЦЕСС ────────────────────────────── */
 let pendingGameMode = null;
+function isOnlineMode(m) { return m === 'online' || m === 'online-random' || m === 'online-friend'; }
 
 function startGame(mode, myBoard, myShips, enemyBoard, enemyShips, opponent) {
   Game.mode         = mode;
@@ -1265,7 +1102,7 @@ function startGame(mode, myBoard, myShips, enemyBoard, enemyShips, opponent) {
   const oppInfo = document.getElementById('opponent-info');
   if (oppInfo) {
     const duel = opponent?.duel;
-    if (duel && mode === 'online') {
+    if (duel && isOnlineMode(mode)) {
       const theirColor = duel.theirWins > duel.myWins ? 'style="color:var(--red)"' : '';
       const myColor    = duel.myWins > duel.theirWins ? 'style="color:var(--green,#4caf50)"' : '';
       oppInfo.innerHTML = `<span id="opp-name">${opponent.name || 'Соперник'}</span>` +
@@ -1411,19 +1248,19 @@ function initVisibilityHandler() {
           Game.active = false;
           WS.disconnect();
           showModal('Сессия истекла', 'Вы долго не были в игре. Вернитесь в меню.', [
-            { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); goToMenu(); }},
+            { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); showScreen('menu'); }},
           ]);
         }
         return;
       }
 
       // Переподключаем сокет если он отвалился во время фона
-      if (Game.active && Game.mode === 'online' && WS.socket && !WS.socket.connected) {
+      if (Game.active && isOnlineMode(Game.mode) && WS.socket && !WS.socket.connected) {
         // Сокет отвалился — для игрока это означает что соперник уже получил победу
         // Показываем соответствующий экран
         Game.active = false;
         showModal('Соединение потеряно', 'Игра прервана из-за потери связи.', [
-          { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); goToMenu(); }},
+          { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); showScreen('menu'); }},
         ]);
       }
     }
@@ -1492,7 +1329,7 @@ function playerShoot(r, c) {
   if (Game.myShots[r][c] !== CELL_EMPTY) return;
 
   // Онлайн: только отправляем, результат придёт через shot_result
-  if (Game.mode === 'online') {
+  if (isOnlineMode(Game.mode)) {
     Game.isMyTurn = false; // блокируем повторные клики
     clearTurnWarningUI();  // сбрасываем таймер
     WS.sendShot(r, c);
@@ -1653,77 +1490,6 @@ function huntParity(board) {
 
 const getNeighbors4 = (r,c) => [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].filter(([nr,nc])=>inBounds(nr,nc));
 
-/* ─── СИСТЕМА РЕВАНШЕЙ ───────────────────────────── */
-const Rematch = {
-  _interval: null,
-  _secs: 10,
-
-  _clear() {
-    if (this._interval) { clearInterval(this._interval); this._interval = null; }
-    const btn = document.getElementById('btn-rematch');
-    if (btn) { btn.textContent = 'Реванш'; btn.disabled = false; btn._timerActive = false; btn.classList.remove('pulse-accent', 'btn-disabled'); }
-    const statusEl = document.getElementById('rematch-status');
-    if (statusEl) { statusEl.classList.add('hidden'); statusEl.classList.remove('opponent-wants','declined'); statusEl.textContent = ''; }
-  },
-
-  // Таймер для того, кто НАЖАЛ реванш первым
-  startTimer() {
-    this._clear();
-    this._secs = 10;
-    const btn = document.getElementById('btn-rematch');
-    if (btn) { btn._timerActive = true; btn.disabled = true; }
-    const update = () => {
-      if (btn) btn.textContent = `Ожидаем… ${this._secs}с`;
-      if (this._secs <= 0) { clearInterval(this._interval); this._interval = null; }
-      this._secs--;
-    };
-    update();
-    this._interval = setInterval(update, 1000);
-  },
-
-  // Таймер для того, кто ПОЛУЧИЛ предложение реванша
-  startOpponentTimer() {
-    if (this._interval) return; // если уже нажал — не перезапускаем
-    this._secs = 10;
-    const btn = document.getElementById('btn-rematch');
-    // Кнопка остаётся активной — противник может принять
-    const update = () => {
-      if (btn && !btn._timerActive) btn.textContent = `Реванш (${this._secs}с)`;
-      if (this._secs <= 0) {
-        clearInterval(this._interval); this._interval = null;
-        // Время вышло — деактивируем кнопку и редиректим
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = 'Реванш';
-          btn.classList.add('btn-disabled');
-        }
-        const statusEl = document.getElementById('rematch-status');
-        if (statusEl) {
-          statusEl.textContent = 'Время вышло';
-          statusEl.classList.remove('opponent-wants');
-          statusEl.classList.add('declined');
-        }
-        setTimeout(() => goToMenu(), 2500);
-        return;
-      }
-      this._secs--;
-    };
-    update();
-    this._interval = setInterval(update, 1000);
-  },
-
-  request() {
-    if (!WS.socket || !WS.roomId) return;
-    WS.socket.emit('rematch_request', { roomId: WS.roomId });
-    this.startTimer();
-    const statusEl = document.getElementById('rematch-status');
-    if (statusEl) {
-      statusEl.textContent = 'Ждём ответа соперника…';
-      statusEl.classList.remove('hidden','opponent-wants','declined');
-    }
-  },
-};
-
 /* ─── КОНЕЦ ИГРЫ ─────────────────────────────────── */
 function endGame(result) {
   Game.active = false;
@@ -1741,45 +1507,7 @@ function endGame(result) {
   setText('go-acc',   Game.shots ? Math.round(Game.hits/Game.shots*100)+'%' : '0%');
   if (result === 'win')  { Sound.win();  vibrate([50,30,100,30,200]); }
   if (result === 'loss') { Sound.lose(); vibrate([200]); }
-  // Сбрасываем состояние реванша перед показом экрана
-  Rematch._clear();
-  setTimeout(() => {
-    showScreen('gameover');
-    const xpBlock = document.getElementById('xp-reward-block');
-    if (Game.mode === 'online' && !App.user.isGuest) {
-      // Показываем блок сразу — с текущим прогрессом, без анимации
-      if (xpBlock) {
-        xpBlock.classList.remove('hidden');
-        // Рисуем "скелет" — текущий прогресс до получения данных с сервера
-        const prog = getXpProgress(App.user.xp || 0);
-        setText('xp-ring-level', prog.level);
-        setText('xp-progress-text', prog.xpInLevel + ' / ' + prog.xpNeeded + ' XP');
-        const bar  = document.getElementById('xp-progress-bar');
-        const ring = document.getElementById('xp-ring-fill');
-        if (bar)  { bar.style.transition = 'none'; bar.style.width = prog.pct + '%'; }
-        if (ring) { ring.style.transition = 'none'; setRingProgress(ring, prog.pct, 80); }
-        const gainEl = document.getElementById('xp-gained');
-        if (gainEl) gainEl.textContent = '…';
-        const lvlUpEl = document.getElementById('xp-levelup');
-        if (lvlUpEl) { lvlUpEl.classList.add('hidden'); lvlUpEl.classList.remove('anim-levelup'); }
-      }
-      // Если xp_reward уже пришёл — запускаем анимацию
-      if (Game._pendingXp) {
-        setTimeout(() => { showXpReward(Game._pendingXp); Game._pendingXp = null; }, 350);
-      } else {
-        // Показываем расчётное значение сразу, чтобы игрок не видел '...'
-        // Если xp_reward придёт — перезапишет; если нет — через 4с показываем 0
-        Game._xpFallbackTimer = setTimeout(() => {
-          const gainEl2 = document.getElementById('xp-gained');
-          if (gainEl2 && gainEl2.textContent === '…') {
-            gainEl2.innerHTML = '<span class="xp-zero">+0 XP</span>';
-          }
-        }, 4000);
-      }
-    } else {
-      if (xpBlock) xpBlock.classList.add('hidden');
-    }
-  }, 800);
+  setTimeout(() => showScreen('gameover'), 800);
 }
 
 /* ─── WEBSOCKET ──────────────────────────────────── */
@@ -1810,7 +1538,7 @@ const WS = {
 
     this.socket.on('disconnect', () => {
       if (Game.active) showModal('Соединение потеряно', 'Игра прервана.', [
-        { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); goToMenu(); }},
+        { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); showScreen('menu'); }},
       ]);
     });
 
@@ -1864,7 +1592,7 @@ const WS = {
       stopSearchUI();
       this.roomId  = roomId;
       Game.roomId  = roomId;
-      Game.opponent = { name: opponent.name, id: opponent.playerId, level: opponent.level || 1, rank: opponent.rank || '' };
+      Game.opponent = { name: opponent.name, id: opponent.playerId };
       setText('waiting-title', `Соперник: ${opponent.name}`);
       setText('waiting-sub',   'Расставляй корабли!');
       const block = document.getElementById('invite-block');
@@ -1962,17 +1690,9 @@ const WS = {
 
     // ── Соперник вышел ────────────────────────────────
     this.socket.on('opponent_left', () => {
-      if (Game.active) {
-        showModal('Соперник вышел', 'Тебе засчитана победа!', [
-          { label: 'Ок', cls: 'btn-primary', action: () => { closeModal(); endGame('win'); }},
-        ]);
-      } else if (['placement', 'waiting'].includes(currentScreen)) {
-        // Соперник вышел во время расстановки — уведомляем и возвращаем в меню
-        WS.disconnect();
-        showModal('Соперник вышел', 'Соперник покинул расстановку. Возвращаемся в меню.', [
-          { label: 'Ок', cls: 'btn-primary', action: () => { closeModal(); goToMenu(); }},
-        ]);
-      }
+      if (Game.active) showModal('Соперник вышел', 'Тебе засчитана победа!', [
+        { label: 'Ок', cls: 'btn-primary', action: () => { closeModal(); endGame('win'); }},
+      ]);
     });
 
     this.socket.on('room_expired', () => {
@@ -2006,57 +1726,6 @@ const WS = {
 
     this.socket.on('error_msg', ({ message }) => {
       showModal('Ошибка', message, [{ label: 'Ок', cls: 'btn-ghost', action: closeModal }]);
-    });
-
-    // Обновляем счётчик онлайна
-    this.socket.on('online_count', ({ count }) => {
-      if (initOnlineCounter.update) initOnlineCounter.update(count);
-    });
-
-    // XP награда по итогам онлайн-боя
-    this.socket.on('xp_reward', (xpData) => {
-      if (Game._xpFallbackTimer) { clearTimeout(Game._xpFallbackTimer); Game._xpFallbackTimer = null; }
-      Game._pendingXp = xpData;
-      // Применяем сразу если уже на экране gameover, иначе endGame подберёт
-      if (currentScreen === 'gameover') showXpReward(xpData);
-    });
-
-    // ── Реванш ───────────────────────────────────────
-    this.socket.on('rematch_requested', () => {
-      // Соперник нажал реванш — показываем уведомление и запускаем таймер на кнопке
-      const statusEl = document.getElementById('rematch-status');
-      if (statusEl) {
-        statusEl.textContent = 'Соперник предлагает реванш!';
-        statusEl.classList.remove('hidden', 'declined');
-        statusEl.classList.add('opponent-wants');
-      }
-      // Запускаем таймер на кнопке у получателя тоже
-      Rematch.startOpponentTimer();
-    });
-
-    this.socket.on('rematch_accepted', () => {
-      // Оба согласились — стартуем расстановку с тем же соперником в той же комнате
-      Rematch._clear();
-      // roomId остаётся тем же — просто инициируем расстановку
-      startPlacement('online');
-    });
-
-    this.socket.on('rematch_declined', () => {
-      // Соперник не принял в течение 10 сек — только для того, кто предлагал
-      Rematch._clear();
-      const statusEl = document.getElementById('rematch-status');
-      if (statusEl) {
-        statusEl.textContent = 'Соперник отказался от реванша';
-        statusEl.classList.remove('hidden', 'opponent-wants');
-        statusEl.classList.add('declined');
-      }
-      const rematchBtn = document.getElementById('btn-rematch');
-      if (rematchBtn) {
-        rematchBtn.disabled = true;
-        rematchBtn.textContent = 'Реванш';
-        rematchBtn.classList.add('btn-disabled');
-      }
-      setTimeout(() => goToMenu(), 3000);
     });
 
     // п.5: соперник закрыл вкладку/приложение — нам победа
@@ -2114,6 +1783,26 @@ const WS = {
     this.socket.on('surrender_confirmed', () => {
       clearTurnWarningUI();
       endGame('loss');
+    });
+
+    // Реванш: соперник нажал реванш — обновляем кнопку
+    this.socket.on('rematch_requested', () => {
+      const btn = document.getElementById('btn-rematch');
+      if (btn && !btn.disabled) {
+        // Соперник уже ждёт — подсвечиваем кнопку
+        btn.textContent = 'Соперник ждёт! Жми реванш';
+      }
+    });
+
+    // Реванш отклонён (таймер истёк, второй не нажал)
+    this.socket.on('rematch_declined', () => {
+      clearInterval(Game._rematchTimer);
+      const btn = document.getElementById('btn-rematch');
+      if (btn) { btn.textContent = 'Реванш'; btn.disabled = false; }
+      // Показываем сообщение и редирект через 3 сек
+      const sub = document.getElementById('gameover-sub');
+      if (sub) sub.textContent = 'Соперник отказался от реванша…';
+      setTimeout(() => showScreen('menu'), 3000);
     });
   },
 
@@ -2190,26 +1879,6 @@ const WS = {
 let _searchAnimTimer = null;
 let _searchClockTimer = null;
 
-// Анимация ячейки лоадера (те же 3 состояния что и при поиске соперника)
-let _loadingCellTimer = null;
-function startLoadingCellAnim() {
-  stopLoadingCellAnim();
-  const cell = document.getElementById('loading-cell');
-  if (!cell) return;
-  const states = ['', 'state-miss', 'state-hit'];
-  let idx = 0;
-  const tick = () => {
-    cell.className = 'search-cell ' + states[idx];
-    idx = (idx + 1) % states.length;
-    _loadingCellTimer = setTimeout(tick, 850);
-  };
-  tick();
-}
-function stopLoadingCellAnim() {
-  clearTimeout(_loadingCellTimer);
-  _loadingCellTimer = null;
-}
-
 function startSearchUI() {
   stopSearchUI();
   const cell = document.getElementById('search-cell');
@@ -2258,15 +1927,18 @@ async function startOnline(mode) {
     await WS.connect(serverUrl);
 
     if (mode === 'random') {
+      pendingGameMode = 'online-random';
       setText('waiting-title', 'Ищем соперника…');
       setText('waiting-sub',   'Это займёт какое-то время');
       startSearchUI();
       WS.matchmake('random');
     } else if (mode === 'friend') {
+      pendingGameMode = 'online-friend';
       setText('waiting-title', 'Создаём комнату…');
       setText('waiting-sub',   '');
       WS.matchmake('friend_create');
     } else if (mode.startsWith('friend_join:')) {
+      pendingGameMode = 'online-friend';
       const roomId = mode.slice('friend_join:'.length);
       setText('waiting-title', 'Подключаемся к другу…');
       setText('waiting-sub',   '');
@@ -2295,22 +1967,14 @@ function startBotGame(mode) {
 
 /* ─── БУРГЕР-МЕНЮ ────────────────────────────────── */
 function initBurger() {
-  const btn       = document.getElementById('burger-btn');       // бургер в игре
-  const btnMenu   = document.getElementById('btn-burger-menu');  // бургер в главном меню
-  const menu      = document.getElementById('burger-menu');
-  const overlay   = document.getElementById('burger-overlay');
+  const btn    = document.getElementById('burger-btn');
+  const menu   = document.getElementById('burger-menu');
+  const overlay= document.getElementById('burger-overlay');
 
-  function open()  {
-    menu?.classList.add('open');
-    overlay?.classList.remove('hidden');
-    // Скрываем Сдаться если не в игре
-    const surrender = document.getElementById('burger-surrender');
-    if (surrender) surrender.style.display = ['game','waiting','placement'].includes(currentScreen) ? '' : 'none';
-  }
+  function open()  { menu?.classList.add('open'); overlay?.classList.remove('hidden'); }
   function close() { menu?.classList.remove('open'); overlay?.classList.add('hidden'); }
 
   btn?.addEventListener('click', () => menu?.classList.contains('open') ? close() : open());
-  btnMenu?.addEventListener('click', () => menu?.classList.contains('open') ? close() : open());
   overlay?.addEventListener('click', close);
 
   document.getElementById('burger-surrender')?.addEventListener('click', () => {
@@ -2319,7 +1983,7 @@ function initBurger() {
       { label: 'Продолжить', cls: 'btn-ghost',  action: closeModal },
       { label: 'Сдаться',   cls: 'btn-danger',  action: () => {
         closeModal();
-        if (Game.mode === 'online' && WS.socket && WS.roomId) {
+        if (isOnlineMode(Game.mode) && WS.socket && WS.roomId) {
           WS.socket.emit('surrender', { roomId: WS.roomId });
         } else {
           endGame('loss');
@@ -2343,13 +2007,10 @@ function initBurger() {
 
   document.getElementById('burger-stats-btn')?.addEventListener('click', () => {
     close();
-    showScreen('profile');
-    // Открываем вкладку статистики
-    setTimeout(() => {
-      document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'stats'));
-      document.querySelectorAll('.profile-tab-content').forEach(el => el.classList.toggle('hidden', el.id !== 'profile-tab-stats'));
-      renderStatsScreen();
-    }, 50);
+    renderStatsScreen();
+    const statsBackBtn = document.getElementById('stats-back-btn');
+    if (statsBackBtn) statsBackBtn.dataset.screen = Game.active ? 'game' : 'menu';
+    showScreen('stats');
   });
 
   document.getElementById('burger-settings-btn')?.addEventListener('click', () => {
@@ -2363,22 +2024,20 @@ function initBurger() {
 
 function updateBurgerSound() {
   const btn  = document.getElementById('burger-sound');
+  const icon = document.getElementById('burger-sound-icon');
   if (!btn) return;
   const muted = !App.settings.sound;
+  if (icon) icon.textContent = muted ? '🔇' : '🔊';
   btn.classList.toggle('muted', muted);
-  // Показываем/скрываем волны в SVG иконке
-  const waves = document.getElementById('burger-sound-waves');
-  if (waves) waves.style.display = muted ? 'none' : '';
 }
 
 function updateBurgerEnemyMoves() {
-  const btn = document.getElementById('burger-enemy-moves');
+  const btn  = document.getElementById('burger-enemy-moves');
+  const icon = document.getElementById('burger-enemy-moves-icon');
   if (!btn) return;
   const on = App.settings.showEnemyMoves !== false;
+  if (icon) icon.textContent = on ? '👁' : '🙈';
   btn.classList.toggle('muted', !on);
-  // Меняем opacity иконки глаза
-  const svg = btn.querySelector('svg');
-  if (svg) svg.style.opacity = on ? '1' : '0.35';
 }
 
 /* ─── КНОПКА ЗВУКА В ШАПКЕ ───────────────────────── */
@@ -2427,302 +2086,15 @@ function initTelegram() {
 function updateMenuUI() {
   const isGuest = !!App.user.isGuest;
   setText('user-name', App.user.name);
+  setText('user-tag', App.user.username || (isGuest ? 'гость' : ''));
   const av = document.getElementById('user-avatar');
   if (av) {
     av.innerHTML = App.user.photo ? `<img src="${App.user.photo}" alt="" />` : (App.user.name[0]||'?').toUpperCase();
   }
+  // Fix 1: скрываем статистику в шапке для гостей
   const statsMini = document.querySelector('.stats-mini');
   if (statsMini) statsMini.style.display = isGuest ? 'none' : '';
-  updateMenuLevel();
   updateMenuStats();
-}
-
-// Цвета рамок по тирам — совпадают с .level-frame-N
-const LEVEL_FRAME_COLORS = {
-  1:'#607d8b',2:'#607d8b',3:'#607d8b',4:'#607d8b',
-  5:'#43a047',6:'#43a047',7:'#43a047',8:'#43a047',9:'#43a047',
-  10:'#1e88e5',11:'#1e88e5',12:'#1e88e5',13:'#1e88e5',14:'#1e88e5',
-  15:'#8e24aa',16:'#8e24aa',17:'#8e24aa',18:'#8e24aa',19:'#8e24aa',
-  20:'#e53935',21:'#e53935',22:'#e53935',23:'#e53935',24:'#e53935',
-  25:'#f57f17',26:'#f57f17',27:'#f57f17',28:'#f57f17',29:'#f57f17',
-  30:'#ffd600',
-};
-
-function updateMenuLevel() {
-  const xp    = App.user.xp || 0;
-  const prog  = getXpProgress(xp);
-  setText('menu-level-badge', prog.level);
-  setText('user-rank', prog.rank);
-  const badge = document.getElementById('menu-level-badge');
-  if (badge) badge.className = 'level-badge level-bg-' + prog.level;
-  // Синхронизируем цвет рамки аватара на главной с цветом в профиле
-  const avatar = document.getElementById('user-avatar');
-  if (avatar) avatar.style.borderColor = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
-}
-
-/* ─── XP ПОСТ-БОЙ АНИМАЦИЯ ──────────────────────── */
-function showXpReward(xpData) {
-  if (!xpData || App.user.isGuest) return;
-  const block = document.getElementById('xp-reward-block');
-  if (!block) return;
-
-  App.user.xp = xpData.xpAfter;
-  saveJSON('bs_user', App.user);
-  updateMenuLevel();
-
-  block.classList.remove('hidden');
-
-  // Случай: нечестный бой — 0 XP
-  if (xpData.xpGain === 0) {
-    const gainEl = document.getElementById('xp-gained');
-    if (gainEl) {
-      gainEl.innerHTML = '<span class="xp-zero">+0 XP</span>';
-    }
-    const prog = getXpProgress(xpData.xpAfter);
-    setText('xp-ring-level', prog.level);
-    setText('xp-progress-text', prog.xpInLevel + ' / ' + prog.xpNeeded + ' XP');
-    const bar  = document.getElementById('xp-progress-bar');
-    const ring = document.getElementById('xp-ring-fill');
-    if (bar)  { bar.style.transition = 'none'; bar.style.width = prog.pct + '%'; }
-    if (ring) { ring.style.transition = 'none'; setRingProgress(ring, prog.pct, 80); }
-    return;
-  }
-
-  const progBefore = getXpProgress(xpData.xpBefore);
-  const progAfter  = getXpProgress(xpData.xpAfter);
-  const baseXp  = xpData.baseXp  || Math.min(xpData.xpGain, 1000);
-  const bonusXp = xpData.bonusXp || Math.max(0, xpData.xpGain - baseXp);
-
-  // Сначала показываем базовые, потом бонус
-  const gainEl = document.getElementById('xp-gained');
-  if (gainEl) {
-    gainEl.textContent = '+' + baseXp;
-  }
-
-  setText('xp-ring-level', progBefore.level);
-  setText('xp-progress-text', progBefore.xpInLevel + ' / ' + progBefore.xpNeeded + ' XP');
-
-  const lvlEl  = document.getElementById('xp-ring-level');
-  const lvlUpEl = document.getElementById('xp-levelup');
-  if (lvlUpEl) { lvlUpEl.classList.add('hidden'); lvlUpEl.classList.remove('anim-levelup'); }
-
-  const bar   = document.getElementById('xp-progress-bar');
-  const ring  = document.getElementById('xp-ring-fill');
-  const barBonus = document.getElementById('xp-progress-bar-bonus');
-
-  // Шаг 0: мгновенно ставим стартовую позицию (без transition)
-  if (bar)  { bar.style.transition = 'none'; bar.style.width = progBefore.pct + '%'; }
-  if (ring) { ring.style.transition = 'none'; setRingProgress(ring, progBefore.pct, 80); }
-  if (barBonus) { barBonus.style.transition = 'none'; barBonus.style.width = '0%'; }
-
-  // Шаг 1: через 350ms — анимируем базовые XP
-  const xpAfterBase = xpData.xpBefore + baseXp;
-  const progMid = getXpProgress(xpAfterBase);
-
-  setTimeout(() => {
-    // Если level up при базовых — сначала доходим до 100%, потом меняем уровень и идём дальше
-    if (progMid.level > progBefore.level) {
-      // Анимируем до конца текущего уровня
-      if (bar)  { bar.style.transition = ''; bar.style.width = '100%'; }
-      if (ring) { ring.style.transition = ''; setRingProgress(ring, 100, 80); }
-      setTimeout(() => {
-        _levelUpFlash(lvlEl, progMid.level, lvlUpEl);
-        if (bar)  { bar.style.transition = 'none'; bar.style.width = '0%'; }
-        if (ring) { ring.style.transition = 'none'; setRingProgress(ring, 0, 80); }
-        setText('xp-ring-level', progMid.level);
-        setTimeout(() => {
-          if (bar)  { bar.style.transition = ''; bar.style.width = progMid.pct + '%'; }
-          if (ring) { ring.style.transition = ''; setRingProgress(ring, progMid.pct, 80); }
-          setText('xp-progress-text', progMid.xpInLevel + ' / ' + progMid.xpNeeded + ' XP');
-          _showBonusPhase(xpData, progMid, progAfter, bar, ring, barBonus, gainEl, baseXp, bonusXp, lvlEl, lvlUpEl);
-        }, 350);
-      }, 700);
-    } else {
-      if (bar)  { bar.style.transition = ''; bar.style.width = progMid.pct + '%'; }
-      if (ring) { ring.style.transition = ''; setRingProgress(ring, progMid.pct, 80); }
-      setText('xp-progress-text', progMid.xpInLevel + ' / ' + progMid.xpNeeded + ' XP');
-      _showBonusPhase(xpData, progMid, progAfter, bar, ring, barBonus, gainEl, baseXp, bonusXp, lvlEl, lvlUpEl);
-    }
-  }, 350);
-}
-
-function _showBonusPhase(xpData, progMid, progAfter, bar, ring, barBonus, gainEl, baseXp, bonusXp, lvlEl, lvlUpEl) {
-  if (bonusXp <= 0) {
-    // Нет бонуса — просто финальный шаг level-up если нужен
-    if (xpData.levelUp && progAfter.level > progMid.level) {
-      _doFinalLevelUp(progAfter, bar, ring, lvlEl, lvlUpEl);
-    } else if (xpData.levelUp) {
-      setTimeout(() => _levelUpFlash(lvlEl, progAfter.level, lvlUpEl), 400);
-    }
-    return;
-  }
-
-  // Показываем бонусную фазу через 600ms после базовой
-  setTimeout(() => {
-    if (gainEl) gainEl.innerHTML =
-      '<span class="xp-base">+' + baseXp + '</span>' +
-      '<span class="xp-bonus"> +' + bonusXp + '</span>';
-
-    // Анимируем бонусный кусок поверх
-    if (barBonus) {
-      const startPct = progMid.pct;
-      barBonus.style.left = startPct + '%';
-      barBonus.style.transition = 'none';
-      barBonus.style.width = '0%';
-      setTimeout(() => {
-        barBonus.style.transition = '';
-        if (progAfter.level > progMid.level) {
-          // Level up в бонусной фазе
-          barBonus.style.width = (100 - startPct) + '%';
-          setTimeout(() => {
-            _levelUpFlash(lvlEl, progAfter.level, lvlUpEl);
-            if (bar) { bar.style.transition = 'none'; bar.style.width = '0%'; }
-            if (ring) { ring.style.transition = 'none'; setRingProgress(ring, 0, 80); }
-            if (barBonus) { barBonus.style.transition = 'none'; barBonus.style.width = '0%'; barBonus.style.left = '0%'; }
-            setText('xp-ring-level', progAfter.level);
-            setTimeout(() => {
-              if (bar)  { bar.style.transition = ''; bar.style.width = progAfter.pct + '%'; }
-              if (ring) { ring.style.transition = ''; setRingProgress(ring, progAfter.pct, 80); }
-              setText('xp-progress-text', progAfter.xpInLevel + ' / ' + progAfter.xpNeeded + ' XP');
-            }, 200);
-          }, 700);
-        } else {
-          barBonus.style.width = (progAfter.pct - startPct) + '%';
-          if (ring) { ring.style.transition = ''; setRingProgress(ring, progAfter.pct, 80); }
-          setText('xp-progress-text', progAfter.xpInLevel + ' / ' + progAfter.xpNeeded + ' XP');
-          if (xpData.levelUp) setTimeout(() => _levelUpFlash(lvlEl, progAfter.level, lvlUpEl), 500);
-        }
-      }, 50);
-    }
-  }, 600);
-}
-
-function _doFinalLevelUp(progAfter, bar, ring, lvlEl, lvlUpEl) {
-  setTimeout(() => {
-    if (bar)  { bar.style.transition = ''; bar.style.width = '100%'; }
-    if (ring) { ring.style.transition = ''; setRingProgress(ring, 100, 80); }
-    setTimeout(() => {
-      _levelUpFlash(lvlEl, progAfter.level, lvlUpEl);
-      if (bar)  { bar.style.transition = 'none'; bar.style.width = '0%'; }
-      if (ring) { ring.style.transition = 'none'; setRingProgress(ring, 0, 80); }
-      setText('xp-ring-level', progAfter.level);
-      setTimeout(() => {
-        if (bar)  { bar.style.transition = ''; bar.style.width = progAfter.pct + '%'; }
-        if (ring) { ring.style.transition = ''; setRingProgress(ring, progAfter.pct, 80); }
-        setText('xp-progress-text', progAfter.xpInLevel + ' / ' + progAfter.xpNeeded + ' XP');
-      }, 300);
-    }, 700);
-  }, 400);
-}
-
-function _levelUpFlash(lvlEl, level, lvlUpEl) {
-  if (lvlEl) {
-    lvlEl.classList.add('level-pop');
-    setTimeout(() => lvlEl.classList.remove('level-pop'), 600);
-  }
-  if (lvlUpEl) {
-    lvlUpEl.classList.remove('hidden');
-    lvlUpEl.textContent = 'Новый уровень!';
-    lvlUpEl.classList.add('anim-levelup');
-    Sound.win && Sound.win();
-  }
-}
-
-// Рисует заполнение "обводки" квадрата через stroke-dasharray на rect
-function setRingProgress(rectEl, pct, size) {
-  const perim = 4 * (size - 8);
-  const fill  = perim * pct / 100;
-  rectEl.style.strokeDasharray  = fill + ' ' + (perim - fill);
-  rectEl.style.strokeDashoffset = (perim * 0.25).toString();
-}
-
-/* ─── ЭКРАН ПРОФИЛЯ ──────────────────────────────── */
-async function renderProfileScreen(tab) {
-  const isGuest = !!App.user.isGuest;
-  const authBlock  = document.getElementById('profile-content-auth');
-  const guestBlock = document.getElementById('profile-content-guest');
-  if (authBlock)  authBlock.style.display  = isGuest ? 'none' : '';
-  if (guestBlock) guestBlock.style.display = isGuest ? ''     : 'none';
-  if (isGuest) return;
-
-  // Инициализируем табы один раз
-  if (!renderProfileScreen._tabsInited) {
-    renderProfileScreen._tabsInited = true;
-    document.querySelectorAll('.profile-tab[data-tab]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const t = btn.dataset.tab;
-        document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
-        document.querySelectorAll('.profile-tab-content').forEach(el => el.classList.toggle('hidden', el.id !== 'profile-tab-' + t));
-        if (t === 'stats') renderStatsScreen();
-        if (t === 'inventory') { (_shopItems.length ? Promise.resolve() : loadShopData()).then(() => renderInventory()); }
-      });
-    });
-    document.getElementById('profile-stats-mode-toggle')?.addEventListener('click', e => {
-      const btn = e.target.closest('[data-mode]');
-      if (btn) renderStatsScreen(btn.dataset.mode);
-    });
-  }
-
-  // Открываем нужную вкладку если передана
-  if (tab) {
-    document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    document.querySelectorAll('.profile-tab-content').forEach(el => el.classList.toggle('hidden', el.id !== 'profile-tab-' + tab));
-    if (tab === 'stats') renderStatsScreen();
-  }
-
-  const xp    = App.user.xp || 0;
-  const prog  = getXpProgress(xp);
-
-  setText('profile-name',  App.user.name);
-  setText('profile-rank',  prog.rank);
-  setText('profile-level-tag', 'Ур. ' + prog.level);
-  setText('profile-ring-level', prog.level);
-  setText('profile-xp-current', prog.xpInLevel);
-  setText('profile-xp-needed',  prog.xpNeeded);
-
-  // Прогресс-бар
-  const bar = document.getElementById('profile-progress-bar');
-  if (bar) bar.style.width = prog.pct + '%';
-
-  // Рамка аватара с уровнем
-  const frameEl = document.getElementById('profile-avatar-frame');
-  if (frameEl) frameEl.className = 'profile-avatar-frame level-frame-' + prog.level;
-
-  const avEl = document.getElementById('profile-avatar');
-  if (avEl) {
-    avEl.innerHTML = App.user.photo
-      ? `<img src="${App.user.photo}" alt="">`
-      : (App.user.name[0]||'?').toUpperCase();
-  }
-
-  // Уровень-бейдж
-  const levelTag = document.getElementById('profile-level-tag');
-  if (levelTag) levelTag.className = 'profile-level-tag level-bg-' + prog.level;
-
-  // Ring SVG
-  const ringFill = document.getElementById('profile-ring-fill');
-  if (ringFill) setRingProgress(ringFill, prog.pct, 120);
-
-  // Обновляем XP с сервера и перерисовываем только числа — без рекурсии
-  if (!App.user.isGuest) {
-    try {
-      const res = await fetch('/api/xp/' + App.user.id);
-      const j   = await res.json();
-      if (j.ok && j.data && j.data.xp !== App.user.xp) {
-        App.user.xp = j.data.xp;
-        saveJSON('bs_user', App.user);
-        // Обновляем только XP-элементы без полного перерендера
-        const p2 = getXpProgress(App.user.xp);
-        setText('profile-level-tag', 'Ур. ' + p2.level);
-        setText('profile-ring-level', p2.level);
-        setText('profile-xp-current', p2.xpInLevel);
-        setText('profile-xp-needed',  p2.xpNeeded);
-        const rf = document.getElementById('profile-ring-fill');
-        if (rf) setRingProgress(rf, p2.pct, 120);
-        updateMenuLevel();
-      }
-    } catch(e) {}
-  }
 }
 
 function bindNav() {
@@ -2733,15 +2105,8 @@ function bindNav() {
     const isBack = btn.classList.contains('btn-back');
     Sound.click();
     if (scr === 'leaderboard') renderLeaderboard();
-    if (scr === 'profile')     renderProfileScreen();
+    if (scr === 'stats')       renderStatsScreen();
     showScreen(scr, { isBack });
-  });
-
-  // Открытие профиля по клику на аватар/имя (работает для всех)
-  document.getElementById('btn-open-profile')?.addEventListener('click', () => {
-    Sound.click();
-    renderProfileScreen();
-    showScreen('profile');
   });
 
   document.getElementById('mode-bot-easy')?.addEventListener('click',   () => startBotGame('bot-easy'));
@@ -2759,7 +2124,7 @@ function bindNav() {
     Sound.click();
     savePlacement(); // сохраняем для следующей игры
     const myShips = Placement.getShipsForGame();
-    if (pendingGameMode === 'online') {
+    if (pendingGameMode === 'online-random' || pendingGameMode === 'online-friend') {
       WS.sendShips(Placement.board);
       showScreen('waiting');
       setText('waiting-title', 'Ждём соперника…');
@@ -2779,7 +2144,7 @@ function bindNav() {
       { label: 'Продолжить', cls: 'btn-ghost',  action: closeModal },
       { label: 'Сдаться',   cls: 'btn-danger',  action: () => {
         closeModal();
-        if (Game.mode === 'online' && WS.socket && WS.roomId) {
+        if (isOnlineMode(Game.mode) && WS.socket && WS.roomId) {
           WS.socket.emit('surrender', { roomId: WS.roomId });
           // Не вызываем endGame сразу — ждём surrender_confirmed от сервера
         } else {
@@ -2793,23 +2158,24 @@ function bindNav() {
   document.getElementById('btn-rematch')?.addEventListener('click', () => {
     Sound.click();
     const mode = pendingGameMode || 'bot-easy';
-    if (mode === 'online') {
-      // Онлайн: WS-реванш только с тем же соперником в той же комнате
-      if (WS.socket && WS.roomId) {
-        Rematch.request();
-      } else {
-        // Сокет отвалился — реванш невозможен, показываем сообщение
-        const statusEl = document.getElementById('rematch-status');
-        if (statusEl) {
-          statusEl.textContent = 'Соединение потеряно, реванш недоступен';
-          statusEl.classList.remove('hidden', 'opponent-wants');
-          statusEl.classList.add('declined');
+    if (mode === 'online-random' || mode === 'online-friend') {
+      if (!WS.socket || !WS.roomId) return;
+      WS.socket.emit('rematch_request', { roomId: WS.roomId });
+      // Запускаем таймер 10 сек на кнопке
+      const btn = document.getElementById('btn-rematch');
+      if (!btn) return;
+      btn.disabled = true;
+      let secs = 10;
+      btn.textContent = `Ждём соперника… ${secs}`;
+      Game._rematchTimer = setInterval(() => {
+        secs--;
+        if (btn) btn.textContent = `Ждём соперника… ${secs}`;
+        if (secs <= 0) {
+          clearInterval(Game._rematchTimer);
+          // Сервер сам пришлёт rematch_declined если второй не ответил
         }
-        const btn = document.getElementById('btn-rematch');
-        if (btn) { btn.disabled = true; btn.classList.add('btn-disabled'); }
-      }
+      }, 1000);
     } else {
-      // Бот: просто заново
       startPlacement(mode);
     }
   });
@@ -2841,15 +2207,8 @@ function bindNav() {
     });
   });
 
-  // Отмена ожидания / расстановки
-  document.getElementById('btn-cancel-wait')?.addEventListener('click', () => {
-    if (WS.socket && WS.roomId) {
-      WS.socket.emit('leave_room', { roomId: WS.roomId });
-    }
-    stopSearchUI();
-    WS.disconnect();
-    showScreen('menu');
-  });
+  // Отмена ожидания
+  document.getElementById('btn-cancel-wait')?.addEventListener('click', () => { stopSearchUI(); WS.disconnect(); showScreen('menu'); });
 
   // Закрытие модалки по overlay
   document.getElementById('modal-overlay')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
@@ -2887,41 +2246,29 @@ function initOnlineCounter() {
   const update = (count) => {
     document.querySelectorAll('.online-count-val').forEach(el => el.textContent = count);
   };
-  initOnlineCounter.update = update;
 
-  // Загружаем socket.io и создаём один постоянный сокет присутствия
-  const connect = () => {
-    if (initOnlineCounter._sock) return; // уже есть
-    const sock = io(window.location.origin, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 3000,
-    });
-    initOnlineCounter._sock = sock;
-
-    sock.on('connect', () => {
-      // Сообщаем серверу кто мы — сразу при подключении и при реконнекте
-      sock.emit('identify', { playerId: App.user?.id || null });
-    });
-    sock.on('online_count', ({ count }) => update(count));
-
-    // Heartbeat каждые 4 минуты — обновляем lastActive на сервере
-    setInterval(() => {
-      if (sock.connected) sock.emit('active');
-    }, 4 * 60 * 1000);
-  };
-
-  if (window.io) {
-    connect();
-  } else {
+  // Сразу подключаемся лёгким сокетом только для счётчика
+  const loadIO = () => new Promise(resolve => {
+    if (window.io) { resolve(); return; }
     const s = document.createElement('script');
-    s.src = '/socket.io/socket.io.js';
-    s.onload = connect;
+    s.src = window.location.origin + '/socket.io/socket.io.js';
+    s.onload = resolve; s.onerror = resolve;
     document.head.appendChild(s);
-  }
+  });
 
-  // Фолбэк: первое значение через HTTP пока WS не установился
-  fetch('/api/online').then(r => r.json()).then(d => update(d.count)).catch(() => {});
+  loadIO().then(() => {
+    if (!window.io) return;
+    try {
+      const sock = io(window.location.origin, { transports: ['websocket','polling'] });
+      sock.on('online_count', ({ count }) => update(count));
+      sock.on('connect_error', () => {});
+    } catch(e) {}
+  });
+
+  // Резервный HTTP-поллинг
+  const poll = () => fetch('/api/online').then(r => r.json()).then(d => update(d.count)).catch(() => {});
+  poll();
+  setInterval(poll, 20000);
 }
 
 /* ─── СВАЙП НАЗАД (от 1/3 экрана) ───────────────── */
@@ -2957,7 +2304,7 @@ function _prevBackTarget() {
     case 'mode':        return 'menu';
     case 'placement':   return 'mode';
     case 'leaderboard': return 'menu';
-    case 'stats':       return 'profile';
+    case 'stats':       return document.getElementById('stats-back-btn')?.dataset.screen || 'menu';
     case 'settings':    return document.getElementById('settings-back-btn')?.dataset.screen || 'menu';
     case 'gameover':    return 'menu';
     default:            return 'menu';
@@ -2973,53 +2320,18 @@ function renderOpponentAvatar(name, isBot) {
   const info = document.getElementById('opponent-info');
   if (!info) return;
   const letter = isBot ? 'Б' : (name ? name[0].toUpperCase() : '?');
-  const duel  = Game.opponent?.duel;
-  const level = Game.opponent?.level || 1;
-  const rank  = Game.opponent?.rank  || '';
+  const duel = Game.opponent?.duel;
   let duelHtml = '';
   if (!isBot && duel) {
     const theirColor = duel.theirWins > duel.myWins ? ' style="color:var(--red)"' : '';
     const myColor    = duel.myWins > duel.theirWins ? ' style="color:var(--green)"' : '';
     duelHtml = `<span class="duel-score"><span${theirColor}>${duel.theirWins}</span>:<span${myColor}>${duel.myWins}</span></span>`;
   }
-  const levelHtml = !isBot ? `<span class="opp-level level-bg-${level}">${level}</span>` : '';
-  info.innerHTML = `<div class="opp-avatar-wrap"><div class="opp-avatar">${letter}</div>${levelHtml}</div><div class="opp-name-col"><span id="opp-name">${name || (isBot ? 'Бот' : 'Соперник')}</span>${rank && !isBot ? `<span class="opp-rank-small">${rank}</span>` : ''}${duelHtml}</div>`;
+  info.innerHTML = `<div class="opp-avatar">${letter}</div><span id="opp-name">${name || (isBot ? 'Бот' : 'Соперник')}</span>${duelHtml}`;
 }
 
 /* ─── СТАРТ ──────────────────────────────────────── */
-// Обновить прогресс-счётчик на лоадере
-function setLoadingProgress(pct) {
-  const el = document.getElementById('loading-progress');
-  if (el) el.textContent = Math.round(pct) + '%';
-}
-
-// Показать лоадер поверх любого экрана (для возврата в меню после боя)
-function showLoaderOverMenu(onDone) {
-  const loader = document.getElementById('screen-loading');
-  if (!loader) { onDone(); return; }
-  // Сбрасываем прогресс и показываем
-  setLoadingProgress(0);
-  loader.style.display = '';
-  loader.classList.add('active');
-
-  let pct = 0;
-  const tick = setInterval(() => {
-    pct = Math.min(pct + Math.random() * 18 + 5, 90);
-    setLoadingProgress(pct);
-  }, 120);
-
-  onDone(function hideLoader() {
-    clearInterval(tick);
-    setLoadingProgress(100);
-    setTimeout(() => {
-      loader.classList.remove('active');
-      loader.style.display = 'none';
-    }, 250);
-  });
-}
-
 window.addEventListener('DOMContentLoaded', async () => {
-  // Инициализируем всё что не требует сети
   initTelegram();
   initUser();
   initSettings();
@@ -3030,49 +2342,16 @@ window.addEventListener('DOMContentLoaded', async () => {
   initBurger();
   initVisibilityHandler();
   bindNav();
+  updateMenuUI();
   initPromoBanner();
   updateBurgerSound();
   updateBurgerEnemyMoves();
   initSwipeBack();
   initOnlineCounter();
-  initShop();
-  initInventory();
-
-  // WebSocket события магазина — вешаем когда сокет будет готов
-  const _shopSocketInterval = setInterval(() => {
-    if (!WS.socket) return;
-    WS.socket.on('purchase_complete', onPurchaseComplete);
-    WS.socket.on('item_revoked',      onItemRevoked);
-    clearInterval(_shopSocketInterval);
-  }, 500);
-
-  // Анимируем прогресс лоадера пока грузим данные с сервера
-  startLoadingCellAnim();
-  setLoadingProgress(5);
-  let pct = 5;
-  const progressTick = setInterval(() => {
-    pct = Math.min(pct + Math.random() * 12 + 3, 85);
-    setLoadingProgress(pct);
-  }, 150);
-
-  // Грузим данные с сервера ДО показа меню
-  await syncStatsFromServer().catch(() => {});
-  // Загружаем инвентарь и применяем тему с сервера — единственный источник правды
-  await loadShopData().catch(() => {});
-
-  clearInterval(progressTick);
-  setLoadingProgress(100);
-
-  // Обновляем UI уже с актуальными данными — ВСЁ рендерим пока лоадер ещё виден
-  updateMenuUI();
-  // Пре-рендерим профиль и статистику за лоадером, чтобы не было мигания
-  await renderProfileScreen().catch(() => {});
-  await renderStatsScreen('online').catch(() => {});
-
-  // Короткая пауза чтобы игрок увидел 100%
-  await new Promise(r => setTimeout(r, 300));
-
   showScreen('menu');
+
+  // Синхронизируем статистику сразу при запуске
+  syncStatsFromServer().catch(() => {});
 
   // Обработка ссылки-приглашения: /?room=<roomId> или TG startapp=room_<roomId>
   const params = new URLSearchParams(window.location.search);
@@ -3095,689 +2374,3 @@ window.addEventListener('DOMContentLoaded', async () => {
     }, 400);
   }
 });
-
-/* ─── МАГАЗИН ────────────────────────────────────── */
-
-const ITEM_TYPE_LABELS = {
-  frame:    'Рамка',
-  theme:    'Тема',
-  reaction: 'Реакция',
-  title:    'Звание',
-};
-
-let _shopItems     = [];   // весь каталог
-let _shopInventory = {};   // { itemId: true } — что куплено
-let _shopEquipped  = {};   // { slot: itemId } — что надето
-let _shopFilter    = 'all';
-let _currentShopItemId = null;
-
-// Загрузить каталог и инвентарь
-async function loadShopData() {
-  try {
-    const uid = App.user?.id;
-    const isGuest = !uid || uid.startsWith('guest_');
-
-    const [itemsRes, invRes] = await Promise.all([
-      fetch('/api/shop/items').then(r => r.json()),
-      !isGuest
-        ? authFetch(`/api/inventory/${uid}`).then(r => r.json())
-        : Promise.resolve({ ok: true, data: { items: [], equipped: {} } }),
-    ]);
-    if (itemsRes.ok)  _shopItems = itemsRes.data || [];
-    if (invRes.ok) {
-      _shopInventory = {};
-      (invRes.data.items || []).forEach(i => { _shopInventory[i.item_id] = true; });
-      _shopEquipped  = invRes.data.equipped || {};
-      // НЕ трогаем localStorage здесь — он управляется только через кнопки Применить/Снять
-      // Но если сервер говорит что тема экипирована — применяем визуально если ещё не применена
-      const serverTheme = _shopEquipped['theme'] || null;
-      // Сервер — единственный источник правды для темы
-      // Применяем то что сказал сервер, localStorage больше не используем
-      resetTheme();
-      if (serverTheme) applyEquippedTheme(serverTheme);
-    }
-  } catch(e) {
-    console.error('[Shop] loadShopData error:', e);
-  }
-}
-
-// Отрисовать карточки с учётом фильтра
-function renderShopGrid() {
-  const grid = document.getElementById('shop-grid');
-  if (!grid) return;
-
-  const items = _shopFilter === 'all'
-    ? _shopItems
-    : _shopItems.filter(i => i.type === _shopFilter);
-
-  if (!items.length) {
-    grid.innerHTML = '<div class="shop-loading">Нет товаров</div>';
-    return;
-  }
-
-  grid.innerHTML = items.map(item => {
-    const owned    = !!_shopInventory[item.id];
-    const equipped = Object.values(_shopEquipped).includes(item.id);
-    const cls      = equipped ? 'shop-card equipped' : owned ? 'shop-card owned' : 'shop-card';
-    const priceHtml = equipped
-      ? '<span class="shop-card-price owned">✓ Куплено</span>'
-      : owned
-        ? '<span class="shop-card-price owned">✓ Куплено</span>'
-        : item.price_stars
-          ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
-          : '<span class="shop-card-price owned">Бесплатно</span>';
-    const preview = item.preview_url
-      ? `<img src="${item.preview_url}" alt="${item.name}" loading="lazy">`
-      : '🎁';
-
-    return `<div class="${cls}" data-item-id="${item.id}">
-      <div class="shop-card-preview">${preview}</div>
-      <div class="shop-card-body">
-        <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
-        <div class="shop-card-name">${item.name}</div>
-        ${priceHtml}
-      </div>
-    </div>`;
-  }).join('');
-
-  // Клик по карточке — открыть страницу товара
-  grid.querySelectorAll('.shop-card').forEach(card => {
-    card.addEventListener('click', () => openShopItem(card.dataset.itemId));
-  });
-}
-
-// Открыть страницу товара
-function openShopItem(itemId) {
-  const item = _shopItems.find(i => i.id === itemId);
-  if (!item) return;
-  _currentShopItemId = itemId;
-
-  const owned    = !!_shopInventory[itemId];
-  const equipped = Object.values(_shopEquipped).includes(itemId);
-
-  document.getElementById('shop-item-title').textContent = item.name;
-  document.getElementById('shop-item-name').textContent  = item.name;
-  document.getElementById('shop-item-desc').textContent  = item.description || '';
-  document.getElementById('shop-item-type-badge').textContent = ITEM_TYPE_LABELS[item.type] || item.type;
-
-  // Превью
-  const previewEl = document.getElementById('shop-item-preview-lg');
-  previewEl.innerHTML = item.preview_url
-    ? `<img src="${item.preview_url}" alt="${item.name}">`
-    : '🎁';
-
-  // Цена и статус
-  const priceEl  = document.getElementById('shop-item-price');
-  const statusEl = document.getElementById('shop-item-status');
-  const btnEl    = document.getElementById('shop-item-btn');
-
-  if (equipped) {
-    priceEl.textContent  = '';
-    statusEl.textContent = '✓ Надето';
-    btnEl.textContent    = 'Снять';
-    btnEl.className      = 'btn btn-secondary btn-large';
-  } else if (owned) {
-    priceEl.textContent  = '';
-    statusEl.textContent = '✓ Куплено';
-    btnEl.textContent    = 'Надеть';
-    btnEl.className      = 'btn btn-primary btn-large';
-  } else if (item.price_stars) {
-    priceEl.textContent  = `⭐ ${item.price_stars}`;
-    statusEl.textContent = '';
-    btnEl.textContent    = 'Купить';
-    btnEl.className      = 'btn btn-primary btn-large';
-  } else {
-    priceEl.textContent  = 'Бесплатно';
-    statusEl.textContent = '';
-    btnEl.textContent    = 'Получить';
-    btnEl.className      = 'btn btn-primary btn-large';
-  }
-
-  // Кнопка назад возвращает в магазин
-  document.getElementById('shop-item-back').onclick = () => showScreen('shop', { isBack: true });
-
-  showScreen('shop-item');
-}
-
-// Действие кнопки на странице товара
-async function handleShopItemBtn() {
-  const itemId = _currentShopItemId;
-  const item   = _shopItems.find(i => i.id === itemId);
-  if (!item) return;
-
-  // Гость — предлагаем войти через TG
-  if (!App.user?.id || App.user?.id?.startsWith('guest_')) {
-    alert('Для покупки необходимо войти через Telegram');
-    return;
-  }
-
-  const owned    = !!_shopInventory[itemId];
-  const equipped = Object.values(_shopEquipped).includes(itemId);
-
-  if (equipped) {
-    await fetch('/api/unequip', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: App.user?.id, slot: item.type }),
-    });
-    delete _shopEquipped[item.type];
-    if (item.type === 'theme') {
-      resetTheme();
-      showLoaderOverMenu(hide => {
-        setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
-      });
-    }
-    openShopItem(itemId);
-    renderShopGrid();
-    return;
-  }
-
-  if (owned) {
-    await fetch('/api/equip', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: App.user?.id, itemId }),
-    });
-    _shopEquipped[item.type] = itemId;
-    if (item.type === 'theme') {
-      showLoaderOverMenu(hide => {
-        applyEquippedTheme(itemId);
-        setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
-      });
-    }
-    openShopItem(itemId);
-    renderShopGrid();
-    return;
-  }
-
-  // Купить — создаём invoice
-  try {
-    const btnEl = document.getElementById('shop-item-btn');
-    if (btnEl) { btnEl.textContent = 'Загрузка...'; btnEl.disabled = true; }
-
-    const res = await fetch('/api/shop/buy', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: App.user?.id, itemId }),
-    }).then(r => r.json());
-
-    if (btnEl) { btnEl.textContent = 'Купить'; btnEl.disabled = false; }
-
-    if (res.ok && res.free) {
-      // Админ — выдано бесплатно
-      _shopInventory[itemId] = true;
-      openShopItem(itemId);
-      renderShopGrid();
-      return;
-    }
-
-    if (res.ok && res.invoiceUrl) {
-      if (window.Telegram?.WebApp?.openInvoice) {
-        // Внутри Telegram Mini App
-        window.Telegram.WebApp.openInvoice(res.invoiceUrl, status => {
-          if (status === 'paid') {
-            _shopInventory[itemId] = true;
-            openShopItem(itemId);
-            renderShopGrid();
-          }
-        });
-      } else {
-        // Фолбэк для браузера — открываем ссылку
-        window.open(res.invoiceUrl, '_blank');
-      }
-    } else {
-      console.error('[Shop] buy error:', res);
-      alert('Ошибка: ' + (res.error || 'неизвестная ошибка'));
-    }
-  } catch(e) {
-    console.error('[Shop] buy exception:', e);
-    const btnEl = document.getElementById('shop-item-btn');
-    if (btnEl) { btnEl.textContent = 'Купить'; btnEl.disabled = false; }
-  }
-}
-
-// WebSocket — товар куплен (пришло с сервера)
-function onPurchaseComplete(data) {
-  _shopInventory[data.itemId] = true;
-  renderShopGrid();
-}
-
-// WebSocket — товар отозван (рефанд)
-function onItemRevoked(data) {
-  delete _shopInventory[data.itemId];
-  const slot = Object.keys(_shopEquipped).find(k => _shopEquipped[k] === data.itemId);
-  if (slot) delete _shopEquipped[slot];
-  renderShopGrid();
-}
-
-// Инициализация магазина
-function initShop() {
-  // Кнопка Магазин в главном меню — загружаем данные при входе
-  document.getElementById('btn-shop')?.addEventListener('click', async () => {
-    // Если товары уже загружены — просто рендерим, не перезагружаем инвентарь
-    if (!_shopItems.length) {
-      document.getElementById('shop-grid').innerHTML = '<div class="shop-loading">Загрузка...</div>';
-      await loadShopData();
-    }
-    renderShopGrid();
-  });
-
-  // Фильтры
-  document.querySelectorAll('.shop-filter').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.shop-filter').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      _shopFilter = btn.dataset.filter;
-      renderShopGrid();
-    });
-  });
-
-  // Кнопка действия на странице товара
-  document.getElementById('shop-item-btn')?.addEventListener('click', handleShopItemBtn);
-}
-
-
-
-/* ─── ФЕЙКОВЫЕ ПРЕВЬЮ (временные SVG) ───────────────────────────────────── */
-// Временные превью — используется пока нет реальных файлов
-const FAKE_PREVIEWS = {
-  theme_dark: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <rect width="100" height="100" rx="12" fill="#111111"/>
-    <rect x="8" y="8" width="84" height="84" rx="10" fill="#1e1e1e"/>
-    <rect x="20" y="30" width="60" height="8" rx="4" fill="#333"/>
-    <rect x="20" y="46" width="42" height="8" rx="4" fill="#333"/>
-    <rect x="20" y="62" width="52" height="8" rx="4" fill="#333"/>
-    <circle cx="75" cy="30" r="10" fill="#e0e0e0" opacity=".15"/>
-  </svg>`,
-};
-
-// Патчим getPreviewHtml — SVG для страницы товара (large=true), PNG для карточки
-function getItemPreviewHtml(item, large = false) {
-  if (large) {
-    // На странице товара — всегда SVG если есть
-    const svgUrl = item.preview_url ? item.preview_url.replace(/\.(png|jpg)$/i, '.svg') : null;
-    if (svgUrl) {
-      return `<img src="${svgUrl}" alt="${item.name}" loading="lazy" style="width:80%;height:80%;object-fit:contain;">`;
-    }
-    if (FAKE_PREVIEWS[item.id]) {
-      return `<div style="width:80%;height:80%;display:flex;align-items:center;justify-content:center">${FAKE_PREVIEWS[item.id]}</div>`;
-    }
-    return '🎁';
-  }
-  // В карточке сетки — PNG
-  if (item.preview_url) {
-    return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`;
-  }
-  if (FAKE_PREVIEWS[item.id]) {
-    return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">${FAKE_PREVIEWS[item.id]}</div>`;
-  }
-  return '🎁';
-}
-
-/* ─── ИНВЕНТАРЬ В ПРОФИЛЕ ────────────────────────── */
-let _invFilter = 'all';
-
-function renderInventory() {
-  const grid     = document.getElementById('inventory-grid');
-  const emptyEl  = document.getElementById('inventory-empty');
-  if (!grid) return;
-
-  // Тёмная тема всегда в инвентаре для авторизованных
-  const darkTheme = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема', description: 'Стандартная тёмная цветовая схема' };
-  const ownedIds  = new Set(Object.keys(_shopInventory));
-  const owned     = [darkTheme, ..._shopItems.filter(i => ownedIds.has(i.id))];
-
-  if (owned.length <= 1 && !ownedIds.size) {
-    grid.innerHTML = '';
-    emptyEl?.classList.remove('hidden');
-    return;
-  }
-  emptyEl?.classList.add('hidden');
-
-  const filtered = _invFilter === 'all' ? owned : owned.filter(i => i.type === _invFilter);
-
-  if (!filtered.length) {
-    grid.innerHTML = '<div class="shop-loading">Нет предметов этой категории</div>';
-    return;
-  }
-
-  grid.innerHTML = filtered.map(item => {
-    // Для всех предметов включая темы — источник правды _shopEquipped (с сервера)
-    let equipped;
-    if (item.type === 'theme') {
-      const activeTheme = _shopEquipped['theme'] || null;
-      equipped = item.id === 'theme_dark' ? !activeTheme : activeTheme === item.id;
-    } else {
-      equipped = Object.values(_shopEquipped).includes(item.id);
-    }
-    const cls = equipped ? 'shop-card equipped' : 'shop-card owned';
-    return `<div class="${cls}" data-inv-item="${item.id}">
-      <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
-      <div class="shop-card-body">
-        <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
-        <div class="shop-card-name">${item.name}</div>
-        ${equipped ? '<button class="shop-card-action applied">Применено</button>' : `<button class="shop-card-action" data-inv-action="${item.id}">Применить</button>`}
-      </div>
-    </div>`;
-  }).join('');
-
-  // Клик по карточке — открыть страницу в магазине (кроме theme_dark)
-  grid.querySelectorAll('[data-inv-item]').forEach(card => {
-    card.addEventListener('click', e => {
-      if (e.target.closest('[data-inv-action]')) return; // клик по кнопке — не открывать
-      const id = card.dataset.invItem;
-      if (id === 'theme_dark') return;
-      // Загружаем магазин если нужно, потом открываем товар
-      (_shopItems.length ? Promise.resolve() : loadShopData()).then(() => {
-        showScreen('shop-item');
-        openShopItem(id);
-      });
-    });
-  });
-
-  // Клики по кнопкам
-  grid.querySelectorAll('[data-inv-action]').forEach(btn => {
-    const itemId = btn.dataset.invAction;
-    // theme_dark — виртуальный, не из _shopItems
-    const item = itemId === 'theme_dark'
-      ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема' }
-      : _shopItems.find(i => i.id === itemId);
-    if (!item) return;
-    const activeTheme = _shopEquipped['theme'] || null;
-    const equipped = item.type === 'theme'
-      ? (item.id === 'theme_dark' ? !activeTheme : activeTheme === itemId)
-      : Object.values(_shopEquipped).includes(itemId);
-    if (equipped) return; // уже применено — не кликается
-    btn.addEventListener('click', async e => {
-      e.stopPropagation();
-      if (item.type === 'theme') {
-        // Сбросить текущую тему (установить тёмную) или применить новую
-        if (itemId === 'theme_dark') {
-          if (_shopEquipped['theme']) {
-            await fetch('/api/unequip', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: App.user?.id, slot: 'theme' }),
-            });
-            delete _shopEquipped['theme'];
-          }
-          showLoaderOverMenu(hide => {
-            resetTheme();
-            setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
-          });
-        } else {
-          await fetch('/api/equip', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: App.user?.id, itemId }),
-          });
-          _shopEquipped[item.type] = itemId;
-          showLoaderOverMenu(hide => {
-            applyEquippedTheme(itemId);
-            setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
-          });
-        }
-        return;
-      }
-      await fetch('/api/equip', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: App.user?.id, itemId }),
-      });
-      _shopEquipped[item.type] = itemId;
-      renderInventory();
-      renderShopGrid();
-    });
-  });
-}
-
-function initInventory() {
-  // Фильтры
-  document.querySelectorAll('[data-inv-filter]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-inv-filter]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      _invFilter = btn.dataset.invFilter;
-      renderInventory();
-    });
-  });
-
-  // Ссылка "перейти в магазин"
-  document.getElementById('inventory-go-shop')?.addEventListener('click', e => {
-    e.preventDefault();
-    showScreen('shop');
-  });
-}
-
-// Патчим renderShopGrid — используем getItemPreviewHtml
-const _origRenderShopGrid = renderShopGrid;
-renderShopGrid = function() {
-  const grid = document.getElementById('shop-grid');
-  if (!grid) return;
-
-  const items = _shopFilter === 'all'
-    ? _shopItems
-    : _shopItems.filter(i => i.type === _shopFilter);
-
-  if (!items.length) {
-    grid.innerHTML = '<div class="shop-loading">Нет товаров</div>';
-    return;
-  }
-
-  grid.innerHTML = items.map(item => {
-    const owned    = !!_shopInventory[item.id];
-    const equipped = Object.values(_shopEquipped).includes(item.id);
-    const cls      = equipped ? 'shop-card equipped' : owned ? 'shop-card owned' : 'shop-card';
-    const priceHtml = equipped
-      ? '<span class="shop-card-price owned">✓ Куплено</span>'
-      : owned
-        ? '<span class="shop-card-price owned">✓ Куплено</span>'
-        : item.price_stars
-          ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
-          : '<span class="shop-card-price owned">Бесплатно</span>';
-
-    return `<div class="${cls}" data-item-id="${item.id}">
-      <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
-      <div class="shop-card-body">
-        <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
-        <div class="shop-card-name">${item.name}</div>
-        ${priceHtml}
-      </div>
-    </div>`;
-  }).join('');
-
-  grid.querySelectorAll('.shop-card').forEach(card => {
-    card.addEventListener('click', () => openShopItem(card.dataset.itemId));
-  });
-};
-
-// Патчим openShopItem — используем getItemPreviewHtml
-const _origOpenShopItem = openShopItem;
-openShopItem = function(itemId) {
-  const item = _shopItems.find(i => i.id === itemId);
-  if (!item) return;
-  _currentShopItemId = itemId;
-
-  const owned    = !!_shopInventory[itemId];
-  const equipped = Object.values(_shopEquipped).includes(itemId);
-
-  document.getElementById('shop-item-title').textContent = item.name;
-  document.getElementById('shop-item-name').textContent  = item.name;
-  document.getElementById('shop-item-desc').textContent  = item.description || '';
-  document.getElementById('shop-item-type-badge').textContent = ITEM_TYPE_LABELS[item.type] || item.type;
-
-  const previewEl = document.getElementById('shop-item-preview-lg');
-  previewEl.innerHTML = getItemPreviewHtml(item, true);
-
-  const priceEl  = document.getElementById('shop-item-price');
-  const statusEl = document.getElementById('shop-item-status');
-  const btnEl    = document.getElementById('shop-item-btn');
-
-  if (equipped) {
-    priceEl.textContent  = '';
-    statusEl.textContent = '✓ Применено';
-    btnEl.textContent    = 'Снять';
-    btnEl.className      = 'btn btn-secondary btn-large';
-  } else if (owned) {
-    priceEl.textContent  = '';
-    statusEl.textContent = '✓ Куплено';
-    btnEl.textContent    = 'Применить';
-    btnEl.className      = 'btn btn-primary btn-large';
-  } else if (item.price_stars) {
-    priceEl.textContent  = `⭐ ${item.price_stars}`;
-    statusEl.textContent = '';
-    btnEl.textContent    = 'Купить';
-    btnEl.className      = 'btn btn-primary btn-large';
-  } else {
-    priceEl.textContent  = 'Бесплатно';
-    statusEl.textContent = '';
-    btnEl.textContent    = 'Получить';
-    btnEl.className      = 'btn btn-primary btn-large';
-  }
-
-  document.getElementById('shop-item-back').onclick = () => showScreen('shop', { isBack: true });
-
-  // Слайдер скриншотов — вставляем после кнопки
-  renderShopItemSlider(item);
-
-  showScreen('shop-item');
-};
-
-
-/* ─── СЛАЙДЕР СКРИНШОТОВ ТОВАРА ──────────────────── */
-
-const ITEM_SCREENSHOTS = {
-  theme_dark:  [
-    '/shop/previews/theme/preview_dark_1.png',
-    '/shop/previews/theme/preview_dark_2.png',
-    '/shop/previews/theme/preview_dark_3.png',
-  ],
-  theme_light: [
-    '/shop/previews/theme/preview_white_1.png',
-    '/shop/previews/theme/preview_white_2.png',
-    '/shop/previews/theme/preview_white_3.png',
-  ],
-  theme_black: [
-    '/shop/previews/theme/preview_black_1.png',
-    '/shop/previews/theme/preview_black_2.png',
-    '/shop/previews/theme/preview_black_3.png',
-  ],
-};
-
-function renderShopItemSlider(item) {
-  // Удаляем старый слайдер если был
-  const old = document.getElementById('shop-item-slider');
-  if (old) old.remove();
-
-  const slides = ITEM_SCREENSHOTS[item.id];
-  if (!slides || !slides.length) return;
-
-  const btnEl = document.getElementById('shop-item-btn');
-  if (!btnEl) return;
-
-  // Создаём враппер, но показываем только когда хотя бы 1 картинка загрузилась
-  const slider = document.createElement('div');
-  slider.id = 'shop-item-slider';
-  slider.className = 'shop-item-slider';
-  slider.style.display = 'none'; // скрыт пока не загрузится хоть одно фото
-
-  const track = document.createElement('div');
-  track.className = 'shop-item-slider-track';
-  slider.appendChild(track);
-
-  const dotsWrap = document.createElement('div');
-  dotsWrap.className = 'shop-item-slider-dots';
-  slider.appendChild(dotsWrap);
-
-  btnEl.insertAdjacentElement('afterend', slider);
-
-  let loadedCount = 0;
-  let cur = 0;
-  const slideEls = [];
-  const dotEls   = [];
-
-  function goTo(idx) {
-    cur = (idx + slideEls.length) % slideEls.length;
-    slideEls.forEach((s, i) => s.classList.toggle('active', i === cur));
-    dotEls.forEach((d, i)   => d.classList.toggle('active', i === cur));
-  }
-
-  slides.forEach((src, i) => {
-    const slide = document.createElement('div');
-    slide.className = 'shop-item-slide' + (i === 0 ? ' active' : '');
-    track.appendChild(slide);
-    slideEls.push(slide);
-
-    const img = document.createElement('img');
-    img.loading = 'lazy';
-    // При успешной загрузке — показываем слайдер
-    img.onload = () => {
-      loadedCount++;
-      if (loadedCount === 1) {
-        slider.style.display = '';
-        // Добавляем точки только если реально загрузилось > 1 фото
-        // (ждём немного остальных)
-        setTimeout(() => {
-          if (loadedCount > 1 && dotEls.length === 0) buildDots();
-        }, 300);
-      }
-      if (loadedCount > 1 && dotEls.length === 0) buildDots();
-    };
-    // Если файл не найден — убираем слайд
-    img.onerror = () => {
-      slide.remove();
-      slideEls.splice(slideEls.indexOf(slide), 1);
-      // Если не осталось ни одного — прячем весь слайдер
-      if (slideEls.length === 0) slider.style.display = 'none';
-    };
-    img.src = src;
-    slide.appendChild(img);
-  });
-
-  function buildDots() {
-    if (slides.length <= 1) return;
-    dotsWrap.innerHTML = '';
-    dotEls.length = 0;
-    slideEls.forEach((_, i) => {
-      const d = document.createElement('span');
-      d.className = 'slider-dot' + (i === 0 ? ' active' : '');
-      d.addEventListener('click', () => goTo(i));
-      dotsWrap.appendChild(d);
-      dotEls.push(d);
-    });
-  }
-
-  // Touch swipe
-  let tx = 0;
-  track.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
-  track.addEventListener('touchend',   e => {
-    const dx = e.changedTouches[0].clientX - tx;
-    if (Math.abs(dx) > 40) goTo(dx < 0 ? cur + 1 : cur - 1);
-  }, { passive: true });
-}
-
-
-/* ─── ПРИМЕНЕНИЕ ТЕМ ─────────────────────────────── */
-
-// Применяет купленную тему по item_id
-function applyEquippedTheme(itemId) {
-  if (itemId === 'theme_light') {
-    document.body.classList.add('theme-light');
-  } else if (itemId === 'theme_black') {
-    document.body.classList.add('theme_black');
-  }
-  // Сюда добавлять новые темы по мере появления:
-  // else if (itemId === 'theme_ocean') { ... }
-}
-
-// Снимает все темы (возврат к тёмной по умолчанию)
-function resetTheme() {
-  document.body.classList.remove('theme-light', 'theme_black');
-}
-  // добавлять новые классы тем сюда
-}
-
-// Применяет тему из текущей экипировки игрока
-function applyEquippedThemeFromState() {
-  const equippedThemeId = _shopEquipped['theme'];
-  resetTheme();
-  if (equippedThemeId) applyEquippedTheme(equippedThemeId);
-}
-
-
-
-
