@@ -395,67 +395,33 @@ async def notice_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 # ── РАССЫЛКА (/post) — только админ ───────────────────────────────────────────
 
-POST_WAITING = range(1)[0]   # одно состояние — ждём сообщение для рассылки
+# Три состояния: контент → дата/время → подтверждение
+POST_CONTENT, POST_SCHEDULE, POST_CONFIRM_STATE = range(3)
 
-@admin_only
-async def post_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    count = get_users_count()
-    await update.message.reply_text(
-        f"📨 <b>Рассылка</b>\n\n"
-        f"Пользователей в базе: <b>{count}</b>\n\n"
-        f"Отправь мне сообщение для рассылки — любого формата:\n"
-        f"текст, фото с подписью, видео, стикер, GIF.\n\n"
-        f"Я перешлю его всем. /cancel — отмена.",
-        parse_mode="HTML",
-    )
-    return POST_WAITING
+MSK = timezone(timedelta(hours=3))  # UTC+3 Москва
 
-async def post_got_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Получили сообщение — подтверждаем и рассылаем."""
-    msg = update.message
 
-    # Показываем превью и запрашиваем подтверждение
-    user_ids = get_all_user_ids()
-    count    = len(user_ids)
+def _parse_msk_datetime(text: str) -> datetime | None:
+    """Парсит 'ДД.ММ.ГГГГ ЧЧ:ММ' и возвращает aware datetime в UTC. None если не удалось."""
+    text = text.strip()
+    for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%y %H:%M"):
+        try:
+            dt_msk = datetime.strptime(text, fmt).replace(tzinfo=MSK)
+            return dt_msk.astimezone(timezone.utc)
+        except ValueError:
+            continue
+    return None
 
-    confirm = await msg.reply_text(
-        f"Разослать это сообщение <b>{count}</b> пользователям?\n\n"
-        f"Ответь <b>да</b> для подтверждения или /cancel для отмены.",
-        parse_mode="HTML",
-    )
 
-    # Сохраняем message_id и chat_id для пересылки
-    context.user_data["post_msg_id"]   = msg.message_id
-    context.user_data["post_chat_id"]  = msg.chat_id
-    context.user_data["post_ready"]    = True
-    return POST_WAITING
-
-async def post_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Подтверждение 'да' — запускаем рассылку."""
-    text = update.message.text.strip().lower()
-
-    if text not in ("да", "yes", "+", "ок", "ok"):
-        await update.message.reply_text(
-            "Жду «да» для подтверждения или /cancel для отмены."
-        )
-        return POST_WAITING
-
-    if not context.user_data.get("post_ready"):
-        await update.message.reply_text("Сначала отправь сообщение для рассылки: /post")
-        return ConversationHandler.END
-
-    src_msg_id  = context.user_data.pop("post_msg_id",  None)
-    src_chat_id = context.user_data.pop("post_chat_id", None)
-    context.user_data.pop("post_ready", None)
+async def _do_broadcast(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Джоб: выполняет рассылку. Данные берёт из context.job.data."""
+    data        = context.job.data
+    src_msg_id  = data["msg_id"]
+    src_chat_id = data["chat_id"]
+    admin_id    = data["admin_id"]
 
     user_ids = get_all_user_ids()
-    status_msg = await update.message.reply_text(
-        f"⏳ Запускаю рассылку на {len(user_ids)} пользователей..."
-    )
-
-    sent = 0
-    failed = 0
-    blocked = 0
+    sent = 0; failed = 0; blocked = 0
 
     for uid in user_ids:
         try:
@@ -467,21 +433,181 @@ async def post_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             sent += 1
         except Exception as e:
             err = str(e).lower()
-            if "blocked" in err or "deactivated" in err or "not found" in err or "forbidden" in err:
+            if any(w in err for w in ("blocked", "deactivated", "not found", "forbidden", "chat not found")):
                 blocked += 1
             else:
                 failed += 1
-                logger.warning(f"[Post] failed uid={uid}: {e}")
-        # Небольшая задержка чтобы не получить flood ban
+                logger.warning(f"[Post] uid={uid}: {e}")
         await asyncio.sleep(0.05)
 
-    await status_msg.edit_text(
-        f"✅ <b>Рассылка завершена</b>\n\n"
-        f"Отправлено: {sent}\n"
-        f"Заблокировали бота: {blocked}\n"
-        f"Ошибки: {failed}",
+    logger.info(f"[Post] done: sent={sent} blocked={blocked} failed={failed}")
+
+    # Уведомляем админа об итогах
+    try:
+        await context.bot.send_message(
+            chat_id=admin_id,
+            text=(
+                f"✅ <b>Рассылка завершена</b>\n\n"
+                f"Отправлено: {sent}\n"
+                f"Заблокировали бота: {blocked}\n"
+                f"Ошибок: {failed}"
+            ),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error(f"[Post] admin notify failed: {e}")
+
+
+@admin_only
+async def post_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    count = get_users_count()
+    await update.message.reply_text(
+        f"📨 <b>Рассылка</b>\n\n"
+        f"Пользователей в базе: <b>{count}</b>\n\n"
+        f"Отправь сообщение для рассылки — любого формата:\n"
+        f"текст, фото с подписью, видео, стикер, GIF.\n\n"
+        f"/cancel — отмена",
         parse_mode="HTML",
     )
+    return POST_CONTENT
+
+
+async def post_got_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Получили контент — сохраняем, спрашиваем дату/время или «сейчас»."""
+    msg = update.message
+    context.user_data["post_msg_id"]  = msg.message_id
+    context.user_data["post_chat_id"] = msg.chat_id
+
+    now_msk = datetime.now(MSK).strftime("%d.%m.%Y %H:%M")
+    await msg.reply_text(
+        f"Когда разослать?\n\n"
+        f"Введи дату и время по Москве в формате:\n"
+        f"<code>ДД.ММ.ГГГГ ЧЧ:ММ</code>\n"
+        f"Например: <code>{now_msk}</code>\n\n"
+        f"Или напиши <b>сейчас</b> — разошлю немедленно.\n\n"
+        f"/cancel — отмена",
+        parse_mode="HTML",
+    )
+    return POST_SCHEDULE
+
+
+async def post_got_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Получили дату/время — показываем итоговое подтверждение."""
+    text = update.message.text.strip().lower()
+    count = get_users_count()
+
+    if text in ("сейчас", "now", "0", "немедленно"):
+        context.user_data["post_send_at"] = None  # None = немедленно
+        when_str = "немедленно"
+    else:
+        dt_utc = _parse_msk_datetime(update.message.text.strip())
+        if not dt_utc:
+            await update.message.reply_text(
+                "Не смог распознать дату. Нужен формат:\n"
+                "<code>ДД.ММ.ГГГГ ЧЧ:ММ</code>  — например: "
+                f"<code>{datetime.now(MSK).strftime('%d.%m.%Y %H:%M')}</code>\n\n"
+                "Попробуй ещё раз или напиши <b>сейчас</b>.",
+                parse_mode="HTML",
+            )
+            return POST_SCHEDULE
+
+        now_utc = datetime.now(timezone.utc)
+        if dt_utc <= now_utc:
+            await update.message.reply_text(
+                "⚠️ Это время уже прошло. Введи будущую дату/время или напиши <b>сейчас</b>.",
+                parse_mode="HTML",
+            )
+            return POST_SCHEDULE
+
+        context.user_data["post_send_at"] = dt_utc
+        dt_msk   = dt_utc.astimezone(MSK)
+        delay    = (dt_utc - now_utc).total_seconds()
+        hours, rem = divmod(int(delay), 3600)
+        mins       = rem // 60
+        when_str = (
+            f"{dt_msk.strftime('%d.%m.%Y %H:%M')} МСК "
+            f"(через {hours}ч {mins}мин)"
+        )
+
+    await update.message.reply_text(
+        f"Разослать пост <b>{count}</b> пользователям {when_str}?\n\n"
+        f"Ответь <b>да</b> для подтверждения или /cancel для отмены.",
+        parse_mode="HTML",
+    )
+    return POST_CONFIRM_STATE
+
+
+async def post_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Ждём «да» — ставим в очередь или запускаем немедленно."""
+    text = update.message.text.strip().lower()
+
+    if text not in ("да", "yes", "+", "ок", "ok", "д"):
+        await update.message.reply_text(
+            "Жду «да» для подтверждения или /cancel для отмены."
+        )
+        return POST_CONFIRM_STATE
+
+    src_msg_id  = context.user_data.pop("post_msg_id",  None)
+    src_chat_id = context.user_data.pop("post_chat_id", None)
+    send_at     = context.user_data.pop("post_send_at", None)
+
+    if not src_msg_id or not src_chat_id:
+        await update.message.reply_text("Что-то пошло не так. Попробуй /post снова.")
+        return ConversationHandler.END
+
+    job_data = {
+        "msg_id":   src_msg_id,
+        "chat_id":  src_chat_id,
+        "admin_id": update.effective_user.id,
+    }
+
+    if send_at is None:
+        # Немедленная рассылка
+        user_ids   = get_all_user_ids()
+        status_msg = await update.message.reply_text(
+            f"⏳ Рассылаю на {len(user_ids)} пользователей..."
+        )
+        sent = 0; failed = 0; blocked = 0
+        for uid in user_ids:
+            try:
+                await context.bot.forward_message(
+                    chat_id=uid,
+                    from_chat_id=src_chat_id,
+                    message_id=src_msg_id,
+                )
+                sent += 1
+            except Exception as e:
+                err = str(e).lower()
+                if any(w in err for w in ("blocked", "deactivated", "not found", "forbidden", "chat not found")):
+                    blocked += 1
+                else:
+                    failed += 1
+                    logger.warning(f"[Post] uid={uid}: {e}")
+            await asyncio.sleep(0.05)
+        await status_msg.edit_text(
+            f"✅ <b>Рассылка завершена</b>\n\n"
+            f"Отправлено: {sent}\n"
+            f"Заблокировали бота: {blocked}\n"
+            f"Ошибок: {failed}",
+            parse_mode="HTML",
+        )
+    else:
+        # Отложенная рассылка через job_queue
+        delay_sec = (send_at - datetime.now(timezone.utc)).total_seconds()
+        context.application.job_queue.run_once(
+            _do_broadcast,
+            when=delay_sec,
+            data=job_data,
+            name=f"post_{update.effective_user.id}_{int(send_at.timestamp())}",
+        )
+        dt_msk = send_at.astimezone(MSK)
+        await update.message.reply_text(
+            f"⏰ <b>Запланировано!</b>\n\n"
+            f"Рассылка запустится {dt_msk.strftime('%d.%m.%Y в %H:%M')} МСК.\n"
+            f"Я пришлю отчёт после завершения.",
+            parse_mode="HTML",
+        )
+
     return ConversationHandler.END
 
 
@@ -601,28 +727,29 @@ def build_app() -> Application:
     app.add_handler(notice_handler)
 
     # ── Только для админов: /post (диалог)
-    # Два подсостояния: ждём сообщение, потом ждём «да»
     post_handler = ConversationHandler(
         entry_points=[CommandHandler("post", post_start)],
         states={
-            POST_WAITING: [
-                # Если пост ещё не выбран — любое медиа/текст принимаем как пост
+            # 1: ждём любой контент
+            POST_CONTENT: [
                 MessageHandler(
-                    (filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL |
-                     filters.Sticker.ALL | filters.ANIMATION) & ~filters.COMMAND
-                    & filters.create(lambda u, c: not c.user_data.get("post_ready")),
+                    (filters.TEXT | filters.PHOTO | filters.VIDEO |
+                     filters.Document.ALL | filters.Sticker.ALL | filters.ANIMATION)
+                    & ~filters.COMMAND,
                     post_got_message,
                 ),
-                # Если пост уже выбран — ждём «да»
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND
-                    & filters.create(lambda u, c: bool(c.user_data.get("post_ready"))),
-                    post_confirm,
-                ),
+            ],
+            # 2: ждём дату/время или «сейчас»
+            POST_SCHEDULE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, post_got_schedule),
+            ],
+            # 3: ждём «да»
+            POST_CONFIRM_STATE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, post_confirm),
             ],
         },
         fallbacks=[CommandHandler("cancel", notice_cancel)],
-        conversation_timeout=300,
+        conversation_timeout=600,  # 10 минут на весь диалог
     )
     app.add_handler(post_handler)
 
