@@ -107,6 +107,10 @@ def upsert_bot_user(user) -> None:
     except Exception as e:
         logger.error(f"[Users] upsert failed: {e}")
 
+async def async_upsert_bot_user(user) -> None:
+    """Неблокирующая обёртка для upsert_bot_user."""
+    await asyncio.to_thread(upsert_bot_user, user)
+
 def get_all_user_ids() -> list[int]:
     """Возвращает список всех user_id."""
     try:
@@ -118,6 +122,9 @@ def get_all_user_ids() -> list[int]:
         logger.error(f"[Users] get_all failed: {e}")
         return []
 
+async def async_get_all_user_ids() -> list[int]:
+    return await asyncio.to_thread(get_all_user_ids)
+
 def get_users_count() -> int:
     try:
         con = _get_users_db()
@@ -126,6 +133,9 @@ def get_users_count() -> int:
         return n
     except:
         return 0
+
+async def async_get_users_count() -> int:
+    return await asyncio.to_thread(get_users_count)
 
 
 # ── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ────────────────────────────────────────────────────
@@ -285,24 +295,22 @@ def fmt_analytics(data: dict, title: str = "Аналитика") -> str:
 # ── КОМАНДЫ (публичные) ────────────────────────────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    upsert_bot_user(update.effective_user)
+    await async_upsert_bot_user(update.effective_user)
     name = update.effective_user.first_name or "Игрок"
-    admin_hint = "\n\n<i>Команды: /stats /notice /post /cancel</i>" if is_admin(update.effective_user.id) else ""
     await update.message.reply_text(
         f"Привет, {name}!\n\n"
         f"<b>Морской бой</b> — классическая стратегия прямо в Telegram.\n\n"
-        f"Играй против живых соперников, прокачивай уровень и соревнуйся в рейтинге."
-        f"{admin_hint}",
+        f"Играй против живых соперников, прокачивай уровень и соревнуйся в рейтинге.",
         parse_mode="HTML",
         reply_markup=play_markup(),
     )
 
 async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    upsert_bot_user(update.effective_user)
+    await async_upsert_bot_user(update.effective_user)
     await update.message.reply_text("Открываю игру:", reply_markup=play_markup())
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    upsert_bot_user(update.effective_user)
+    await async_upsert_bot_user(update.effective_user)
     admin_hint = "\n\n<b>Команды администратора:</b>\n/stats — аналитика\n/notice — создать уведомление в игре\n/post — рассылка всем пользователям\n/cancel — отменить текущую команду" if is_admin(update.effective_user.id) else ""
     await update.message.reply_text(
         "<b>Морской бой — помощь</b>\n\n"
@@ -314,7 +322,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    upsert_bot_user(update.effective_user)
+    await async_upsert_bot_user(update.effective_user)
     await update.message.reply_text("Выбери действие:", reply_markup=main_markup())
 
 
@@ -420,7 +428,7 @@ async def _do_broadcast(context: ContextTypes.DEFAULT_TYPE) -> None:
     src_chat_id = data["chat_id"]
     admin_id    = data["admin_id"]
 
-    user_ids = get_all_user_ids()
+    user_ids = await async_get_all_user_ids()
     sent = 0; failed = 0; blocked = 0
 
     for uid in user_ids:
@@ -460,7 +468,7 @@ async def _do_broadcast(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @admin_only
 async def post_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    count = get_users_count()
+    count = await async_get_users_count()
     await update.message.reply_text(
         f"📨 <b>Рассылка</b>\n\n"
         f"Пользователей в базе: <b>{count}</b>\n\n"
@@ -494,7 +502,7 @@ async def post_got_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def post_got_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получили дату/время — показываем итоговое подтверждение."""
     text = update.message.text.strip().lower()
-    count = get_users_count()
+    count = await async_get_users_count()
 
     if text in ("сейчас", "now", "0", "немедленно"):
         context.user_data["post_send_at"] = None  # None = немедленно
@@ -563,7 +571,7 @@ async def post_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     if send_at is None:
         # Немедленная рассылка
-        user_ids   = get_all_user_ids()
+        user_ids   = await async_get_all_user_ids()
         status_msg = await update.message.reply_text(
             f"⏳ Рассылаю на {len(user_ids)} пользователей..."
         )
@@ -633,7 +641,7 @@ async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    upsert_bot_user(update.effective_user)
+    await async_upsert_bot_user(update.effective_user)
     sp        = update.message.successful_payment
     payload   = sp.invoice_payload
     charge_id = sp.telegram_payment_charge_id
