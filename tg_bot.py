@@ -378,7 +378,48 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await msg.edit_text(text, parse_mode="HTML")
 
 
-async def send_daily_report(context: ContextTypes.DEFAULT_TYPE) -> None:
+@admin_only
+async def jobs_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает все запланированные рассылки и позволяет отменить."""
+    jobs = [j for j in context.application.job_queue.jobs()
+            if j.name and j.name.startswith("post_")]
+
+    if not jobs:
+        await update.message.reply_text("📭 Нет запланированных рассылок.")
+        return
+
+    lines = ["📋 <b>Запланированные рассылки:</b>\n"]
+    for j in jobs:
+        # next_t — время следующего запуска в UTC
+        next_t = j.next_t
+        if next_t:
+            dt_msk = next_t.astimezone(MSK)
+            when   = dt_msk.strftime("%d.%m.%Y %H:%M МСК")
+        else:
+            when = "неизвестно"
+        lines.append(f"• <code>{j.name}</code>\n  ⏰ {when}")
+
+    lines.append("\nЧтобы отменить — напиши:\n<code>/canceljob ИМЯ_ЗАДАЧИ</code>")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+@admin_only
+async def canceljob_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Отменяет конкретную запланированную задачу по имени."""
+    args = context.args
+    if not args:
+        await update.message.reply_text("Использование: <code>/canceljob ИМЯ</code>", parse_mode="HTML")
+        return
+
+    name   = args[0]
+    jobs   = [j for j in context.application.job_queue.jobs() if j.name == name]
+    if not jobs:
+        await update.message.reply_text(f"❌ Задача <code>{name}</code> не найдена.", parse_mode="HTML")
+        return
+
+    for j in jobs:
+        j.schedule_removal()
+    await update.message.reply_text(f"✅ Задача <code>{name}</code> отменена.", parse_mode="HTML")
     if not STATS_CHAT_ID:
         return
     data = await fetch_analytics()
@@ -761,7 +802,9 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("help",  help_command))
 
     # ── Только для админов: /stats
-    app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("stats",     stats_command))
+    app.add_handler(CommandHandler("jobs",      jobs_command))
+    app.add_handler(CommandHandler("canceljob", canceljob_command))
 
     # ── Только для админов: /notice (диалог)
     notice_handler = ConversationHandler(
