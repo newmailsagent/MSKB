@@ -23,7 +23,6 @@ import asyncio
 import sqlite3
 import aiohttp
 from datetime import datetime, timezone, timedelta
-from telegram.ext import PicklePersistence
 
 from telegram import (
     Update,
@@ -56,7 +55,7 @@ WEBHOOK_PORT     = int(os.environ.get("WEBHOOK_PORT", 8443))
 WEBHOOK_SECRET   = os.environ.get("WEBHOOK_SECRET",  "")
 USERS_DB_PATH    = os.environ.get("USERS_DB_PATH",   "./data/bot_users.db")
 GAME_DB_PATH     = os.environ.get("GAME_DB_PATH",    "./data/game.db")
-PERSISTENCE_PATH = os.environ.get("PERSISTENCE_PATH","./data/bot_persistence")
+PERSISTENCE_PATH = os.environ.get("PERSISTENCE_PATH","./data/bot_persistence")  # зарезервировано
 
 GAME_SHARE_TEXT  = "Приглашаю тебя поиграть в Морской бой прямо в Telegram:"
 GAME_SHARE_URL   = "https://t.me/bteship_bot/bteship"
@@ -378,48 +377,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await msg.edit_text(text, parse_mode="HTML")
 
 
-@admin_only
-async def jobs_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Показывает все запланированные рассылки и позволяет отменить."""
-    jobs = [j for j in context.application.job_queue.jobs()
-            if j.name and j.name.startswith("post_")]
-
-    if not jobs:
-        await update.message.reply_text("📭 Нет запланированных рассылок.")
-        return
-
-    lines = ["📋 <b>Запланированные рассылки:</b>\n"]
-    for j in jobs:
-        # next_t — время следующего запуска в UTC
-        next_t = j.next_t
-        if next_t:
-            dt_msk = next_t.astimezone(MSK)
-            when   = dt_msk.strftime("%d.%m.%Y %H:%M МСК")
-        else:
-            when = "неизвестно"
-        lines.append(f"• <code>{j.name}</code>\n  ⏰ {when}")
-
-    lines.append("\nЧтобы отменить — напиши:\n<code>/canceljob ИМЯ_ЗАДАЧИ</code>")
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
-
-
-@admin_only
-async def canceljob_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Отменяет конкретную запланированную задачу по имени."""
-    args = context.args
-    if not args:
-        await update.message.reply_text("Использование: <code>/canceljob ИМЯ</code>", parse_mode="HTML")
-        return
-
-    name   = args[0]
-    jobs   = [j for j in context.application.job_queue.jobs() if j.name == name]
-    if not jobs:
-        await update.message.reply_text(f"❌ Задача <code>{name}</code> не найдена.", parse_mode="HTML")
-        return
-
-    for j in jobs:
-        j.schedule_removal()
-    await update.message.reply_text(f"✅ Задача <code>{name}</code> отменена.", parse_mode="HTML")
+async def send_daily_report(context: ContextTypes.DEFAULT_TYPE) -> None:
     if not STATS_CHAT_ID:
         return
     data = await fetch_analytics()
@@ -501,19 +459,14 @@ def _parse_msk_datetime(text: str) -> datetime | None:
     return None
 
 
-async def _do_broadcast(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Джоб: выполняет рассылку. Данные берёт из context.job.data."""
-    data        = context.job.data
-    src_msg_id  = data["msg_id"]
-    src_chat_id = data["chat_id"]
-    admin_id    = data["admin_id"]
-
+async def _do_broadcast(bot, src_chat_id: int, src_msg_id: int, admin_id: int) -> None:
+    """Выполняет рассылку — запускается как asyncio task."""
     user_ids = await async_get_all_user_ids()
     sent = 0; failed = 0; blocked = 0
 
     for uid in user_ids:
         try:
-            await context.bot.forward_message(
+            await bot.forward_message(
                 chat_id=uid,
                 from_chat_id=src_chat_id,
                 message_id=src_msg_id,
@@ -529,10 +482,8 @@ async def _do_broadcast(context: ContextTypes.DEFAULT_TYPE) -> None:
         await asyncio.sleep(0.05)
 
     logger.info(f"[Post] done: sent={sent} blocked={blocked} failed={failed}")
-
-    # Уведомляем админа об итогах
     try:
-        await context.bot.send_message(
+        await bot.send_message(
             chat_id=admin_id,
             text=(
                 f"✅ <b>Рассылка завершена</b>\n\n"
@@ -680,19 +631,22 @@ async def post_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             parse_mode="HTML",
         )
     else:
-        # Отложенная рассылка через job_queue
-        delay_sec = (send_at - datetime.now(timezone.utc)).total_seconds()
-        context.application.job_queue.run_once(
-            _do_broadcast,
-            when=delay_sec,
-            data=job_data,
-            name=f"post_{update.effective_user.id}_{int(send_at.timestamp())}",
-        )
+        # Отложенная рассылка — asyncio.create_task со sleep
+        delay_sec = max(0.0, (send_at - datetime.now(timezone.utc)).total_seconds())
+        bot       = context.bot
+        admin_id  = update.effective_user.id
+
+        async def _scheduled():
+            await asyncio.sleep(delay_sec)
+            await _do_broadcast(bot, src_chat_id, src_msg_id, admin_id)
+
+        asyncio.create_task(_scheduled())
         dt_msk = send_at.astimezone(MSK)
         await update.message.reply_text(
             f"⏰ <b>Запланировано!</b>\n\n"
             f"Рассылка запустится {dt_msk.strftime('%d.%m.%Y в %H:%M')} МСК.\n"
-            f"Я пришлю отчёт после завершения.",
+            f"Я пришлю отчёт после завершения.\n\n"
+            f"⚠️ Перезапуск бота до этого времени отменит рассылку.",
             parse_mode="HTML",
         )
 
@@ -792,9 +746,7 @@ async def refunded_payment_filter(update: Update, context: ContextTypes.DEFAULT_
 
 
 def build_app() -> Application:
-    os.makedirs(os.path.dirname(PERSISTENCE_PATH) or ".", exist_ok=True)
-    persistence = PicklePersistence(filepath=PERSISTENCE_PATH)
-    app = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
+    app = Application.builder().token(BOT_TOKEN).build()
 
     # ── Публичные команды
     app.add_handler(CommandHandler("start", start))
@@ -802,9 +754,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("help",  help_command))
 
     # ── Только для админов: /stats
-    app.add_handler(CommandHandler("stats",     stats_command))
-    app.add_handler(CommandHandler("jobs",      jobs_command))
-    app.add_handler(CommandHandler("canceljob", canceljob_command))
+    app.add_handler(CommandHandler("stats", stats_command))
 
     # ── Только для админов: /notice (диалог)
     notice_handler = ConversationHandler(
@@ -814,8 +764,6 @@ def build_app() -> Application:
             NOTICE_BODY:  [MessageHandler(filters.TEXT & ~filters.COMMAND, notice_got_body)],
         },
         fallbacks=[CommandHandler("cancel", notice_cancel)],
-        persistent=True,
-        name="notice_conv",
     )
     app.add_handler(notice_handler)
 
@@ -823,7 +771,6 @@ def build_app() -> Application:
     post_handler = ConversationHandler(
         entry_points=[CommandHandler("post", post_start)],
         states={
-            # 1: ждём любой контент
             POST_CONTENT: [
                 MessageHandler(
                     (filters.TEXT | filters.PHOTO | filters.VIDEO |
@@ -832,18 +779,14 @@ def build_app() -> Application:
                     post_got_message,
                 ),
             ],
-            # 2: ждём дату/время или «сейчас»
             POST_SCHEDULE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, post_got_schedule),
             ],
-            # 3: ждём «да»
             POST_CONFIRM_STATE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, post_confirm),
             ],
         },
         fallbacks=[CommandHandler("cancel", notice_cancel)],
-        persistent=True,
-        name="post_conv",
     )
     app.add_handler(post_handler)
 
@@ -854,15 +797,6 @@ def build_app() -> Application:
 
     # ── Обычные сообщения
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # ── Ежедневный отчёт в 09:00 МСК (UTC+3 = UTC 06:00)
-    if STATS_CHAT_ID:
-        app.job_queue.run_daily(
-            send_daily_report,
-            time=datetime.strptime("06:00", "%H:%M").replace(tzinfo=timezone.utc).timetz(),
-            name="daily_report",
-        )
-        logger.info(f"[DailyReport] Запланирован в 09:00 МСК → {STATS_CHAT_ID}")
 
     return app
 
