@@ -3002,15 +3002,17 @@ function updateGameFooter() {
   const oppRank  = Game.opponent?.rank  || '';
   const oppName  = Game.opponent?.name  || (isBot ? 'Бот' : 'Соперник');
 
-  // Мой аватар
+  // Мой аватар — квадратный со скруглёнными углами, рамка по уровню
   const meAvatar = document.getElementById('gf-me-avatar');
   if (meAvatar) {
-    meAvatar.textContent = (App.user.photo ? '' : (App.user.name[0]||'?').toUpperCase());
     if (App.user.photo) {
-      meAvatar.innerHTML = `<img src="${App.user.photo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" />`;
+      meAvatar.innerHTML = `<img src="${App.user.photo}" />`;
+    } else {
+      meAvatar.textContent = (App.user.name[0]||'?').toUpperCase();
     }
     meAvatar.className = `gf-avatar gf-frame-${myProg.level}`;
   }
+  // Уровень: level-bg-N = правильный цвет фона (как в рейтинге, профиле и т.д.)
   const meLevel = document.getElementById('gf-me-level');
   if (meLevel) {
     meLevel.textContent = myProg.level;
@@ -3027,30 +3029,30 @@ function updateGameFooter() {
   }
   const oppLevelEl = document.getElementById('gf-opp-level');
   if (oppLevelEl) {
-    oppLevelEl.textContent = isBot ? '' : oppLevel;
-    oppLevelEl.className   = `gf-level level-bg-${oppLevel}`;
-    oppLevelEl.style.display = isBot ? 'none' : '';
+    if (isBot) {
+      oppLevelEl.style.display = 'none';
+    } else {
+      oppLevelEl.style.display = '';
+      oppLevelEl.textContent   = oppLevel;
+      oppLevelEl.className     = `gf-level level-bg-${oppLevel}`;
+    }
   }
   setText('gf-opp-name', oppName);
   setText('gf-opp-rank', isBot ? '' : oppRank);
 
-  // Счёт дуэлей
+  // Счёт дуэлей по центру футера (кнопки сдаться в футере больше нет — только бургер)
   const duelBlock = document.getElementById('gf-duel-score');
-  const surrenderBtn = document.getElementById('btn-surrender');
   const duel = Game.opponent?.duel;
   if (!isBot && duel && Game.mode === 'online') {
     if (duelBlock) {
       duelBlock.style.display = 'flex';
       const mineEl   = document.getElementById('gf-duel-mine');
       const theirsEl = document.getElementById('gf-duel-theirs');
-      if (mineEl)   { mineEl.textContent = duel.myWins;    mineEl.style.color   = duel.myWins > duel.theirWins ? 'var(--green)' : 'var(--text)'; }
-      if (theirsEl) { theirsEl.textContent = duel.theirWins; theirsEl.style.color = duel.theirWins > duel.myWins ? 'var(--red)' : 'var(--text)'; }
+      if (mineEl)   { mineEl.textContent   = duel.myWins;    mineEl.style.color   = duel.myWins > duel.theirWins ? 'var(--green)' : 'var(--text)'; }
+      if (theirsEl) { theirsEl.textContent = duel.theirWins; theirsEl.style.color = duel.theirWins > duel.myWins ? 'var(--red)'   : 'var(--text)'; }
     }
-    // Кнопка сдаться — скрываем если есть счёт
-    if (surrenderBtn) surrenderBtn.style.display = 'none';
   } else {
-    if (duelBlock)    duelBlock.style.display    = 'none';
-    if (surrenderBtn) surrenderBtn.style.display = '';
+    if (duelBlock) duelBlock.style.display = 'none';
   }
 }
 

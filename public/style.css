@@ -1731,13 +1731,15 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   padding: 10px 12px 10px;
   border-top: 1px solid rgba(255,255,255,.06);
   flex-shrink: 0;
-  margin-top: auto;
   min-height: 68px;
   gap: 6px;
 }
 
 /* Старый game-footer скрываем — используем новый */
 .game-footer { display: none !important; }
+
+/* Кнопку сдаться в футере убираем — только бургер-меню */
+#btn-surrender { display: none !important; }
 
 .gf-player {
   display: flex;
@@ -1757,23 +1759,26 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   flex-shrink: 0;
 }
 
+/* Квадратный аватар со скруглёнными углами — как на главной */
 .gf-avatar {
-  width: 38px; height: 38px;
-  border-radius: 50%;
+  width: 40px; height: 40px;
+  border-radius: 10px;
   background: var(--bg2);
   border: 2px solid var(--hint);
   display: flex; align-items: center; justify-content: center;
-  font-size: 16px; font-weight: 700;
+  font-size: 17px; font-weight: 700;
   transition: border-color .3s;
+  overflow: hidden;
 }
+.gf-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
 
+/* Уровень — цвет берётся от level-bg-N (тот же класс что везде) */
 .gf-level {
-  position: absolute; bottom: -3px; right: -5px;
-  min-width: 16px; height: 16px; padding: 0 3px;
+  position: absolute; bottom: -4px; right: -6px;
+  min-width: 17px; height: 17px; padding: 0 3px;
   border-radius: 4px; font-size: 10px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
-  border: 1.5px solid var(--bg);
-  background: #607d8b; color: #fff;
+  border: 2px solid var(--bg);
 }
 
 .gf-info {
@@ -1823,36 +1828,29 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 .gf-duel-mine { color: var(--green); }
 .gf-duel-theirs { color: var(--red); }
 
-.gf-surrender-btn {
-  flex-shrink: 0;
-  background: transparent !important;
-  border: 1px solid rgba(255,255,255,.12) !important;
-  color: var(--hint) !important;
-  font-size: 11px !important;
-  padding: 5px 10px !important;
-}
-.gf-surrender-btn:hover { border-color: var(--red) !important; color: var(--red) !important; }
-
-/* Рамки на аватарах в футере — по уровням */
+/* Рамки на аватарах в футере — border через gf-frame-N классы */
 .gf-frame-1,.gf-frame-2,.gf-frame-3,.gf-frame-4 { border-color: #607d8b !important; }
 .gf-frame-5,.gf-frame-6,.gf-frame-7,.gf-frame-8,.gf-frame-9 { border-color: #43a047 !important; }
 .gf-frame-10,.gf-frame-11,.gf-frame-12,.gf-frame-13,.gf-frame-14 { border-color: #1e88e5 !important; }
 .gf-frame-15,.gf-frame-16,.gf-frame-17,.gf-frame-18,.gf-frame-19 { border-color: #8e24aa !important; }
 .gf-frame-20,.gf-frame-21,.gf-frame-22,.gf-frame-23,.gf-frame-24 { border-color: #e53935 !important; }
 .gf-frame-25,.gf-frame-26,.gf-frame-27,.gf-frame-28,.gf-frame-29 { border-color: #f57f17 !important; }
-.gf-frame-30 { border-color: #ffd600 !important; box-shadow: 0 0 8px rgba(255,214,0,.4); }
+.gf-frame-30 { border-color: #ffd600 !important; box-shadow: 0 0 8px rgba(255,214,0,.35); }
 
 /* ═══════════════════════════════════════════════════
-   ЗОНА РЕАКЦИЙ
+   ЗОНА РЕАКЦИЙ — между футером и флотом врага
 ════════════════════════════════════════════════════ */
 
+/* Нижняя часть игрового экрана выстраивается снизу вверх:
+   футер → reactions-zone → enemy-fleet → board
+   Реакции занимают гибкое пространство и центрируют содержимое */
 .reactions-zone {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 16px;
   flex-shrink: 0;
-  height: 52px;
+  flex: 0 0 64px;       /* фиксированная высота зоны */
   position: relative;
 }
 
@@ -1860,14 +1858,17 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   flex: 1;
   display: flex;
   align-items: center;
+  justify-content: center;
   height: 100%;
 }
 
-.my-reaction-display { justify-content: flex-start; }
-.opp-reaction-display { justify-content: flex-end; }
+/* Эмодзи реакции — по центру своей половины */
+.my-reaction-display  { justify-content: center; padding-right: 8px; }
+.opp-reaction-display { justify-content: center; padding-left: 8px; }
 
+/* Реакция на 50% крупнее */
 .reaction-emoji-show {
-  font-size: 32px;
+  font-size: 48px;
   line-height: 1;
   animation: reactionFadeIn .25s ease both;
   pointer-events: none;
@@ -1892,8 +1893,9 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   z-index: 20;
 }
 
+/* Кнопка на 50% крупнее: 38→57px */
 .reaction-trigger-btn {
-  width: 38px; height: 38px;
+  width: 57px; height: 57px;
   border-radius: 50%;
   background: rgba(255,255,255,.06);
   border: 1px solid rgba(255,255,255,.12);
@@ -1912,14 +1914,16 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   left: 50%; transform: translateX(-50%);
   background: var(--bg2);
   border: 1px solid rgba(255,255,255,.12);
-  border-radius: 28px;
-  padding: 6px 8px;
+  border-radius: 32px;
+  padding: 8px 10px;
   display: flex;
   gap: 4px;
   box-shadow: 0 4px 24px rgba(0,0,0,.5);
   z-index: 30;
   animation: pickerSlideIn .18s cubic-bezier(.2,1.3,.4,1) both;
   pointer-events: auto;
+  /* Пикер не перекрывает поля сверху */
+  max-width: 90vw;
 }
 
 .reaction-picker.hidden { display: none; }
@@ -1930,30 +1934,40 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 }
 
 .reaction-option {
-  width: 44px; height: 44px;
+  width: 52px; height: 52px;
   border-radius: 50%;
   background: transparent;
   border: none;
-  font-size: 26px;
+  font-size: 32px;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: background .12s, transform .12s;
   padding: 0;
 }
-.reaction-option:hover { background: rgba(255,255,255,.08); }
+.reaction-option:hover  { background: rgba(255,255,255,.08); }
 .reaction-option:active { transform: scale(.88); }
 
-/* Тема black */
-body.theme_black .reaction-trigger-btn { background: #0a0a0a; border-color: #2a2a2a; }
-body.theme_black .reaction-picker { background: #0a0a0a; border-color: #2a2a2a; }
-body.theme_black .game-footer-v2 { border-top-color: #1a1a1a; }
-body.theme_black .gf-avatar { background: #000; border-color: #444; }
+/* ═══════════════════════════════════════════════════
+   ЧЁРНАЯ ТЕМА: рамки + реакции + футер
+════════════════════════════════════════════════════ */
 
-/* Рамка аватара на главной — level-frame классы уже есть для профиля */
-/* Добавляем border-color для аватара в шапке меню (управляется через JS) */
-#user-avatar {
-  transition: border-color .3s;
-}
+body.theme_black .reaction-trigger-btn { background: #0a0a0a; border-color: #303030; }
+body.theme_black .reaction-picker      { background: #0d0d0d; border-color: #2a2a2a; }
+body.theme_black .game-footer-v2       { border-top-color: #1a1a1a; }
+body.theme_black .reactions-zone       { border-top-color: #1a1a1a; }
 
-/* lb-level-dot в черной теме — нужно добавить белый фон для видимости */
+/* Аватары в чёрной теме — фон чёрный, рамка тоже видна т.к. gf-frame-N выставляет border-color */
+body.theme_black .gf-avatar { background: #111; }
+
+/* Рамка уровня в рейтинге в чёрной теме — border от bg должен быть чёрным */
 body.theme_black .lb-level-dot { border-color: #000 !important; }
+
+/* Рамка аватара на главной (lb + menu) в чёрной теме — border от bg чёрный */
+body.theme_black .level-badge { border-color: #000 !important; }
+
+/* Рамка аватара на главной — управляется JS через style.borderColor, работает везде */
+#user-avatar {
+  border: 2px solid #607d8b;
+  transition: border-color .3s;
+  border-radius: 50%;
+}
