@@ -1719,3 +1719,241 @@ body.theme_black .shop-card        { background-color: #030303; }
 body.theme_black .profile-tabs     { background-color: #000000; }
 
 /* game.js applyEquippedTheme(): document.body.classList.add('theme_black') */
+
+/* ═══════════════════════════════════════════════════
+   НОВЫЙ ФУТЕР БОЕВОГО ЭКРАНА v2
+════════════════════════════════════════════════════ */
+
+.game-footer-v2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 10px;
+  border-top: 1px solid rgba(255,255,255,.06);
+  flex-shrink: 0;
+  margin-top: auto;
+  min-height: 68px;
+  gap: 6px;
+}
+
+/* Старый game-footer скрываем — используем новый */
+.game-footer { display: none !important; }
+
+.gf-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.gf-player-opp {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.gf-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.gf-avatar {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: var(--bg2);
+  border: 2px solid var(--hint);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700;
+  transition: border-color .3s;
+}
+
+.gf-level {
+  position: absolute; bottom: -3px; right: -5px;
+  min-width: 16px; height: 16px; padding: 0 3px;
+  border-radius: 4px; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--bg);
+  background: #607d8b; color: #fff;
+}
+
+.gf-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  gap: 2px;
+}
+
+.gf-info-right {
+  align-items: flex-end;
+}
+
+.gf-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+.gf-rank {
+  font-size: 10px;
+  color: var(--hint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+.gf-duel-score {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-hd);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+  padding: 0 6px;
+}
+
+.gf-duel-sep { color: var(--hint); font-size: 14px; }
+.gf-duel-mine { color: var(--green); }
+.gf-duel-theirs { color: var(--red); }
+
+.gf-surrender-btn {
+  flex-shrink: 0;
+  background: transparent !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  color: var(--hint) !important;
+  font-size: 11px !important;
+  padding: 5px 10px !important;
+}
+.gf-surrender-btn:hover { border-color: var(--red) !important; color: var(--red) !important; }
+
+/* Рамки на аватарах в футере — по уровням */
+.gf-frame-1,.gf-frame-2,.gf-frame-3,.gf-frame-4 { border-color: #607d8b !important; }
+.gf-frame-5,.gf-frame-6,.gf-frame-7,.gf-frame-8,.gf-frame-9 { border-color: #43a047 !important; }
+.gf-frame-10,.gf-frame-11,.gf-frame-12,.gf-frame-13,.gf-frame-14 { border-color: #1e88e5 !important; }
+.gf-frame-15,.gf-frame-16,.gf-frame-17,.gf-frame-18,.gf-frame-19 { border-color: #8e24aa !important; }
+.gf-frame-20,.gf-frame-21,.gf-frame-22,.gf-frame-23,.gf-frame-24 { border-color: #e53935 !important; }
+.gf-frame-25,.gf-frame-26,.gf-frame-27,.gf-frame-28,.gf-frame-29 { border-color: #f57f17 !important; }
+.gf-frame-30 { border-color: #ffd600 !important; box-shadow: 0 0 8px rgba(255,214,0,.4); }
+
+/* ═══════════════════════════════════════════════════
+   ЗОНА РЕАКЦИЙ
+════════════════════════════════════════════════════ */
+
+.reactions-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  flex-shrink: 0;
+  height: 52px;
+  position: relative;
+}
+
+.reaction-display {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.my-reaction-display { justify-content: flex-start; }
+.opp-reaction-display { justify-content: flex-end; }
+
+.reaction-emoji-show {
+  font-size: 32px;
+  line-height: 1;
+  animation: reactionFadeIn .25s ease both;
+  pointer-events: none;
+}
+
+@keyframes reactionFadeIn {
+  from { transform: scale(.4); opacity: 0; }
+  to   { transform: scale(1);  opacity: 1; }
+}
+
+@keyframes reactionFadeOut {
+  from { transform: scale(1);  opacity: 1; }
+  to   { transform: scale(.4); opacity: 0; }
+}
+
+.reaction-btn-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.reaction-trigger-btn {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+  color: var(--hint);
+  padding: 0;
+}
+.reaction-trigger-btn:active { transform: scale(.92); background: rgba(255,255,255,.1); }
+.reaction-trigger-btn.open { border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.1); }
+
+.reaction-picker {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%; transform: translateX(-50%);
+  background: var(--bg2);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 28px;
+  padding: 6px 8px;
+  display: flex;
+  gap: 4px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.5);
+  z-index: 30;
+  animation: pickerSlideIn .18s cubic-bezier(.2,1.3,.4,1) both;
+  pointer-events: auto;
+}
+
+.reaction-picker.hidden { display: none; }
+
+@keyframes pickerSlideIn {
+  from { transform: translateX(-50%) translateY(6px) scale(.85); opacity: 0; }
+  to   { transform: translateX(-50%) translateY(0)   scale(1);   opacity: 1; }
+}
+
+.reaction-option {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  font-size: 26px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .12s, transform .12s;
+  padding: 0;
+}
+.reaction-option:hover { background: rgba(255,255,255,.08); }
+.reaction-option:active { transform: scale(.88); }
+
+/* Тема black */
+body.theme_black .reaction-trigger-btn { background: #0a0a0a; border-color: #2a2a2a; }
+body.theme_black .reaction-picker { background: #0a0a0a; border-color: #2a2a2a; }
+body.theme_black .game-footer-v2 { border-top-color: #1a1a1a; }
+body.theme_black .gf-avatar { background: #000; border-color: #444; }
+
+/* Рамка аватара на главной — level-frame классы уже есть для профиля */
+/* Добавляем border-color для аватара в шапке меню (управляется через JS) */
+#user-avatar {
+  transition: border-color .3s;
+}
+
+/* lb-level-dot в черной теме — нужно добавить белый фон для видимости */
+body.theme_black .lb-level-dot { border-color: #000 !important; }

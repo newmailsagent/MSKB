@@ -753,7 +753,7 @@ io.on('connection', (socket) => {
     }
     else if (mode === 'friend_create') {
       const roomId = crypto.randomUUID();
-      const room   = { id: roomId, p1: makePlayer(info), p2: null, turn: playerId, started: false, over: false, _turnTimer: null, _warnTimer: null, _emptyTimer: null };
+      const room   = { id: roomId, p1: makePlayer(info), p2: null, turn: playerId, started: false, over: false, _turnTimer: null, _warnTimer: null, _emptyTimer: null, isFriend: true };
       rooms.set(roomId, room);
       socket.join(roomId);
       socket.emit('room_created', { roomId });
@@ -961,6 +961,18 @@ function validateNoTouch(field) {
     if (winXp2  && winner.socketId)      io.to(winner.socketId).emit('xp_reward', winXp2);
     if (lossXp2 && surrenderer.socketId) io.to(surrenderer.socketId).emit('xp_reward', lossXp2);
     recordDuelResult(winner.playerId, surrenderer.playerId);
+  });
+
+  // ── Реакции ───────────────────────────────────────────
+  socket.on('reaction', ({ roomId, emoji }) => {
+    const room = rooms.get(roomId);
+    if (!room || !room.started || room.over) return;
+    const opponent = getOpponent(room, socket.id);
+    if (!opponent?.socketId) return;
+    // Разрешаем только безопасные эмодзи
+    const allowed = ['👍','❤️','👎','🤬'];
+    if (!allowed.includes(emoji)) return;
+    io.to(opponent.socketId).emit('reaction_received', { emoji });
   });
 
   // ── Реванш ───────────────────────────────────────

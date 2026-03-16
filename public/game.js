@@ -1261,19 +1261,7 @@ function startGame(mode, myBoard, myShips, enemyBoard, enemyShips, opponent) {
   Game.botMode = 'hunt'; Game.botQueue = []; Game.botLastHit = null; Game.botDirection = null;
 
   setText('opp-name', opponent?.name || 'Бот');
-  // Счёт дуэлей (только онлайн)
-  const oppInfo = document.getElementById('opponent-info');
-  if (oppInfo) {
-    const duel = opponent?.duel;
-    if (duel && mode === 'online') {
-      const theirColor = duel.theirWins > duel.myWins ? 'style="color:var(--red)"' : '';
-      const myColor    = duel.myWins > duel.theirWins ? 'style="color:var(--green,#4caf50)"' : '';
-      oppInfo.innerHTML = `<span id="opp-name">${opponent.name || 'Соперник'}</span>` +
-        `<span class="duel-score"><span ${theirColor}>${duel.theirWins}</span>:<span ${myColor}>${duel.myWins}</span></span>`;
-    } else {
-      oppInfo.innerHTML = `<span id="opp-name">${opponent?.name || 'Соперник'}</span>`;
-    }
-  }
+  // Счёт дуэлей (только онлайн) — теперь через updateGameFooter
   renderOpponentAvatar(opponent?.name || 'Бот', !opponent || opponent.name === 'Бот');
   setupGameLayout();
   renderGameBoard();
@@ -1517,7 +1505,8 @@ function playerShoot(r, c) {
         for (let cc = 0; cc < BOARD_SIZE; cc++)
           if (Game.enemyBoard[rr][cc] === CELL_SUNK || Game.enemyBoard[rr][cc] === CELL_MISS)
             Game.myShots[rr][cc] = Game.enemyBoard[rr][cc];
-      Sound.sunk(); vibrate([50,20,50,20,50]);
+      // Звук потопления врага = такой же как когда враг топит наш корабль
+      Sound.sunk(); vibrate([80, 30, 80]);
     }
     if (allSunk(Game.enemyShips)) { endGame('win'); return; }
     if (!isDesktop() && App.settings.showEnemyMoves) setShowingField(true);
@@ -1920,7 +1909,8 @@ const WS = {
           if (sunk) {
             WS._sinkShipAt(Game.myShots, r, c);
             WS._markEnemyShipSunk(Game.myShots, r, c);
-            Sound.sunk(); vibrate([50,20,50,20,50]);
+            // Звук потопления врага = такой же как когда враг топит наш корабль
+            Sound.sunk(); vibrate([80, 30, 80]);
           } else {
             Sound.hit(); vibrate([30,10,30]);
           }
@@ -2021,6 +2011,11 @@ const WS = {
       Game._pendingXp = xpData;
       // Применяем сразу если уже на экране gameover, иначе endGame подберёт
       if (currentScreen === 'gameover') showXpReward(xpData);
+    });
+
+    // ── Реакция соперника ────────────────────────────
+    this.socket.on('reaction_received', ({ emoji }) => {
+      showReactionDisplay('opp', emoji);
     });
 
     // ── Реванш ───────────────────────────────────────
@@ -2127,6 +2122,11 @@ const WS = {
   sendShot(r, c) {
     if (!this.socket) return;
     this.socket.emit('shoot', { roomId: this.roomId, r, c });
+  },
+
+  sendReaction(emoji) {
+    if (!this.socket || !this.roomId) return;
+    this.socket.emit('reaction', { roomId: this.roomId, emoji });
   },
 
   sendShips(field) {
@@ -2459,7 +2459,15 @@ function updateMenuLevel() {
   if (badge) badge.className = 'level-badge level-bg-' + prog.level;
   // Синхронизируем цвет рамки аватара на главной с цветом в профиле
   const avatar = document.getElementById('user-avatar');
-  if (avatar) avatar.style.borderColor = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
+  if (avatar) {
+    avatar.style.borderColor = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
+    // Добавляем 2px border если его нет
+    if (!avatar.style.border || avatar.style.border === '') {
+      avatar.style.border = '2px solid ' + (LEVEL_FRAME_COLORS[prog.level] || '#607d8b');
+    } else {
+      avatar.style.borderColor = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
+    }
+  }
 }
 
 /* ─── XP ПОСТ-БОЙ АНИМАЦИЯ ──────────────────────── */
@@ -2982,23 +2990,146 @@ function handleSwipeBack() {
 
 /* ─── АВАТАР В БОЕВОМ ЭКРАНЕ ─────────────────────── */
 function renderOpponentAvatar(name, isBot) {
-  const info = document.getElementById('opponent-info');
-  if (!info) return;
-  const letter = isBot ? 'Б' : (name ? name[0].toUpperCase() : '?');
-  const duel  = Game.opponent?.duel;
-  const level = Game.opponent?.level || 1;
-  const rank  = Game.opponent?.rank  || '';
-  let duelHtml = '';
-  if (!isBot && duel) {
-    const theirColor = duel.theirWins > duel.myWins ? ' style="color:var(--red)"' : '';
-    const myColor    = duel.myWins > duel.theirWins ? ' style="color:var(--green)"' : '';
-    duelHtml = `<span class="duel-score"><span${theirColor}>${duel.theirWins}</span>:<span${myColor}>${duel.myWins}</span></span>`;
-  }
-  const levelHtml = !isBot ? `<span class="opp-level level-bg-${level}">${level}</span>` : '';
-  info.innerHTML = `<div class="opp-avatar-wrap"><div class="opp-avatar">${letter}</div>${levelHtml}</div><div class="opp-name-col"><span id="opp-name">${name || (isBot ? 'Бот' : 'Соперник')}</span>${rank && !isBot ? `<span class="opp-rank-small">${rank}</span>` : ''}${duelHtml}</div>`;
+  // Совместимость — обновляем и старый блок (hidden) и новый футер
+  updateGameFooter();
 }
 
-/* ─── СТАРТ ──────────────────────────────────────── */
+function updateGameFooter() {
+  const myXp     = App.user.xp || 0;
+  const myProg   = getXpProgress(myXp);
+  const isBot    = !Game.opponent || Game.opponent.name === 'Бот';
+  const oppLevel = Game.opponent?.level || 1;
+  const oppRank  = Game.opponent?.rank  || '';
+  const oppName  = Game.opponent?.name  || (isBot ? 'Бот' : 'Соперник');
+
+  // Мой аватар
+  const meAvatar = document.getElementById('gf-me-avatar');
+  if (meAvatar) {
+    meAvatar.textContent = (App.user.photo ? '' : (App.user.name[0]||'?').toUpperCase());
+    if (App.user.photo) {
+      meAvatar.innerHTML = `<img src="${App.user.photo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" />`;
+    }
+    meAvatar.className = `gf-avatar gf-frame-${myProg.level}`;
+  }
+  const meLevel = document.getElementById('gf-me-level');
+  if (meLevel) {
+    meLevel.textContent = myProg.level;
+    meLevel.className   = `gf-level level-bg-${myProg.level}`;
+  }
+  setText('gf-me-name', App.user.name || 'Я');
+  setText('gf-me-rank', myProg.rank);
+
+  // Аватар соперника
+  const oppAvatar = document.getElementById('gf-opp-avatar');
+  if (oppAvatar) {
+    oppAvatar.textContent = isBot ? 'Б' : (oppName[0]||'?').toUpperCase();
+    oppAvatar.className   = `gf-avatar gf-avatar-opp gf-frame-${oppLevel}`;
+  }
+  const oppLevelEl = document.getElementById('gf-opp-level');
+  if (oppLevelEl) {
+    oppLevelEl.textContent = isBot ? '' : oppLevel;
+    oppLevelEl.className   = `gf-level level-bg-${oppLevel}`;
+    oppLevelEl.style.display = isBot ? 'none' : '';
+  }
+  setText('gf-opp-name', oppName);
+  setText('gf-opp-rank', isBot ? '' : oppRank);
+
+  // Счёт дуэлей
+  const duelBlock = document.getElementById('gf-duel-score');
+  const surrenderBtn = document.getElementById('btn-surrender');
+  const duel = Game.opponent?.duel;
+  if (!isBot && duel && Game.mode === 'online') {
+    if (duelBlock) {
+      duelBlock.style.display = 'flex';
+      const mineEl   = document.getElementById('gf-duel-mine');
+      const theirsEl = document.getElementById('gf-duel-theirs');
+      if (mineEl)   { mineEl.textContent = duel.myWins;    mineEl.style.color   = duel.myWins > duel.theirWins ? 'var(--green)' : 'var(--text)'; }
+      if (theirsEl) { theirsEl.textContent = duel.theirWins; theirsEl.style.color = duel.theirWins > duel.myWins ? 'var(--red)' : 'var(--text)'; }
+    }
+    // Кнопка сдаться — скрываем если есть счёт
+    if (surrenderBtn) surrenderBtn.style.display = 'none';
+  } else {
+    if (duelBlock)    duelBlock.style.display    = 'none';
+    if (surrenderBtn) surrenderBtn.style.display = '';
+  }
+}
+
+/* ─── РЕАКЦИИ В БОЮ ──────────────────────────────── */
+let _reactionPickerOpen = false;
+let _reactionTimers = { my: null, opp: null };
+
+function initReactions() {
+  const triggerBtn = document.getElementById('reaction-trigger-btn');
+  const picker     = document.getElementById('reaction-picker');
+  if (!triggerBtn || !picker) return;
+
+  triggerBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _reactionPickerOpen = !_reactionPickerOpen;
+    picker.classList.toggle('hidden', !_reactionPickerOpen);
+    triggerBtn.classList.toggle('open', _reactionPickerOpen);
+  });
+
+  // Закрытие при клике вне пикера
+  document.addEventListener('click', (e) => {
+    if (!_reactionPickerOpen) return;
+    if (picker.contains(e.target) || e.target === triggerBtn) return;
+    _reactionPickerOpen = false;
+    picker.classList.add('hidden');
+    triggerBtn.classList.remove('open');
+  }, true);
+
+  // Выбор реакции
+  picker.addEventListener('click', (e) => {
+    const opt = e.target.closest('.reaction-option');
+    if (!opt) return;
+    e.stopPropagation();
+    const emoji = opt.dataset.emoji;
+    _reactionPickerOpen = false;
+    picker.classList.add('hidden');
+    triggerBtn.classList.remove('open');
+    // Показываем свою реакцию
+    showReactionDisplay('my', emoji);
+    // Отправляем сопернику (только онлайн)
+    if (Game.mode === 'online') {
+      WS.sendReaction(emoji);
+    } else {
+      // Против бота — показываем "ответную" реакцию через случайное время
+      if (Math.random() < 0.5) {
+        const botEmojis = ['👍','❤️','👎','🤬'];
+        setTimeout(() => {
+          showReactionDisplay('opp', botEmojis[Math.floor(Math.random() * botEmojis.length)]);
+        }, 800 + Math.random() * 1500);
+      }
+    }
+  });
+}
+
+function showReactionDisplay(side, emoji) {
+  // side: 'my' | 'opp'
+  const elId = side === 'my' ? 'my-reaction-display' : 'opp-reaction-display';
+  const container = document.getElementById(elId);
+  if (!container) return;
+
+  // Убираем старый таймер
+  if (_reactionTimers[side]) {
+    clearTimeout(_reactionTimers[side]);
+    _reactionTimers[side] = null;
+  }
+
+  // Создаём элемент
+  container.innerHTML = '';
+  const span = document.createElement('span');
+  span.className = 'reaction-emoji-show';
+  span.textContent = emoji;
+  container.appendChild(span);
+
+  // Удаляем через 3 секунды с фейдом
+  _reactionTimers[side] = setTimeout(() => {
+    span.style.animation = 'reactionFadeOut .3s ease forwards';
+    setTimeout(() => { if (container.contains(span)) container.innerHTML = ''; }, 300);
+  }, 3000);
+}
 // Обновить прогресс-счётчик на лоадере
 function setLoadingProgress(pct) {
   const el = document.getElementById('loading-progress');
@@ -3049,6 +3180,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initOnlineCounter();
   initShop();
   initInventory();
+  initReactions();
 
   // WebSocket события магазина — вешаем когда сокет будет готов
   const _shopSocketInterval = setInterval(() => {

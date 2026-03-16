@@ -342,12 +342,63 @@
     <div class="enemy-fleet-ships" id="enemy-fleet-ships"></div>
   </div>
 
-  <!-- Футер: аватар + имя соперника + сдаться -->
-  <div class="game-footer">
-    <div class="opponent-info" id="opponent-info">
-      <span id="opp-name">Соперник</span>
+  <!-- Зона реакций -->
+  <div class="reactions-zone" id="reactions-zone">
+    <!-- Левая часть: моя реакция -->
+    <div class="reaction-display my-reaction-display" id="my-reaction-display"></div>
+    <!-- Центральная кнопка реакций -->
+    <div class="reaction-btn-wrap">
+      <div class="reaction-picker hidden" id="reaction-picker">
+        <button class="reaction-option" data-emoji="👍">👍</button>
+        <button class="reaction-option" data-emoji="❤️">❤️</button>
+        <button class="reaction-option" data-emoji="👎">👎</button>
+        <button class="reaction-option" data-emoji="🤬">🤬</button>
+      </div>
+      <button class="reaction-trigger-btn" id="reaction-trigger-btn" title="Реакция">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.45">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+          <line x1="9" y1="9" x2="9.01" y2="9"/>
+          <line x1="15" y1="9" x2="15.01" y2="9"/>
+        </svg>
+      </button>
     </div>
-    <button class="btn btn-sm btn-surrender-ghost" id="btn-surrender">Сдаться</button>
+    <!-- Правая часть: реакция соперника -->
+    <div class="reaction-display opp-reaction-display" id="opp-reaction-display"></div>
+  </div>
+
+  <!-- Новый футер: аватары обоих игроков -->
+  <div class="game-footer-v2" id="game-footer-v2">
+    <!-- Мой блок -->
+    <div class="gf-player gf-player-me" id="gf-me">
+      <div class="gf-avatar-wrap">
+        <div class="gf-avatar" id="gf-me-avatar">?</div>
+        <div class="gf-level" id="gf-me-level">1</div>
+      </div>
+      <div class="gf-info">
+        <span class="gf-name" id="gf-me-name">Я</span>
+        <span class="gf-rank" id="gf-me-rank"></span>
+      </div>
+    </div>
+    <!-- Счёт дуэлей -->
+    <div class="gf-duel-score" id="gf-duel-score" style="display:none">
+      <span class="gf-duel-mine" id="gf-duel-mine">0</span>
+      <span class="gf-duel-sep">:</span>
+      <span class="gf-duel-theirs" id="gf-duel-theirs">0</span>
+    </div>
+    <!-- Кнопка сдаться по центру (только если нет счёта дуэлей) -->
+    <button class="btn btn-sm btn-surrender-ghost gf-surrender-btn" id="btn-surrender">Сдаться</button>
+    <!-- Соперник -->
+    <div class="gf-player gf-player-opp" id="gf-opp">
+      <div class="gf-info gf-info-right">
+        <span class="gf-name" id="gf-opp-name">Соперник</span>
+        <span class="gf-rank" id="gf-opp-rank"></span>
+      </div>
+      <div class="gf-avatar-wrap">
+        <div class="gf-avatar gf-avatar-opp" id="gf-opp-avatar">?</div>
+        <div class="gf-level" id="gf-opp-level">1</div>
+      </div>
+    </div>
   </div>
 
   <div class="shot-feedback hidden" id="shot-feedback"></div>
