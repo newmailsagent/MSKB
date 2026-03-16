@@ -681,6 +681,8 @@ function startTurnTimer(room) {
       const otherSunk = otherPlayer.field    ? countSunkenShips(otherPlayer.field)    : 0;
       const winXpT  = addWin( otherPlayer.playerId,    otherPlayer.shots,    otherPlayer.hits,    true, toSunken,  null, !room.isFriend);
       const lossXpT = addLoss(timedOutPlayer.playerId, timedOutPlayer.shots, timedOutPlayer.hits, true, otherSunk, !room.isFriend);
+      addBattleHistory(otherPlayer.playerId,    'win',  timedOutPlayer.name || '?', otherPlayer.shots,    otherPlayer.hits,    'online');
+      addBattleHistory(timedOutPlayer.playerId, 'loss', otherPlayer.name    || '?', timedOutPlayer.shots, timedOutPlayer.hits, 'online');
       if (winXpT  && otherPlayer.socketId)    io.to(otherPlayer.socketId).emit('xp_reward', winXpT);
       if (lossXpT && timedOutPlayer.socketId) io.to(timedOutPlayer.socketId).emit('xp_reward', lossXpT);
     } else {
@@ -918,6 +920,9 @@ function validateNoTouch(field) {
       const targetSunken  = countSunkenShips(shooter.field);
       const winXp  = addWin( shooter.playerId, shooter.shots, shooter.hits, true, shooterSunken, null,          !room.isFriend);
       const lossXp = addLoss(target.playerId,  target.shots,  target.hits,  true, targetSunken,  !room.isFriend);
+      // Записываем историю боя на сервере (не зависим от HTTP-запроса клиента)
+      addBattleHistory(shooter.playerId, 'win',  target.name  || '?', shooter.shots, shooter.hits, 'online');
+      addBattleHistory(target.playerId,  'loss', shooter.name || '?', target.shots,  target.hits,  'online');
       recordDuelResult(shooter.playerId, target.playerId);
       // Отправляем XP каждому игроку
       if (winXp  && shooter.socketId) io.to(shooter.socketId).emit('xp_reward', winXp);
@@ -958,6 +963,9 @@ function validateNoTouch(field) {
     const lSunken = winner.field      ? countSunkenShips(winner.field)      : 0; // корабли, потопленные сдавшимся
     const winXp2  = addWin( winner.playerId,      winner.shots,      winner.hits,      true, wSunken, surrenderer.shots, !room.isFriend);
     const lossXp2 = addLoss(surrenderer.playerId, surrenderer.shots, surrenderer.hits, true, lSunken, !room.isFriend);
+    // Записываем историю
+    addBattleHistory(winner.playerId,      'win',  surrenderer.name || '?', winner.shots,      winner.hits,      'online');
+    addBattleHistory(surrenderer.playerId, 'loss', winner.name      || '?', surrenderer.shots, surrenderer.hits, 'online');
     if (winXp2  && winner.socketId)      io.to(winner.socketId).emit('xp_reward', winXp2);
     if (lossXp2 && surrenderer.socketId) io.to(surrenderer.socketId).emit('xp_reward', lossXp2);
     recordDuelResult(winner.playerId, surrenderer.playerId);
