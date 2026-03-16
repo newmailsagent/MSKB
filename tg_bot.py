@@ -23,6 +23,7 @@ import asyncio
 import sqlite3
 import aiohttp
 from datetime import datetime, timezone, timedelta
+from telegram.ext import PicklePersistence
 
 from telegram import (
     Update,
@@ -54,7 +55,8 @@ WEBHOOK_PATH     = os.environ.get("WEBHOOK_PATH",    "/bot/webhook")
 WEBHOOK_PORT     = int(os.environ.get("WEBHOOK_PORT", 8443))
 WEBHOOK_SECRET   = os.environ.get("WEBHOOK_SECRET",  "")
 USERS_DB_PATH    = os.environ.get("USERS_DB_PATH",   "./data/bot_users.db")
-GAME_DB_PATH     = os.environ.get("GAME_DB_PATH",    "./data/game.db")  # основная БД игры
+GAME_DB_PATH     = os.environ.get("GAME_DB_PATH",    "./data/game.db")
+PERSISTENCE_PATH = os.environ.get("PERSISTENCE_PATH","./data/bot_persistence")
 
 GAME_SHARE_TEXT  = "Приглашаю тебя поиграть в Морской бой прямо в Telegram:"
 GAME_SHARE_URL   = "https://t.me/bteship_bot/bteship"
@@ -749,7 +751,9 @@ async def refunded_payment_filter(update: Update, context: ContextTypes.DEFAULT_
 
 
 def build_app() -> Application:
-    app = Application.builder().token(BOT_TOKEN).build()
+    os.makedirs(os.path.dirname(PERSISTENCE_PATH) or ".", exist_ok=True)
+    persistence = PicklePersistence(filepath=PERSISTENCE_PATH)
+    app = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
 
     # ── Публичные команды
     app.add_handler(CommandHandler("start", start))
@@ -767,7 +771,8 @@ def build_app() -> Application:
             NOTICE_BODY:  [MessageHandler(filters.TEXT & ~filters.COMMAND, notice_got_body)],
         },
         fallbacks=[CommandHandler("cancel", notice_cancel)],
-        conversation_timeout=180,
+        persistent=True,
+        name="notice_conv",
     )
     app.add_handler(notice_handler)
 
@@ -794,7 +799,8 @@ def build_app() -> Application:
             ],
         },
         fallbacks=[CommandHandler("cancel", notice_cancel)],
-        conversation_timeout=600,  # 10 минут на весь диалог
+        persistent=True,
+        name="post_conv",
     )
     app.add_handler(post_handler)
 
