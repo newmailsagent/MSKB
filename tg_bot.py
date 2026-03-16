@@ -54,6 +54,7 @@ WEBHOOK_PATH     = os.environ.get("WEBHOOK_PATH",    "/bot/webhook")
 WEBHOOK_PORT     = int(os.environ.get("WEBHOOK_PORT", 8443))
 WEBHOOK_SECRET   = os.environ.get("WEBHOOK_SECRET",  "")
 USERS_DB_PATH    = os.environ.get("USERS_DB_PATH",   "./data/bot_users.db")
+GAME_DB_PATH     = os.environ.get("GAME_DB_PATH",    "./data/game.db")  # основная БД игры
 
 GAME_SHARE_TEXT  = "Приглашаю тебя поиграть в Морской бой прямо в Telegram:"
 GAME_SHARE_URL   = "https://t.me/bteship_bot/bteship"
@@ -89,6 +90,42 @@ def _get_users_db() -> sqlite3.Connection:
     """)
     con.commit()
     return con
+
+def seed_from_game_db() -> int:
+    """При старте копируем всех игроков из game.db в bot_users.
+    Пропускаем гостей (id начинается с 'guest_') и не-числовые id.
+    Возвращает количество добавленных записей."""
+    if not os.path.exists(GAME_DB_PATH):
+        logger.warning(f"[Seed] game.db not found at {GAME_DB_PATH}, skipping seed")
+        return 0
+    try:
+        game_con  = sqlite3.connect(GAME_DB_PATH)
+        rows      = game_con.execute(
+            "SELECT id, name FROM players WHERE id NOT LIKE 'guest_%'"
+        ).fetchall()
+        game_con.close()
+
+        bot_con = _get_users_db()
+        added   = 0
+        for (player_id, name) in rows:
+            # id в game.db — строка с числом телеграм-id
+            try:
+                uid = int(float(str(player_id)))
+            except (ValueError, TypeError):
+                continue
+            # Вставляем только если ещё нет — не перезаписываем свежие данные
+            cur = bot_con.execute(
+                "INSERT OR IGNORE INTO bot_users (user_id, first_name) VALUES (?, ?)",
+                (uid, name or "")
+            )
+            added += cur.rowcount
+        bot_con.commit()
+        bot_con.close()
+        logger.info(f"[Seed] synced {added} new users from game.db (total game players: {len(rows)})")
+        return added
+    except Exception as e:
+        logger.error(f"[Seed] failed: {e}")
+        return 0
 
 def upsert_bot_user(user) -> None:
     """Запоминаем/обновляем пользователя, который написал боту."""
@@ -782,6 +819,9 @@ def build_app() -> Application:
 
 
 def main() -> None:
+    # Синхронизируем игроков из game.db → bot_users при каждом старте
+    seed_from_game_db()
+
     app = build_app()
     if WEBHOOK_URL:
         logger.info(f"[Bot] Запуск в режиме webhook: {WEBHOOK_URL}")
