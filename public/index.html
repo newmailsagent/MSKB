@@ -118,6 +118,26 @@
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="3" fill="currentColor"/><path d="M1 12c0-3.314 2.686-5 6-5s6 1.686 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         <span class="online-count-val">0</span>
       </div>
+      <!-- Колокольчик уведомлений -->
+      <div class="notif-btn-wrap">
+        <button class="btn-notif" id="btn-notif" title="Уведомления" aria-label="Уведомления">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span class="notif-badge hidden" id="notif-badge"></span>
+        </button>
+        <!-- Панель уведомлений -->
+        <div class="notif-panel hidden" id="notif-panel">
+          <div class="notif-panel-header">
+            <span class="notif-panel-title">Уведомления</span>
+            <button class="notif-panel-close" id="notif-panel-close">✕</button>
+          </div>
+          <div class="notif-panel-body" id="notif-panel-body">
+            <p class="notif-empty">Нет новых уведомлений</p>
+          </div>
+        </div>
+      </div>
       <button class="btn-sound" id="btn-sound-toggle" title="Звук">
         <svg id="sound-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
@@ -351,6 +371,7 @@
       <div class="reaction-picker hidden" id="reaction-picker">
         <button class="reaction-option" data-emoji="👍">👍</button>
         <button class="reaction-option" data-emoji="❤️">❤️</button>
+        <button class="reaction-option" data-emoji="😂">😂</button>
         <button class="reaction-option" data-emoji="👎">👎</button>
         <button class="reaction-option" data-emoji="🤬">🤬</button>
       </div>
@@ -651,6 +672,14 @@
     <span>Настройки</span>
   </button>
   <div class="burger-divider"></div>
+  <!-- Игровой чат — заметная кнопка -->
+  <a class="burger-item burger-item-chat" id="burger-chat-btn" href="https://t.me/+zsVdvIaY5vs1MDEy" target="_blank" rel="noopener">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+    <span>Чат игроков</span>
+  </a>
+  <div class="burger-divider-thin"></div>
   <button class="burger-item burger-item-small" id="burger-rules-btn">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>

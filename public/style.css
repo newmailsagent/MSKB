@@ -780,7 +780,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .lb-item-me { border: 1px solid var(--accent); }
 .lb-rank { font-family: var(--font-hd); font-size: 16px; width: 28px; color: var(--hint); text-align: center; }
 .lb-rank.gold{color:#ffd700} .lb-rank.silver{color:#c0c0c0} .lb-rank.bronze{color:#cd7f32}
-.lb-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+.lb-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; border: 2px solid #607d8b; transition: border-color .2s; }
 .lb-info   { flex: 1; }
 .lb-info strong { display: block; font-size: 14px; }
 .lb-info small  { color: var(--hint); font-size: 12px; }
@@ -1969,3 +1969,91 @@ body.theme_black .level-badge { border-color: #000 !important; }
   transition: border-color .3s;
   border-radius: 50%;
 }
+
+/* ─── Рамки аватаров в рейтинге — по уровням ─── */
+.lb-frame-1,.lb-frame-2,.lb-frame-3,.lb-frame-4 { border-color: #607d8b !important; }
+.lb-frame-5,.lb-frame-6,.lb-frame-7,.lb-frame-8,.lb-frame-9 { border-color: #43a047 !important; }
+.lb-frame-10,.lb-frame-11,.lb-frame-12,.lb-frame-13,.lb-frame-14 { border-color: #1e88e5 !important; }
+.lb-frame-15,.lb-frame-16,.lb-frame-17,.lb-frame-18,.lb-frame-19 { border-color: #8e24aa !important; }
+.lb-frame-20,.lb-frame-21,.lb-frame-22,.lb-frame-23,.lb-frame-24 { border-color: #e53935 !important; }
+.lb-frame-25,.lb-frame-26,.lb-frame-27,.lb-frame-28,.lb-frame-29 { border-color: #f57f17 !important; }
+.lb-frame-30 { border-color: #ffd600 !important; box-shadow: 0 0 6px rgba(255,214,0,.35); }
+body.theme_black .lb-avatar { background: #111; }
+
+/* ═══════════════════════════════════════════════════
+   УВЕДОМЛЕНИЯ
+════════════════════════════════════════════════════ */
+.notif-btn-wrap { position: relative; }
+.btn-notif {
+  width: 32px; height: 32px; background: transparent; border: none;
+  border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--hint); padding: 0; position: relative;
+  transition: color .15s; flex-shrink: 0;
+}
+.btn-notif:active { color: var(--text); }
+.notif-badge {
+  position: absolute; top: 2px; right: 2px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red); border: 1.5px solid var(--bg);
+  pointer-events: none;
+}
+body.theme_black .notif-badge { background: #fff; border-color: #000; }
+.notif-badge.hidden { display: none !important; }
+.notif-panel {
+  position: absolute; top: calc(100% + 8px); right: -8px; width: 290px;
+  background: var(--bg2); border: 1px solid rgba(255,255,255,.12);
+  border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  z-index: 300; overflow: hidden;
+  animation: notifSlideIn .2s cubic-bezier(.2,1.2,.4,1) both;
+}
+.notif-panel.hidden { display: none !important; }
+@keyframes notifSlideIn {
+  from { transform: translateY(-6px) scale(.96); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+.notif-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px 10px; border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.notif-panel-title { font-size: 13px; font-weight: 700; letter-spacing: .5px; color: var(--text); font-family: var(--font-hd); }
+.notif-panel-close { background: none; border: none; color: var(--hint); font-size: 14px; cursor: pointer; padding: 2px 4px; border-radius: 4px; line-height: 1; }
+.notif-panel-close:active { color: var(--text); }
+.notif-panel-body { padding: 12px 14px 14px; }
+.notif-empty { color: var(--hint); font-size: 13px; text-align: center; padding: 12px 0; margin: 0; }
+.notif-card { display: flex; flex-direction: column; gap: 5px; }
+.notif-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.notif-card-title { font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.3; }
+.notif-card-date { font-size: 11px; color: var(--hint); white-space: nowrap; flex-shrink: 0; }
+.notif-card-text { font-size: 13px; color: var(--hint); line-height: 1.5; }
+.notif-read-btn {
+  margin-top: 10px; width: 100%; padding: 9px 0; border-radius: 8px;
+  background: rgba(255,255,255,.07); border: none; color: var(--text);
+  font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font-ui);
+  transition: background .15s;
+}
+.notif-read-btn:active { background: rgba(255,255,255,.13); }
+@keyframes notifSwipeOut {
+  to { transform: translateX(110%); opacity: 0; }
+}
+.notif-swipe-out { animation: notifSwipeOut .3s cubic-bezier(.4,0,.8,.6) forwards; }
+body.theme-light .notif-panel { background: #e8e8e8; border-color: rgba(0,0,0,.1); }
+body.theme-light .notif-panel-header { border-bottom-color: rgba(0,0,0,.08); }
+body.theme-light .notif-read-btn { background: rgba(0,0,0,.07); color: var(--text); }
+body.theme_black .notif-panel { background: #0d0d0d; border-color: #2a2a2a; }
+body.theme_black .notif-panel-header { border-bottom-color: #1a1a1a; }
+body.theme_black .notif-read-btn { background: #1a1a1a; }
+
+/* ─── КНОПКА ЧАТА В БУРГЕРЕ ─── */
+.burger-item-chat {
+  display: flex !important; align-items: center !important; gap: 14px !important;
+  padding: 16px 20px !important;
+  background: rgba(255,255,255,.05) !important;
+  border: none !important; border-bottom: 1px solid rgba(255,255,255,.07) !important;
+  color: var(--accent) !important; font-size: 15px !important; font-weight: 600 !important;
+  cursor: pointer !important; text-align: left !important; font-family: var(--font-ui) !important;
+  text-decoration: none !important; transition: background .15s !important;
+}
+.burger-item-chat svg { stroke: currentColor; flex-shrink: 0; }
+.burger-item-chat:active { background: rgba(255,255,255,.1) !important; }
+body.theme_black .burger-item-chat { background: #111 !important; color: #e0e0e0 !important; border-bottom-color: #222 !important; }
+body.theme-light .burger-item-chat { background: rgba(0,0,0,.05) !important; }

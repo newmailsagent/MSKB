@@ -141,6 +141,43 @@ db.exec(`
 try { db.exec(`ALTER TABLE battle_history ADD COLUMN mode TEXT DEFAULT 'online'`); } catch(e) {}
 try { db.exec(`ALTER TABLE shop_items ADD COLUMN photo_url_tg TEXT`); } catch(e) {}
 
+// ─── УВЕДОМЛЕНИЯ ─────────────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notifications (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    title   TEXT NOT NULL,
+    body    TEXT NOT NULL,
+    date    INTEGER DEFAULT (strftime('%s','now')),
+    active  INTEGER DEFAULT 1
+  );
+`);
+
+// GET /api/notification — вернуть последнее активное уведомление
+app.get('/api/notification', (req, res) => {
+  try {
+    const row = db.prepare(`SELECT * FROM notifications WHERE active=1 ORDER BY date DESC LIMIT 1`).get();
+    res.json({ ok: true, data: row || null });
+  } catch(e) { res.status(500).json({ ok: false }); }
+});
+
+// POST /api/notification — создать/обновить уведомление (только через SHOP_SECRET)
+app.post('/api/notification', (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.body.secret;
+    if (!SHOP_SECRET || secret !== SHOP_SECRET) return res.status(403).json({ ok: false, error: 'forbidden' });
+    const { title, body } = req.body;
+    if (!title || !body) return res.json({ ok: false, error: 'title and body required' });
+    // Деактивируем старые
+    db.prepare(`UPDATE notifications SET active=0`).run();
+    // Создаём новое
+    const result = db.prepare(`INSERT INTO notifications (title, body) VALUES (?, ?)`).run(
+      String(title).slice(0, 128),
+      String(body).slice(0, 1024)
+    );
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch(e) { console.error('notif post error:', e); res.status(500).json({ ok: false }); }
+});
+
 // ─── МАГАЗИН ──────────────────────────────────────────────────────────────────
 
 // Каталог товаров
@@ -978,7 +1015,7 @@ function validateNoTouch(field) {
     const opponent = getOpponent(room, socket.id);
     if (!opponent?.socketId) return;
     // Разрешаем только безопасные эмодзи
-    const allowed = ['👍','❤️','👎','🤬'];
+    const allowed = ['👍','❤️','👎','🤬','😂'];
     if (!allowed.includes(emoji)) return;
     io.to(opponent.socketId).emit('reaction_received', { emoji });
   });

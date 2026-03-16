@@ -658,7 +658,7 @@ function renderRatingList(data) {
     div.className = 'lb-item' + (isMe ? ' lb-item-me' : '');
     div.innerHTML =
       '<div class="lb-rank ' + (medals[i]||'') + '">' + (i < 3 ? ['🥇','🥈','🥉'][i] : i+1) + '</div>' +
-      '<div class="lb-avatar-wrap"><div class="lb-avatar">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
+      '<div class="lb-avatar-wrap"><div class="lb-avatar lb-frame-' + level + '">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
       '<div class="lb-level-dot level-bg-' + level + '">' + level + '</div></div>' +
       '<div class="lb-info"><strong>' + (entry.name||'Игрок') + (isMe ? ' <small>(вы)</small>' : '') + '</strong>' +
       '<small class="lb-rank-name">' + rank + ' · ' + rw + 'W · ' + wr + '% WR</small></div>' +
@@ -3056,6 +3056,90 @@ function updateGameFooter() {
   }
 }
 
+/* ─── УВЕДОМЛЕНИЯ ────────────────────────────────── */
+const Notif = {
+  _current: null,
+  _open: false,
+
+  async init() {
+    const btn   = document.getElementById('btn-notif');
+    const panel = document.getElementById('notif-panel');
+    const close = document.getElementById('notif-panel-close');
+    if (!btn || !panel) return;
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._open ? this.close() : this.open();
+    });
+    close?.addEventListener('click', () => this.close());
+
+    document.addEventListener('click', (e) => {
+      if (!this._open) return;
+      if (panel.contains(e.target) || btn.contains(e.target)) return;
+      this.close();
+    }, true);
+
+    await this.fetch();
+  },
+
+  async fetch() {
+    try {
+      const res = await fetch('/api/notification');
+      const j   = await res.json();
+      if (j.ok && j.data) {
+        this._current = j.data;
+        const readId = loadJSON('bs_notif_read', null);
+        this._renderPanel();
+        this._setBadge(readId !== j.data.id);
+      }
+    } catch(e) {}
+  },
+
+  _renderPanel() {
+    const body = document.getElementById('notif-panel-body');
+    if (!body) return;
+    if (!this._current) {
+      body.innerHTML = '<p class="notif-empty">Нет новых уведомлений</p>';
+      return;
+    }
+    const n = this._current;
+    const d = new Date(n.date * 1000);
+    const dateStr = d.toLocaleDateString('ru', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    const isRead  = loadJSON('bs_notif_read', null) === n.id;
+    body.innerHTML =
+      '<div class="notif-card" id="notif-card">' +
+        '<div class="notif-card-head">' +
+          '<span class="notif-card-title">' + n.title + '</span>' +
+          '<span class="notif-card-date">' + dateStr + '</span>' +
+        '</div>' +
+        '<p class="notif-card-text">' + n.body + '</p>' +
+        (!isRead ? '<button class="notif-read-btn" id="notif-read-btn">Прочитал</button>' : '') +
+      '</div>';
+    document.getElementById('notif-read-btn')?.addEventListener('click', () => this.markRead());
+  },
+
+  markRead() {
+    if (!this._current) return;
+    saveJSON('bs_notif_read', this._current.id);
+    this._setBadge(false);
+    const card = document.getElementById('notif-card');
+    if (card) {
+      card.classList.add('notif-swipe-out');
+      setTimeout(() => {
+        const body = document.getElementById('notif-panel-body');
+        if (body) body.innerHTML = '<p class="notif-empty">Нет новых уведомлений</p>';
+      }, 320);
+    }
+  },
+
+  _setBadge(show) {
+    document.getElementById('notif-badge')?.classList.toggle('hidden', !show);
+  },
+
+  open()  { this._open = true;  document.getElementById('notif-panel')?.classList.remove('hidden'); },
+  close() { this._open = false; document.getElementById('notif-panel')?.classList.add('hidden'); },
+};
+
 /* ─── РЕАКЦИИ В БОЮ ──────────────────────────────── */
 let _reactionPickerOpen = false;
 let _reactionTimers = { my: null, opp: null };
@@ -3183,6 +3267,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initShop();
   initInventory();
   initReactions();
+  Notif.init();
 
   // WebSocket события магазина — вешаем когда сокет будет готов
   const _shopSocketInterval = setInterval(() => {
