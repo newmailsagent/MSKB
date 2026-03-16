@@ -3060,6 +3060,8 @@ function updateGameFooter() {
 const Notif = {
   _current: null,
   _open: false,
+  _pollInterval: null,
+  _POLL_MS: 5 * 60 * 1000,  // проверяем каждые 5 минут
 
   async init() {
     const btn   = document.getElementById('btn-notif');
@@ -3079,7 +3081,46 @@ const Notif = {
       this.close();
     }, true);
 
+    // Первая загрузка
     await this.fetch();
+
+    // Polling: проверяем каждые 5 минут пока вкладка открыта
+    this._pollInterval = setInterval(() => this._poll(), this._POLL_MS);
+
+    // При возврате вкладки на передний план — проверяем сразу
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this._poll();
+    });
+  },
+
+  async _poll() {
+    try {
+      const res = await fetch('/api/notification');
+      const j   = await res.json();
+      if (!j.ok) return;
+
+      const incoming = j.data;
+      const prevId   = this._current?.id ?? null;
+      const newId    = incoming?.id ?? null;
+
+      // Уведомление изменилось — обновляем
+      if (newId !== prevId) {
+        this._current = incoming || null;
+        const readId  = loadJSON('bs_notif_read', null);
+        const isRead  = !incoming || readId === incoming.id;
+
+        // Перерисовываем только если панель не открыта (не ломаем интерфейс)
+        if (!this._open) {
+          this._renderPanel();
+        }
+
+        // Бейдж показываем всегда если непрочитанное
+        this._setBadge(!isRead);
+
+        // Мини-анимация колокольчика при новом уведомлении
+        if (!isRead && incoming) this._ringBell();
+      }
+    } catch(e) {}
   },
 
   async fetch() {
@@ -3136,7 +3177,19 @@ const Notif = {
     document.getElementById('notif-badge')?.classList.toggle('hidden', !show);
   },
 
-  open()  { this._open = true;  document.getElementById('notif-panel')?.classList.remove('hidden'); },
+  // Лёгкая анимация колокольчика при появлении нового уведомления
+  _ringBell() {
+    const btn = document.getElementById('btn-notif');
+    if (!btn) return;
+    btn.classList.add('notif-bell-ring');
+    setTimeout(() => btn.classList.remove('notif-bell-ring'), 600);
+  },
+
+  open() {
+    this._open = true;
+    this._renderPanel();  // перерисовываем при открытии — данные могли обновиться
+    document.getElementById('notif-panel')?.classList.remove('hidden');
+  },
   close() { this._open = false; document.getElementById('notif-panel')?.classList.add('hidden'); },
 };
 

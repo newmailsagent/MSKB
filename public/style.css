@@ -2057,3 +2057,18 @@ body.theme_black .notif-read-btn { background: #1a1a1a; }
 .burger-item-chat:active { background: rgba(255,255,255,.1) !important; }
 body.theme_black .burger-item-chat { background: #111 !important; color: #e0e0e0 !important; border-bottom-color: #222 !important; }
 body.theme-light .burger-item-chat { background: rgba(0,0,0,.05) !important; }
+
+/* ─── Анимация колокольчика при новом уведомлении ─── */
+@keyframes bellRing {
+  0%  { transform: rotate(0); }
+  15% { transform: rotate(18deg); }
+  30% { transform: rotate(-14deg); }
+  45% { transform: rotate(10deg); }
+  60% { transform: rotate(-6deg); }
+  75% { transform: rotate(3deg); }
+  100%{ transform: rotate(0); }
+}
+.notif-bell-ring svg {
+  animation: bellRing .6s cubic-bezier(.36,.07,.19,.97) both;
+  transform-origin: top center;
+}
