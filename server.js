@@ -15,6 +15,7 @@ const Database   = require('better-sqlite3');
 const fs         = require('fs');
 const helmet     = require('helmet');
 const rateLimit  = require('express-rate-limit');
+const multer     = require('multer');
 
 const PORT        = process.env.PORT        || 3000;
 const DB_PATH     = process.env.DB_PATH     || './data/game.db';
@@ -231,6 +232,39 @@ db.exec(`
   );
 `);
 
+// Кастомные WebM-реакции (загружаются администратором)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS custom_reactions (
+    id         TEXT PRIMARY KEY,   -- уникальный ключ (slug), напр. 'boom'
+    name       TEXT NOT NULL,      -- отображаемое имя
+    filename   TEXT NOT NULL,      -- имя файла в /public/reactions/
+    sort_order INTEGER DEFAULT 0,
+    is_active  INTEGER DEFAULT 1,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  );
+`);
+
+// ─── MULTER: загрузка WebM-реакций ───────────────────────────────────────────
+const REACTIONS_DIR = path.join(__dirname, 'public', 'reactions');
+fs.mkdirSync(REACTIONS_DIR, { recursive: true });
+
+const reactionStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, REACTIONS_DIR),
+  filename:    (_req,  file, cb) => {
+    const ext  = path.extname(file.originalname).toLowerCase();
+    const safe = crypto.randomBytes(8).toString('hex');
+    cb(null, `reaction_${safe}${ext}`);
+  },
+});
+const reactionUpload = multer({
+  storage: reactionStorage,
+  limits:  { fileSize: 4 * 1024 * 1024 }, // 4 МБ
+  fileFilter: (_req, file, cb) => {
+    const ok = ['video/webm', 'image/gif', 'video/mp4'].includes(file.mimetype);
+    cb(ok ? null : new Error('Только WebM/GIF/MP4'), ok);
+  },
+});
+
 // Seed — базовые товары если таблица пустая
 const itemCount = db.prepare('SELECT COUNT(*) as c FROM shop_items').get().c;
 if (itemCount === 0) {
@@ -283,7 +317,16 @@ try {
     WHERE id='theme_black'`).run();
 } catch(e) {}
 
-// Хелперы магазина
+// Добавить реакцию no_1 если нет
+try {
+  db.prepare(`INSERT OR IGNORE INTO shop_items (id,type,name,description,price_stars,preview_url,sort_order,is_active)
+    VALUES ('reaction_no_1','reaction','Реакция №1','Анимированная уникальная реакция',50,'/reactions/no_1.webm',100,1)`).run();
+} catch(e) { console.error('[Shop] migration reaction_no_1:', e.message); }
+
+// Добавить колонку used_at в inventory (для сортировки реакций по частоте)
+try { db.exec(`ALTER TABLE inventory ADD COLUMN used_at INTEGER DEFAULT 0`); } catch(e) {}
+
+
 function getInventory(userId) {
   return db.prepare(`
     SELECT i.*, s.type, s.name, s.description, s.preview_url,
@@ -293,6 +336,18 @@ function getInventory(userId) {
     LEFT JOIN equipped e ON e.user_id = i.user_id AND e.item_id = i.item_id
     WHERE i.user_id = ? AND i.is_active = 1
     ORDER BY i.purchased_at DESC
+  `).all(userId);
+}
+
+// Купленные реакции игрока, отсортированные по дате последнего использования
+function getPlayerReactions(userId) {
+  return db.prepare(`
+    SELECT i.item_id, COALESCE(i.used_at, 0) as used_at, cr.filename, cr.name as reaction_name
+    FROM inventory i
+    JOIN shop_items s ON s.id = i.item_id AND s.type = 'reaction'
+    JOIN custom_reactions cr ON cr.id = REPLACE(i.item_id, 'reaction_', '')
+    WHERE i.user_id = ? AND i.is_active = 1 AND cr.is_active = 1
+    ORDER BY COALESCE(i.used_at, 0) DESC, i.purchased_at ASC
   `).all(userId);
 }
 
@@ -718,8 +773,9 @@ function startTurnTimer(room) {
       const otherSunk = otherPlayer.field    ? countSunkenShips(otherPlayer.field)    : 0;
       const winXpT  = addWin( otherPlayer.playerId,    otherPlayer.shots,    otherPlayer.hits,    true, toSunken,  null, !room.isFriend);
       const lossXpT = addLoss(timedOutPlayer.playerId, timedOutPlayer.shots, timedOutPlayer.hits, true, otherSunk, !room.isFriend);
-      addBattleHistory(otherPlayer.playerId,    'win',  timedOutPlayer.name || '?', otherPlayer.shots,    otherPlayer.hits,    'online');
-      addBattleHistory(timedOutPlayer.playerId, 'loss', otherPlayer.name    || '?', timedOutPlayer.shots, timedOutPlayer.hits, 'online');
+      const _tmMode = room.isFriend ? 'friend' : 'online';
+      addBattleHistory(otherPlayer.playerId,    'win',  timedOutPlayer.name || '?', otherPlayer.shots,    otherPlayer.hits,    _tmMode);
+      addBattleHistory(timedOutPlayer.playerId, 'loss', otherPlayer.name    || '?', timedOutPlayer.shots, timedOutPlayer.hits, _tmMode);
       if (winXpT  && otherPlayer.socketId)    io.to(otherPlayer.socketId).emit('xp_reward', winXpT);
       if (lossXpT && timedOutPlayer.socketId) io.to(timedOutPlayer.socketId).emit('xp_reward', lossXpT);
     } else {
@@ -958,8 +1014,9 @@ function validateNoTouch(field) {
       const winXp  = addWin( shooter.playerId, shooter.shots, shooter.hits, true, shooterSunken, null,          !room.isFriend);
       const lossXp = addLoss(target.playerId,  target.shots,  target.hits,  true, targetSunken,  !room.isFriend);
       // Записываем историю боя на сервере (не зависим от HTTP-запроса клиента)
-      addBattleHistory(shooter.playerId, 'win',  target.name  || '?', shooter.shots, shooter.hits, 'online');
-      addBattleHistory(target.playerId,  'loss', shooter.name || '?', target.shots,  target.hits,  'online');
+      const _shotMode = room.isFriend ? 'friend' : 'online';
+      addBattleHistory(shooter.playerId, 'win',  target.name  || '?', shooter.shots, shooter.hits, _shotMode);
+      addBattleHistory(target.playerId,  'loss', shooter.name || '?', target.shots,  target.hits,  _shotMode);
       recordDuelResult(shooter.playerId, target.playerId);
       // Отправляем XP каждому игроку
       if (winXp  && shooter.socketId) io.to(shooter.socketId).emit('xp_reward', winXp);
@@ -1001,8 +1058,9 @@ function validateNoTouch(field) {
     const winXp2  = addWin( winner.playerId,      winner.shots,      winner.hits,      true, wSunken, surrenderer.shots, !room.isFriend);
     const lossXp2 = addLoss(surrenderer.playerId, surrenderer.shots, surrenderer.hits, true, lSunken, !room.isFriend);
     // Записываем историю
-    addBattleHistory(winner.playerId,      'win',  surrenderer.name || '?', winner.shots,      winner.hits,      'online');
-    addBattleHistory(surrenderer.playerId, 'loss', winner.name      || '?', surrenderer.shots, surrenderer.hits, 'online');
+    const _surMode = room.isFriend ? 'friend' : 'online';
+    addBattleHistory(winner.playerId,      'win',  surrenderer.name || '?', winner.shots,      winner.hits,      _surMode);
+    addBattleHistory(surrenderer.playerId, 'loss', winner.name      || '?', surrenderer.shots, surrenderer.hits, _surMode);
     if (winXp2  && winner.socketId)      io.to(winner.socketId).emit('xp_reward', winXp2);
     if (lossXp2 && surrenderer.socketId) io.to(surrenderer.socketId).emit('xp_reward', lossXp2);
     recordDuelResult(winner.playerId, surrenderer.playerId);
@@ -1014,10 +1072,21 @@ function validateNoTouch(field) {
     if (!room || !room.started || room.over) return;
     const opponent = getOpponent(room, socket.id);
     if (!opponent?.socketId) return;
-    // Разрешаем только безопасные эмодзи
-    const allowed = ['👍','❤️','👎','🤬','😂'];
-    if (!allowed.includes(emoji)) return;
-    io.to(opponent.socketId).emit('reaction_received', { emoji });
+    // Разрешаем стандартные эмодзи + кастомные реакции (формат: "custom:ID")
+    const allowedEmoji = new Set(['👍','❤️','👎','🤬','😂']);
+    let payload = null;
+    if (allowedEmoji.has(emoji)) {
+      payload = { type: 'emoji', value: emoji };
+    } else if (typeof emoji === 'string' && emoji.startsWith('custom:')) {
+      const customId = emoji.slice(7).replace(/[^a-f0-9]/g, '');
+      if (customId.length > 0) {
+        // Проверяем что реакция существует и активна
+        const row = db.prepare(`SELECT filename FROM custom_reactions WHERE id=? AND is_active=1`).get(customId);
+        if (row) payload = { type: 'custom', id: customId, filename: row.filename };
+      }
+    }
+    if (!payload) return;
+    io.to(opponent.socketId).emit('reaction_received', payload);
   });
 
   // ── Реванш ───────────────────────────────────────
@@ -1117,6 +1186,9 @@ function validateNoTouch(field) {
         const dSunkenLeaver = stayer.field ? countSunkenShips(stayer.field) : 0;
         const dWinXp  = addWin( stayer.playerId, stayer.shots, stayer.hits, true, dSunkenStayer, null,         !room.isFriend);
         const dLossXp = addLoss(leaver.playerId, leaver.shots, leaver.hits, true, dSunkenLeaver, !room.isFriend);
+        const _dcMode = room.isFriend ? 'friend' : 'online';
+        addBattleHistory(stayer.playerId, 'win',  leaver.name || '?', stayer.shots, stayer.hits, _dcMode);
+        addBattleHistory(leaver.playerId, 'loss', stayer.name || '?', leaver.shots, leaver.hits, _dcMode);
         if (dWinXp  && stayer.socketId) io.to(stayer.socketId).emit('xp_reward', dWinXp);
         // leaver отключён — xp_reward не шлём
         recordDuelResult(stayer.playerId, leaver.playerId);
@@ -1197,7 +1269,7 @@ app.post('/api/history', (req, res) => {
     // Валидация enum-полей
     const cleanResult = ['win','loss','draw'].includes(result) ? result : null;
     if (!cleanResult) { res.json({ ok: false }); return; }
-    const cleanMode     = ['online','bot-easy','bot-hard'].includes(mode) ? mode : 'online';
+    const cleanMode     = ['online','friend','bot-easy','bot-hard'].includes(mode) ? mode : 'online';
     const cleanOpponent = sanitizeStr(opponent || '?', 64);
     const cleanShots    = Math.max(0, parseInt(shots)  || 0);
     const cleanHits     = Math.max(0, parseInt(hits)   || 0);
@@ -1247,11 +1319,17 @@ app.get('/api/admin/analytics', (req, res) => {
     const activeWeek    = db.prepare(`SELECT COUNT(DISTINCT player_id) as n FROM battle_history WHERE date >= ?`).get(since7d).n;
     const activeMonth   = db.prepare(`SELECT COUNT(DISTINCT player_id) as n FROM battle_history WHERE date >= ?`).get(since30d).n;
 
-    // ── Бои ──
+    // ── Бои онлайн (случайный матчмейкинг) ──
     const battlesToday  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since24).n;
     const battles7d     = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since7d).n;
     const battles30d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since30d).n;
     const battlesTotal  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online'`).get().n;
+
+    // ── Бои с другом (по ссылке) ──
+    const friendToday   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since24).n;
+    const friend7d      = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since7d).n;
+    const friend30d     = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='friend'`).get(since30d).n;
+    const friendTotal   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='friend'`).get().n;
 
     // ── Точность (средняя по всем онлайн-игрокам) ──
     const accRow = db.prepare(`
@@ -1294,9 +1372,10 @@ app.get('/api/admin/analytics', (req, res) => {
     const byDay = db.prepare(`
       SELECT
         date(date, 'unixepoch', 'localtime') as day,
-        COUNT(*) as battles
+        SUM(CASE WHEN mode='online' THEN 1 ELSE 0 END) as online,
+        SUM(CASE WHEN mode='friend' THEN 1 ELSE 0 END) as friend
       FROM battle_history
-      WHERE mode='online' AND date >= ?
+      WHERE mode IN ('online','friend') AND date >= ?
       GROUP BY day ORDER BY day ASC
     `).all(since7d);
 
@@ -1305,8 +1384,9 @@ app.get('/api/admin/analytics', (req, res) => {
 
     res.json({ ok: true, data: {
       ts: now,
-      players:   { total: totalPlayers, new_24h: newToday, active_7d: activeWeek, active_30d: activeMonth },
-      battles:   { today: battlesToday, week: battles7d, month: battles30d, total: battlesTotal, by_day: byDay },
+      players:        { total: totalPlayers, new_24h: newToday, active_7d: activeWeek, active_30d: activeMonth },
+      battles:        { today: battlesToday, week: battles7d,  month: battles30d,  total: battlesTotal,  by_day: byDay },
+      friend_battles: { today: friendToday,  week: friend7d,   month: friend30d,   total: friendTotal },
       accuracy:  { avg_pct: accRow.avg_acc, total_shots: accRow.total_shots, total_hits: accRow.total_hits },
       winrate:   { pct: winrate, wins: vrRow.wins, losses: vrRow.losses },
       purchases: { today: purchasesToday, week: purchases7d, month: purchases30d, total: purchasesTotal, refunds: refundsTotal, top_items: topItems },
@@ -1314,7 +1394,76 @@ app.get('/api/admin/analytics', (req, res) => {
     }});
   } catch(e) { console.error('[analytics]', e); res.status(500).json({ ok: false, error: e.message }); }
 });
-app.get('/api/stats/:id',  (req, res) => {
+
+// ─── КАСТОМНЫЕ РЕАКЦИИ ────────────────────────────────────────────────────────
+
+// GET /api/reactions — публичный список активных реакций
+app.get('/api/reactions', (req, res) => {
+  try {
+    const rows = db.prepare(
+      `SELECT id, name, filename, sort_order FROM custom_reactions WHERE is_active=1 ORDER BY sort_order, created_at`
+    ).all();
+    res.json({ ok: true, data: rows });
+  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/admin/reactions — загрузить новую WebM-реакцию (только админ)
+app.post('/api/admin/reactions',
+  strictLimiter,
+  (req, res, next) => {
+    const secret = req.headers['x-admin-secret'];
+    if (!SHOP_SECRET || secret !== SHOP_SECRET) return res.status(403).json({ ok: false, error: 'forbidden' });
+    next();
+  },
+  reactionUpload.single('file'),
+  (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ ok: false, error: 'Файл не загружен' });
+      const name      = String(req.body.name || '').trim().slice(0, 32) || req.file.originalname;
+      const sortOrder = parseInt(req.body.sort_order) || 0;
+      const id        = crypto.randomBytes(6).toString('hex');
+      db.prepare(
+        `INSERT INTO custom_reactions (id, name, filename, sort_order) VALUES (?, ?, ?, ?)`
+      ).run(id, name, req.file.filename, sortOrder);
+      res.json({ ok: true, data: { id, name, filename: req.file.filename } });
+    } catch(e) {
+      console.error('[reactions upload]', e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  }
+);
+
+// PATCH /api/admin/reactions/:id — переименовать / изменить sort_order (только админ)
+app.patch('/api/admin/reactions/:id', strictLimiter, (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (!SHOP_SECRET || secret !== SHOP_SECRET) return res.status(403).json({ ok: false, error: 'forbidden' });
+    const row = db.prepare(`SELECT * FROM custom_reactions WHERE id=?`).get(req.params.id);
+    if (!row) return res.status(404).json({ ok: false, error: 'not found' });
+    const name      = req.body.name      != null ? String(req.body.name).trim().slice(0, 32) : row.name;
+    const sortOrder = req.body.sort_order != null ? parseInt(req.body.sort_order) : row.sort_order;
+    const isActive  = req.body.is_active  != null ? (req.body.is_active ? 1 : 0)  : row.is_active;
+    db.prepare(`UPDATE custom_reactions SET name=?, sort_order=?, is_active=? WHERE id=?`)
+      .run(name, sortOrder, isActive, req.params.id);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// DELETE /api/admin/reactions/:id — удалить реакцию и файл (только админ)
+app.delete('/api/admin/reactions/:id', strictLimiter, (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (!SHOP_SECRET || secret !== SHOP_SECRET) return res.status(403).json({ ok: false, error: 'forbidden' });
+    const row = db.prepare(`SELECT filename FROM custom_reactions WHERE id=?`).get(req.params.id);
+    if (!row) return res.status(404).json({ ok: false, error: 'not found' });
+    db.prepare(`DELETE FROM custom_reactions WHERE id=?`).run(req.params.id);
+    const filePath = path.join(REACTIONS_DIR, row.filename);
+    fs.unlink(filePath, () => {});  // удаляем файл, игнорируем ошибки
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+
   try {
     const data = getPlayerStats(req.params.id) || null;
     let xpInfo = null;
@@ -1608,7 +1757,28 @@ app.post('/api/unequip', (req, res) => {
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// Выдать товар за действие (внутренний — защищён секретом)
+// GET /api/reactions/player/:userId — реакции игрока (купленные), отсортированы по последнему использованию
+app.get('/api/reactions/player/:userId', (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId || userId.startsWith('guest_')) return res.json({ ok: true, data: [] });
+    const rows = getPlayerReactions(userId);
+    res.json({ ok: true, data: rows });
+  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/reaction/use — отметить использование реакции (обновить used_at для сортировки)
+app.post('/api/reaction/use', (req, res) => {
+  try {
+    const { userId, itemId } = req.body;
+    if (!userId || !itemId) return res.status(400).json({ ok: false });
+    db.prepare(`UPDATE inventory SET used_at=strftime('%s','now') WHERE user_id=? AND item_id=?`)
+      .run(userId, itemId);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+
 app.post('/api/reward', (req, res) => {
   try {
     const { secret, userId, itemId, reason } = req.body;

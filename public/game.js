@@ -2014,8 +2014,8 @@ const WS = {
     });
 
     // ── Реакция соперника ────────────────────────────
-    this.socket.on('reaction_received', ({ emoji }) => {
-      showReactionDisplay('opp', emoji);
+    this.socket.on('reaction_received', (payload) => {
+      showReactionDisplay('opp', payload);
     });
 
     // ── Реванш ───────────────────────────────────────
@@ -3193,80 +3193,336 @@ const Notif = {
   close() { this._open = false; document.getElementById('notif-panel')?.classList.add('hidden'); },
 };
 
-/* ─── РЕАКЦИИ В БОЮ ──────────────────────────────── */
-let _reactionPickerOpen = false;
-let _reactionTimers = { my: null, opp: null };
+/* ═══════════════════════════════════════════════════
+   РЕАКЦИИ В БОЮ — бесконечный круговой слайдер
+════════════════════════════════════════════════════ */
 
+let _reactionPickerOpen  = false;
+let _reactionTimers      = { my: null, opp: null };
+let _sliderItems         = [];   // полный список: сначала эмодзи, потом купленные кастомные
+let _sliderOffset        = 0;   // текущий сдвиг в пикселях (реальный)
+let _sliderIndex         = 0;   // логический индекс "центральной" реакции
+let _sliderDragging      = false;
+let _sliderDragStartX    = 0;
+let _sliderDragStartOff  = 0;
+let _sliderAnimating     = false;
+let _sliderPlayerReactions = []; // купленные реакции текущего игрока
+
+const SLIDER_ITEM_W = 60;   // ширина одной ячейки px
+const SLIDER_VISIBLE = 5;   // сколько видно (нечётное — центр выделен)
+
+// ── Стандартные реакции (всегда есть) ────────────────
+const DEFAULT_REACTIONS = [
+  { type: 'emoji', value: '👍', id: 'e_like'   },
+  { type: 'emoji', value: '❤️', id: 'e_heart'  },
+  { type: 'emoji', value: '😂', id: 'e_lol'    },
+  { type: 'emoji', value: '👎', id: 'e_dislike'},
+  { type: 'emoji', value: '🤬', id: 'e_angry'  },
+];
+
+// ── Загрузка: публичный список + купленные игроком ───
+async function loadCustomReactions() {
+  try {
+    const uid = App.user?.id;
+    const isGuest = !uid || uid.startsWith('guest_');
+
+    // Всегда грузим публичный список (нужен для проверки наличия)
+    const pubRes = await fetch('/api/reactions').then(r => r.json());
+    const allCustom = (pubRes.ok && pubRes.data) ? pubRes.data : [];
+
+    // Если авторизован — грузим купленные реакции (отсортированы по used_at)
+    let owned = [];
+    if (!isGuest) {
+      try {
+        const ownRes = await fetch(`/api/reactions/player/${uid}`).then(r => r.json());
+        if (ownRes.ok) owned = ownRes.data || [];
+      } catch(e) {}
+    }
+
+    _sliderPlayerReactions = owned;
+    _rebuildSliderItems();
+  } catch(e) {}
+}
+
+// ── Собрать итоговый список слайдера ─────────────────
+function _rebuildSliderItems() {
+  // Купленные кастомные — уже отсортированы по used_at DESC с сервера
+  const customItems = _sliderPlayerReactions.map(r => ({
+    type:     'custom',
+    id:       r.item_id,          // 'reaction_no_1'
+    filename: r.filename,
+    name:     r.reaction_name,
+  }));
+
+  _sliderItems = [...DEFAULT_REACTIONS, ...customItems];
+  _sliderIndex = 0;
+  _sliderOffset = 0;
+  _renderSlider(false);
+}
+
+// ── Рендер дорожки слайдера ──────────────────────────
+function _renderSlider(animate) {
+  const track = document.getElementById('rslider-track');
+  if (!track) return;
+
+  const total = _sliderItems.length;
+  if (total === 0) return;
+
+  // Рисуем 3 копии для иллюзии бесконечности: [...items, ...items, ...items]
+  // Видимое окно: SLIDER_VISIBLE ячеек, центральная = выбранная
+  const copies = 3;
+  const allItems = [];
+  for (let c = 0; c < copies; c++) {
+    for (let i = 0; i < total; i++) {
+      allItems.push({ item: _sliderItems[i], gi: c * total + i });
+    }
+  }
+
+  track.innerHTML = allItems.map(({ item, gi }) => {
+    let inner = '';
+    if (item.type === 'custom') {
+      inner = `<video class="rslider-video" src="/reactions/${item.filename}" autoplay loop muted playsinline></video>`;
+    } else {
+      inner = `<span class="rslider-emoji">${item.value}</span>`;
+    }
+    return `<div class="rslider-cell" data-gi="${gi}" data-idx="${gi % total}">${inner}</div>`;
+  }).join('');
+
+  track.style.transition = 'none';
+  _applySliderTransform(false);
+}
+
+// ── Позиционирование ─────────────────────────────────
+function _applySliderTransform(animate) {
+  const track = document.getElementById('rslider-track');
+  if (!track) return;
+
+  const total = _sliderItems.length;
+  if (total === 0) return;
+
+  // Центр второй копии = total * SLIDER_ITEM_W
+  // Центральная ячейка видна в середине окна
+  const containerW = SLIDER_ITEM_W * SLIDER_VISIBLE;
+  const centerOff  = containerW / 2 - SLIDER_ITEM_W / 2;
+  const baseX      = -(total * SLIDER_ITEM_W) + centerOff;
+  const x          = baseX - _sliderIndex * SLIDER_ITEM_W + _sliderOffset;
+
+  track.style.transition = animate ? 'transform 0.28s cubic-bezier(0.25,1,0.5,1)' : 'none';
+  track.style.transform  = `translateX(${x}px)`;
+
+  // Подсветка центра
+  const centerIdx = ((_sliderIndex % total) + total) % total;
+  track.querySelectorAll('.rslider-cell').forEach(cell => {
+    cell.classList.toggle('rslider-cell-active', Number(cell.dataset.idx) === centerIdx);
+  });
+}
+
+// ── Нормализация индекса (wrap-around) ───────────────
+function _normalizeSliderIndex() {
+  const total = _sliderItems.length;
+  if (!total) return;
+  _sliderIndex = ((_sliderIndex % total) + total) % total;
+}
+
+// ── Выбрать реакцию по текущему индексу ─────────────
+function _selectCurrentReaction() {
+  _normalizeSliderIndex();
+  const item = _sliderItems[_sliderIndex];
+  if (!item) return;
+
+  // Закрыть пикер
+  _closePicker();
+
+  // Показать свою реакцию
+  showReactionDisplay('my', item);
+
+  // Обновить сортировку: переместить выбранную в начало
+  if (item.type === 'custom') {
+    const idx = _sliderPlayerReactions.findIndex(r => r.item_id === item.id);
+    if (idx > 0) {
+      const [moved] = _sliderPlayerReactions.splice(idx, 1);
+      _sliderPlayerReactions.unshift(moved);
+      _sliderItems = [...DEFAULT_REACTIONS, ..._sliderPlayerReactions.map(r => ({
+        type: 'custom', id: r.item_id, filename: r.filename, name: r.reaction_name,
+      }))];
+    }
+    // Обновляем used_at на сервере (fire-and-forget)
+    const uid = App.user?.id;
+    if (uid) fetch('/api/reaction/use', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: uid, itemId: item.id }),
+    }).catch(() => {});
+  }
+
+  // Отправить сопернику
+  if (Game.mode === 'online') {
+    if (item.type === 'emoji') {
+      WS.sendReaction(item.value);
+    } else {
+      WS.sendReaction('custom:' + item.id.replace('reaction_', ''));
+    }
+  } else if (item.type === 'emoji' && Math.random() < 0.5) {
+    const botEmojis = DEFAULT_REACTIONS.filter(r => r.type === 'emoji');
+    const bot = botEmojis[Math.floor(Math.random() * botEmojis.length)];
+    setTimeout(() => showReactionDisplay('opp', bot), 800 + Math.random() * 1500);
+  }
+}
+
+function _closePicker() {
+  _reactionPickerOpen = false;
+  document.getElementById('reaction-picker')?.classList.add('hidden');
+  document.getElementById('reaction-trigger-btn')?.classList.remove('open');
+}
+
+// ── Инициализация слайдера ───────────────────────────
 function initReactions() {
   const triggerBtn = document.getElementById('reaction-trigger-btn');
   const picker     = document.getElementById('reaction-picker');
   if (!triggerBtn || !picker) return;
 
-  triggerBtn.addEventListener('click', (e) => {
+  // Открыть/закрыть
+  triggerBtn.addEventListener('click', e => {
     e.stopPropagation();
     _reactionPickerOpen = !_reactionPickerOpen;
     picker.classList.toggle('hidden', !_reactionPickerOpen);
     triggerBtn.classList.toggle('open', _reactionPickerOpen);
-  });
-
-  // Закрытие при клике вне пикера
-  document.addEventListener('click', (e) => {
-    if (!_reactionPickerOpen) return;
-    if (picker.contains(e.target) || e.target === triggerBtn) return;
-    _reactionPickerOpen = false;
-    picker.classList.add('hidden');
-    triggerBtn.classList.remove('open');
-  }, true);
-
-  // Выбор реакции
-  picker.addEventListener('click', (e) => {
-    const opt = e.target.closest('.reaction-option');
-    if (!opt) return;
-    e.stopPropagation();
-    const emoji = opt.dataset.emoji;
-    _reactionPickerOpen = false;
-    picker.classList.add('hidden');
-    triggerBtn.classList.remove('open');
-    // Показываем свою реакцию
-    showReactionDisplay('my', emoji);
-    // Отправляем сопернику (только онлайн)
-    if (Game.mode === 'online') {
-      WS.sendReaction(emoji);
-    } else {
-      // Против бота — показываем "ответную" реакцию через случайное время
-      if (Math.random() < 0.5) {
-        const botEmojis = ['👍','❤️','👎','🤬'];
-        setTimeout(() => {
-          showReactionDisplay('opp', botEmojis[Math.floor(Math.random() * botEmojis.length)]);
-        }, 800 + Math.random() * 1500);
-      }
+    if (_reactionPickerOpen) {
+      _renderSlider(false);
+      picker.querySelectorAll('video').forEach(v => { try { v.play(); } catch(ex) {} });
     }
   });
+
+  // Закрыть при клике вне
+  document.addEventListener('click', e => {
+    if (!_reactionPickerOpen) return;
+    if (picker.contains(e.target) || triggerBtn.contains(e.target)) return;
+    _closePicker();
+  }, true);
+
+  // ── Drag / Swipe ─────────────────────────────────
+  const track = () => document.getElementById('rslider-track');
+
+  function onDragStart(clientX) {
+    if (_sliderAnimating) return;
+    _sliderDragging   = true;
+    _sliderDragStartX = clientX;
+    _sliderDragStartOff = _sliderOffset;
+    const t = track();
+    if (t) t.style.transition = 'none';
+  }
+
+  function onDragMove(clientX) {
+    if (!_sliderDragging) return;
+    const dx = clientX - _sliderDragStartX;
+    _sliderOffset = _sliderDragStartOff + dx;
+    _applySliderTransform(false);
+  }
+
+  function onDragEnd(clientX) {
+    if (!_sliderDragging) return;
+    _sliderDragging = false;
+    const dx = clientX - _sliderDragStartX;
+    const steps = -Math.round((dx - _sliderOffset * 0) / SLIDER_ITEM_W);
+
+    // Snap: ближайшая ячейка
+    const snapSteps = -Math.round(dx / SLIDER_ITEM_W);
+    _sliderIndex  += snapSteps;
+    _sliderOffset  = 0;
+    _normalizeSliderIndex();
+    _sliderAnimating = true;
+    _applySliderTransform(true);
+    setTimeout(() => { _sliderAnimating = false; }, 300);
+  }
+
+  // Mouse
+  picker.addEventListener('mousedown', e => {
+    if (!e.target.closest('#rslider-track')) return;
+    e.preventDefault();
+    onDragStart(e.clientX);
+  });
+  window.addEventListener('mousemove', e => { if (_sliderDragging) onDragMove(e.clientX); });
+  window.addEventListener('mouseup',   e => { if (_sliderDragging) onDragEnd(e.clientX); });
+
+  // Touch
+  picker.addEventListener('touchstart', e => {
+    if (!e.target.closest('#rslider-track')) return;
+    onDragStart(e.touches[0].clientX);
+  }, { passive: true });
+  picker.addEventListener('touchmove', e => {
+    if (!_sliderDragging) return;
+    e.preventDefault();
+    onDragMove(e.touches[0].clientX);
+  }, { passive: false });
+  picker.addEventListener('touchend', e => {
+    if (_sliderDragging) onDragEnd(e.changedTouches[0].clientX);
+  });
+
+  // Клик по ячейке: если почти не двигался — выбираем
+  picker.addEventListener('click', e => {
+    const cell = e.target.closest('.rslider-cell');
+    if (!cell) return;
+    const dx = Math.abs(e.clientX - _sliderDragStartX);
+    if (dx > 8) return; // был свайп, не клик
+
+    const clickedIdx = Number(cell.dataset.idx);
+    const centerIdx  = ((_sliderIndex % _sliderItems.length) + _sliderItems.length) % _sliderItems.length;
+
+    if (clickedIdx === centerIdx) {
+      // Центральная ячейка — отправить реакцию
+      _selectCurrentReaction();
+    } else {
+      // Боковая — прокрутить к ней
+      const total = _sliderItems.length;
+      // Находим кратчайший путь (по кругу)
+      let diff = clickedIdx - centerIdx;
+      if (diff > total / 2)  diff -= total;
+      if (diff < -total / 2) diff += total;
+      _sliderIndex  += diff;
+      _sliderOffset  = 0;
+      _normalizeSliderIndex();
+      _sliderAnimating = true;
+      _applySliderTransform(true);
+      setTimeout(() => { _sliderAnimating = false; }, 300);
+    }
+  });
+
+  // Первоначальный рендер (без кастомных — они придут позже)
+  _rebuildSliderItems();
 }
 
-function showReactionDisplay(side, emoji) {
-  // side: 'my' | 'opp'
-  const elId = side === 'my' ? 'my-reaction-display' : 'opp-reaction-display';
+// payload: { type: 'emoji', value } | { type: 'custom', id, filename }
+function showReactionDisplay(side, payload) {
+  const elId      = side === 'my' ? 'my-reaction-display' : 'opp-reaction-display';
   const container = document.getElementById(elId);
   if (!container) return;
 
-  // Убираем старый таймер
   if (_reactionTimers[side]) {
     clearTimeout(_reactionTimers[side]);
     _reactionTimers[side] = null;
   }
 
-  // Создаём элемент
   container.innerHTML = '';
-  const span = document.createElement('span');
-  span.className = 'reaction-emoji-show';
-  span.textContent = emoji;
-  container.appendChild(span);
+  if (!payload) return;
 
-  // Удаляем через 3 секунды с фейдом
+  let el;
+  if (payload.type === 'custom' && payload.filename) {
+    el = document.createElement('video');
+    el.className   = 'reaction-video-show';
+    el.src         = '/reactions/' + payload.filename;
+    el.autoplay    = true;
+    el.loop        = true;
+    el.muted       = true;
+    el.playsInline = true;
+  } else {
+    el = document.createElement('span');
+    el.className   = 'reaction-emoji-show';
+    el.textContent = payload.value || String(payload);
+  }
+
+  container.appendChild(el);
   _reactionTimers[side] = setTimeout(() => {
-    span.style.animation = 'reactionFadeOut .3s ease forwards';
-    setTimeout(() => { if (container.contains(span)) container.innerHTML = ''; }, 300);
+    el.style.animation = 'reactionFadeOut .3s ease forwards';
+    setTimeout(() => { if (container.contains(el)) container.innerHTML = ''; }, 300);
   }, 3000);
 }
 // Обновить прогресс-счётчик на лоадере
@@ -3320,6 +3576,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initShop();
   initInventory();
   initReactions();
+  loadCustomReactions();
   Notif.init();
 
   // WebSocket события магазина — вешаем когда сокет будет готов
@@ -3677,10 +3934,16 @@ const FAKE_PREVIEWS = {
 
 // Патчим getPreviewHtml — SVG для страницы товара (large=true), PNG для карточки
 function getItemPreviewHtml(item, large = false) {
+  // Реакция — WebM видео
+  if (item.type === 'reaction' && item.preview_url) {
+    const cls = large ? 'shop-reaction-preview-lg' : 'shop-reaction-preview';
+    return `<video class="${cls}" src="${item.preview_url}" autoplay loop muted playsinline></video>`;
+  }
+
   if (large) {
-    // На странице товара — всегда SVG если есть
+    // На странице товара — SVG если есть
     const svgUrl = item.preview_url ? item.preview_url.replace(/\.(png|jpg)$/i, '.svg') : null;
-    if (svgUrl) {
+    if (svgUrl && !/\.webm$/i.test(item.preview_url)) {
       return `<img src="${svgUrl}" alt="${item.name}" loading="lazy" class="shop-preview-lg-img">`;
     }
     if (FAKE_PREVIEWS[item.id]) {
@@ -3688,7 +3951,7 @@ function getItemPreviewHtml(item, large = false) {
     }
     return '🎁';
   }
-  // В карточке сетки — PNG, без inline стилей (CSS управляет размером)
+  // В карточке сетки
   if (item.preview_url) {
     return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" class="shop-card-img">`;
   }
@@ -3726,6 +3989,17 @@ function renderInventory() {
   }
 
   grid.innerHTML = filtered.map(item => {
+    // Реакции — всегда активны, не надеваются
+    if (item.type === 'reaction') {
+      return `<div class="shop-card owned" data-inv-item="${item.id}">
+        <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
+        <div class="shop-card-body">
+          <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
+          <div class="shop-card-name">${item.name}</div>
+          <button class="shop-card-action applied">В наличии</button>
+        </div>
+      </div>`;
+    }
     // Для всех предметов включая темы — источник правды _shopEquipped (с сервера)
     let equipped;
     if (item.type === 'theme') {

@@ -466,7 +466,7 @@ async def _do_broadcast(bot, src_chat_id: int, src_msg_id: int, admin_id: int) -
 
     for uid in user_ids:
         try:
-            await bot.forward_message(
+            await bot.copy_message(
                 chat_id=uid,
                 from_chat_id=src_chat_id,
                 message_id=src_msg_id,
@@ -609,7 +609,7 @@ async def post_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         sent = 0; failed = 0; blocked = 0
         for uid in user_ids:
             try:
-                await context.bot.forward_message(
+                await context.bot.copy_message(
                     chat_id=uid,
                     from_chat_id=src_chat_id,
                     message_id=src_msg_id,
