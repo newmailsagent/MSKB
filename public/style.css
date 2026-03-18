@@ -261,7 +261,16 @@ html, body {
 
 /* ─── PAGE HEADER ────────────────────────────────── */
 .page-header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.06); }
-.page-header h2 { font-family: var(--font-hd); font-size: 16px; font-weight: 700; letter-spacing: 2px; }
+.page-header h2 { font-family: var(--font-hd); font-size: 16px; font-weight: 700; letter-spacing: 2px; flex: 1; }
+.btn-placement-help {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15);
+  color: var(--hint); font-size: 14px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0; line-height: 1;
+  transition: background .15s, color .15s;
+}
+.btn-placement-help:active { background: rgba(255,255,255,.16); color: var(--text); }
 .btn-back { background: none; border: none; color: var(--hint); font-size: 14px; cursor: pointer; padding: 4px; font-family: var(--font-ui); }
 
 /* ─── РЕЖИМ ИГРЫ ─────────────────────────────────── */
@@ -2097,6 +2106,7 @@ body.theme_black .notif-badge { background: #fff; border-color: #000; }
 .notif-badge.hidden { display: none !important; }
 .notif-panel {
   position: absolute; top: calc(100% + 8px); right: -8px; width: 290px;
+  max-width: calc(100vw - 16px);
   background: var(--bg2); border: 1px solid rgba(255,255,255,.12);
   border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.5);
   z-index: 300; overflow: hidden;

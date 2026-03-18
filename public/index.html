@@ -267,6 +267,7 @@
   <div class="page-header">
     <button class="btn-back" data-screen="mode">← Назад</button>
     <h2>Расставь корабли</h2>
+    <button class="btn-placement-help" id="btn-placement-help" title="Как расставлять?">?</button>
   </div>
 
   <!-- Контролы ВЫШЕ дока — не перекрываются -->
@@ -369,9 +370,11 @@
     <!-- Центр: кнопка + пикер -->
     <div class="reaction-btn-wrap">
       <div class="reaction-picker hidden" id="reaction-picker">
-        <div class="rslider-viewport">
-          <div class="rslider-track" id="rslider-track"></div>
-        </div>
+        <button class="reaction-option" data-emoji="👍">👍</button>
+        <button class="reaction-option" data-emoji="❤️">❤️</button>
+        <button class="reaction-option" data-emoji="😂">😂</button>
+        <button class="reaction-option" data-emoji="👎">👎</button>
+        <button class="reaction-option" data-emoji="🤬">🤬</button>
       </div>
       <button class="reaction-trigger-btn" id="reaction-trigger-btn" title="Реакция">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.45">

@@ -2762,6 +2762,20 @@ function bindNav() {
   document.getElementById('btn-random-place')?.addEventListener('click', () => Placement.randomize());
   document.getElementById('btn-clear-place')?.addEventListener('click',  () => Placement.clear());
 
+  // Кнопка-подсказка в расстановке
+  document.getElementById('btn-placement-help')?.addEventListener('click', () => {
+    showModal({
+      title: 'Как расставить корабли',
+      text:
+        '👆 Нажми на корабль — он прикрепится к пальцу\n' +
+        '📍 Перетащи его на поле и отпусти\n\n' +
+        '🔄 Двойной тап по кораблю — повернуть\n' +
+        '❌ Зажми корабль на поле — убрать обратно\n\n' +
+        '↻ Или нажми «Случайно» — расставим за тебя!',
+      buttons: [{ label: 'Понятно!', cls: 'btn-primary', action: () => {} }],
+    });
+  });
+
   document.getElementById('btn-ready')?.addEventListener('click', () => {
     if (!Placement.allPlaced()) return;
     Sound.click();
@@ -3125,11 +3139,12 @@ const Notif = {
     try {
       const res = await fetch('/api/notification');
       const j   = await res.json();
-      if (j.ok && j.data) {
-        this._current = j.data;
-        const readId = loadJSON('bs_notif_read', null);
+      if (j.ok) {
+        this._current = j.data || null;
+        const readId  = loadJSON('bs_notif_read', null);
+        const isRead  = !this._current || readId === this._current.id;
         this._renderPanel();
-        this._setBadge(readId !== j.data.id);
+        this._setBadge(!isRead);
       }
     } catch(e) {}
   },
@@ -3137,14 +3152,16 @@ const Notif = {
   _renderPanel() {
     const body = document.getElementById('notif-panel-body');
     if (!body) return;
-    if (!this._current) {
+    // Нет уведомления ИЛИ уже прочитано — показываем пустое состояние
+    const readId = loadJSON('bs_notif_read', null);
+    const n      = this._current;
+    const isRead = !n || readId === n.id;
+    if (!n || isRead) {
       body.innerHTML = '<p class="notif-empty">Нет новых уведомлений</p>';
       return;
     }
-    const n = this._current;
-    const d = new Date(n.date * 1000);
+    const d       = new Date(n.date * 1000);
     const dateStr = d.toLocaleDateString('ru', { day: '2-digit', month: '2-digit', year: '2-digit' });
-    const isRead  = loadJSON('bs_notif_read', null) === n.id;
     body.innerHTML =
       '<div class="notif-card" id="notif-card">' +
         '<div class="notif-card-head">' +
@@ -3152,7 +3169,7 @@ const Notif = {
           '<span class="notif-card-date">' + dateStr + '</span>' +
         '</div>' +
         '<p class="notif-card-text">' + n.body + '</p>' +
-        (!isRead ? '<button class="notif-read-btn" id="notif-read-btn">Прочитал</button>' : '') +
+        '<button class="notif-read-btn" id="notif-read-btn">Прочитал</button>' +
       '</div>';
     document.getElementById('notif-read-btn')?.addEventListener('click', () => this.markRead());
   },
@@ -3161,14 +3178,8 @@ const Notif = {
     if (!this._current) return;
     saveJSON('bs_notif_read', this._current.id);
     this._setBadge(false);
-    const card = document.getElementById('notif-card');
-    if (card) {
-      card.classList.add('notif-swipe-out');
-      setTimeout(() => {
-        const body = document.getElementById('notif-panel-body');
-        if (body) body.innerHTML = '<p class="notif-empty">Нет новых уведомлений</p>';
-      }, 320);
-    }
+    // Сразу перерисовываем панель в пустое состояние
+    this._renderPanel();
   },
 
   _setBadge(show) {
@@ -4163,26 +4174,51 @@ openShopItem = function(itemId) {
   const statusEl = document.getElementById('shop-item-status');
   const btnEl    = document.getElementById('shop-item-btn');
 
-  if (equipped) {
+  // Реакции — не надеваются
+  if (item.type === 'reaction') {
+    if (owned) {
+      priceEl.textContent  = '';
+      statusEl.textContent = '✓ В наличии';
+      btnEl.textContent    = 'Используется в бою автоматически';
+      btnEl.className      = 'btn btn-secondary btn-large';
+      btnEl.disabled       = true;
+    } else if (item.price_stars) {
+      priceEl.textContent  = `⭐ ${item.price_stars}`;
+      statusEl.textContent = '';
+      btnEl.textContent    = 'Купить';
+      btnEl.className      = 'btn btn-primary btn-large';
+      btnEl.disabled       = false;
+    } else {
+      priceEl.textContent  = 'Бесплатно';
+      statusEl.textContent = '';
+      btnEl.textContent    = 'Получить';
+      btnEl.className      = 'btn btn-primary btn-large';
+      btnEl.disabled       = false;
+    }
+  } else if (equipped) {
     priceEl.textContent  = '';
     statusEl.textContent = '✓ Применено';
     btnEl.textContent    = 'Снять';
     btnEl.className      = 'btn btn-secondary btn-large';
+    btnEl.disabled       = false;
   } else if (owned || itemId === 'theme_dark') {
     priceEl.textContent  = '';
-    statusEl.textContent = itemId === 'theme_dark' ? '✓ Куплено' : '✓ Куплено';
+    statusEl.textContent = '✓ Куплено';
     btnEl.textContent    = 'Применить';
     btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
   } else if (item.price_stars) {
     priceEl.textContent  = `⭐ ${item.price_stars}`;
     statusEl.textContent = '';
     btnEl.textContent    = 'Купить';
     btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
   } else {
     priceEl.textContent  = 'Бесплатно';
     statusEl.textContent = '';
     btnEl.textContent    = 'Получить';
     btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
   }
 
   // ── Предпросмотр темы ──────────────────────────────────────────────────
