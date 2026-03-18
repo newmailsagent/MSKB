@@ -1980,33 +1980,21 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   to   { transform: translateX(-50%) translateY(0)   scale(1);   opacity: 1; }
 }
 
-/* Видимое окно слайдера (300px = 5 × 60px) */
-/* Видимое окно слайдера (300px = 5 × 60px) */
+/* Видимое окно слайдера (5 ячеек × 64px = 320px) */
 .rslider-viewport {
   position: relative;
-  width: 300px;
-  height: 60px;
+  width: 320px;
+  height: 64px;
   overflow: hidden;
-  /* Плавное затухание по краям через CSS-маску */
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    black 20%,
-    black 80%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    black 20%,
-    black 80%,
-    transparent 100%
-  );
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%);
+  mask-image:         linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%);
 }
 
-/* Плавающая дорожка */
+/* Плавающая дорожка — горизонтальная, не переносится */
 .rslider-track {
   display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: center;
   height: 100%;
   will-change: transform;
@@ -2016,16 +2004,17 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 
 /* Одна ячейка */
 .rslider-cell {
-  width: 60px;
-  height: 60px;
-  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;          /* не сжимается, не растягивается */
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 12px;
+  background: transparent;
   transition: transform .2s cubic-bezier(.25,1,.5,1), opacity .2s ease;
   opacity: .38;
-  transform: scale(.72);
+  transform: scale(.7);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -2034,19 +2023,23 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   transform: scale(1);
   background: rgba(255,255,255,.07);
 }
+/* Эмодзи — без фона, крупнее */
 .rslider-cell span {
-  font-size: 30px;
+  font-size: 34px;
   line-height: 1;
   pointer-events: none;
   display: block;
+  background: transparent;
 }
+/* Видео-реакция */
 .rslider-cell video {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: 8px;
   pointer-events: none;
   display: block;
+  background: transparent;
 }
 
 
@@ -2105,7 +2098,10 @@ body.theme_black .lb-avatar { background: #111; }
 body.theme_black .notif-badge { background: #fff; border-color: #000; }
 .notif-badge.hidden { display: none !important; }
 .notif-panel {
-  position: absolute; top: calc(100% + 8px); right: -8px; width: 290px;
+  position: fixed;
+  top: 60px;
+  right: 8px;
+  width: 290px;
   max-width: calc(100vw - 16px);
   background: var(--bg2); border: 1px solid rgba(255,255,255,.12);
   border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.5);

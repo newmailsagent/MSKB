@@ -2764,16 +2764,11 @@ function bindNav() {
 
   // Кнопка-подсказка в расстановке
   document.getElementById('btn-placement-help')?.addEventListener('click', () => {
-    showModal({
-      title: 'Как расставить корабли',
-      text:
-        '👆 Нажми на корабль — он прикрепится к пальцу\n' +
-        '📍 Перетащи его на поле и отпусти\n\n' +
-        '🔄 Двойной тап по кораблю — повернуть\n' +
-        '❌ Зажми корабль на поле — убрать обратно\n\n' +
-        '↻ Или нажми «Случайно» — расставим за тебя!',
-      buttons: [{ label: 'Понятно!', cls: 'btn-primary', action: () => {} }],
-    });
+    showModal(
+      'Как расставить корабли',
+      '👆 Нажми на корабль — он прикрепится к пальцу\n📍 Перетащи на поле и отпусти\n\n🔄 Двойной тап по кораблю — повернуть\n❌ Зажми корабль на поле — убрать обратно\n\n↻ Или нажми «Случайно» — расставим за тебя!',
+      [{ label: 'Понятно!', cls: 'btn-primary', action: closeModal }]
+    );
   });
 
   document.getElementById('btn-ready')?.addEventListener('click', () => {
@@ -3217,7 +3212,7 @@ let _sliderWasDrag         = false;
 let _sliderBusy            = false;
 let _sliderPlayerReactions = [];
 
-const ITEM_W    = 60;   // px на ячейку
+const ITEM_W    = 64;   // px на ячейку (совпадает с CSS .rslider-cell width)
 const SHOW_CNT  = 5;    // видимых ячеек (нечётное — центр выделен)
 
 const DEFAULT_REACTIONS = [
