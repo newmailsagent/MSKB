@@ -171,7 +171,7 @@ html, body {
 .sound-mute-line { stroke: var(--hint); stroke-width: 2; stroke-linecap: round; }
 
 .user-info { display: flex; align-items: center; gap: 10px; }
-.avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; border: 2px solid #607d8b; overflow: hidden; }
+.avatar { width: 42px; height: 42px; border-radius: 12px; background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; border: 2px solid #607d8b; overflow: hidden; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 0; display: block; }
 .username { font-weight: 600; font-size: 15px; display: block; }
 .user-tag { color: var(--hint); font-size: 12px; }
@@ -783,7 +783,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .lb-item-me { border: 1px solid var(--accent); }
 .lb-rank { font-family: var(--font-hd); font-size: 16px; width: 28px; color: var(--hint); text-align: center; }
 .lb-rank.gold{color:#ffd700} .lb-rank.silver{color:#c0c0c0} .lb-rank.bronze{color:#cd7f32}
-.lb-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; border: 2px solid #607d8b; transition: border-color .2s; overflow: hidden; }
+.lb-avatar { width: 36px; height: 36px; border-radius: 10px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; border: 2px solid #607d8b; transition: border-color .2s; overflow: hidden; }
 .lb-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 0; display: block; }
 .lb-info   { flex: 1; }
 .lb-info strong { display: block; font-size: 14px; }
@@ -791,7 +791,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .lb-wins   { font-family: var(--font-hd); color: var(--green); font-size: 16px; }
 
 .stats-profile { display: flex; flex-direction: column; align-items: center; padding: 20px 0 12px; }
-.stats-avatar  { width: 60px; height: 60px; border-radius: 50%; background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; border: 3px solid var(--accent); margin-bottom: 10px; overflow: hidden; }
+.stats-avatar  { width: 60px; height: 60px; border-radius: 16px; background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; border: 3px solid var(--accent); margin-bottom: 10px; overflow: hidden; }
 .stats-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 0; display: block; }
 .stats-name    { font-family: var(--font-hd); font-size: 16px; letter-spacing: 2px; }
 .stats-grid    { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; padding: 0 16px 16px; }
@@ -877,7 +877,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .duel-score { font-size: 13px; font-weight: 700; letter-spacing: 1px; opacity: 0.9; }
 .opp-avatar {
   width: 28px; height: 28px;
-  border-radius: 50%;
+  border-radius: 8px;
   background: var(--bg2);
   border: 2px solid var(--accent);
   display: flex; align-items: center; justify-content: center;
@@ -1768,7 +1768,7 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 /* Квадратный аватар со скруглёнными углами — как на главной */
 .gf-avatar {
   width: 40px; height: 40px;
-  border-radius: 50%;
+  border-radius: 12px;
   background: var(--bg2);
   border: 2px solid var(--hint);
   display: flex; align-items: center; justify-content: center;
@@ -2063,7 +2063,7 @@ body.theme_black .level-badge { border-color: #000 !important; }
 #user-avatar {
   border: 2px solid #607d8b;
   transition: border-color .3s;
-  border-radius: 50%;
+  border-radius: 12px;
 }
 
 /* ─── Рамки аватаров в рейтинге — по уровням ─── */

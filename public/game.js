@@ -3279,31 +3279,47 @@ function _sliderRender() {
 }
 
 // ── Позиционирование ─────────────────────────────────
-// Правильная формула:
-//   track содержит 3*N ячеек шириной ITEM_W каждая
-//   "нулевая" позиция: первая ячейка copy1 (индекс N*ITEM_W от начала) под левым краем viewport
-//   центр viewport = (SHOW_CNT/2 - 0.5) * ITEM_W = 2 * ITEM_W (при SHOW_CNT=5)
-//   translateX чтобы ячейка [_sliderIdx] из copy1 была по центру:
-//     x = -(N + _sliderIdx) * ITEM_W  +  centerOffset  +  dragOffset
+// _sliderIdx — накопленный (не нормализован), может быть отрицательным или > N
+// Это гарантирует что трек движется непрерывно без телепортации
+// Для определения активного элемента используем modulo
 function _sliderPosition(animate) {
   const track = document.getElementById('rslider-track');
   if (!track || !_sliderItems.length) return;
   const N      = _sliderItems.length;
-  const center = Math.floor(SHOW_CNT / 2) * ITEM_W;        // 2*60 = 120px
-  const x      = Math.round(-(N + _sliderIdx) * ITEM_W + center + _sliderDragX);
+  const center = Math.floor(SHOW_CNT / 2) * ITEM_W;  // 120px при SHOW_CNT=5
+
+  // x непрерывен: при _sliderIdx=0 → copy1[0] по центру
+  // при _sliderIdx=-1 → copy1[-1] = copy0[N-1] по центру (уехали влево)
+  // при _sliderIdx=N  → copy2[0] по центру (уехали вправо)
+  const x = Math.round(-(N + _sliderIdx) * ITEM_W + center + _sliderDragX);
 
   track.style.transition = animate ? 'transform .25s cubic-bezier(.3,1,.4,1)' : 'none';
   track.style.transform  = `translateX(${x}px)`;
 
-  // Подсветка центра
+  // Подсветка: нормализуем только для определения активного элемента
+  const activeI = ((_sliderIdx % N) + N) % N;
   track.querySelectorAll('.rslider-cell').forEach(el => {
-    el.classList.toggle('rslider-cell-active', Number(el.dataset.i) === _sliderIdx);
+    el.classList.toggle('rslider-cell-active', Number(el.dataset.i) === activeI);
   });
+}
+
+// Re-anchor: после анимации тихо возвращаем _sliderIdx в диапазон [0,N)
+// без изменения визуальной позиции — copy1 становится "домом"
+function _sliderReanchor() {
+  const N = _sliderItems.length;
+  if (!N) return;
+  const norm = ((_sliderIdx % N) + N) % N;
+  if (norm !== _sliderIdx) {
+    _sliderIdx = norm;
+    _sliderPosition(false); // мгновенно, без анимации
+  }
 }
 
 // ── Выбор реакции ────────────────────────────────────
 function _sliderSelect() {
-  const item = _sliderItems[_sliderIdx];
+  const N      = _sliderItems.length;
+  const normI  = ((_sliderIdx % N) + N) % N;
+  const item   = _sliderItems[normI];
   if (!item) return;
   _closePicker();
   showReactionDisplay('my', item);
@@ -3375,14 +3391,18 @@ function initReactions() {
   function dragEnd(x) {
     if (!_sliderIsDragging) return;
     _sliderIsDragging = false;
-    const dx       = x - _sliderStartX;
-    const steps    = -Math.round(dx / ITEM_W);
-    const N        = _sliderItems.length;
-    _sliderIdx     = ((_sliderIdx + steps) % N + N) % N;
-    _sliderDragX   = 0;
-    _sliderBusy    = true;
+    const dx    = x - _sliderStartX;
+    const steps = -Math.round(dx / ITEM_W);
+    // Накапливаем — НЕ нормализуем, трек остаётся на месте
+    _sliderIdx  += steps;
+    _sliderDragX = 0;
+    _sliderBusy  = true;
     _sliderPosition(true);
-    setTimeout(() => { _sliderBusy = false; }, 280);
+    // После анимации тихо реанкоримся в copy1 (пользователь не видит)
+    setTimeout(() => {
+      _sliderReanchor();
+      _sliderBusy = false;
+    }, 280);
   }
 
   // Mouse
@@ -3415,17 +3435,22 @@ function initReactions() {
     if (!cell) return;
     const clicked = Number(cell.dataset.i);
     const N       = _sliderItems.length;
-    if (clicked === _sliderIdx) {
+    const activeI = ((_sliderIdx % N) + N) % N;
+    if (clicked === activeI) {
       _sliderSelect();
     } else {
-      let diff = clicked - _sliderIdx;
+      // Кратчайший путь по кругу — накапливаем, не нормализуем
+      let diff = clicked - activeI;
       if (diff >  N / 2) diff -= N;
       if (diff < -N / 2) diff += N;
-      _sliderIdx   = ((_sliderIdx + diff) % N + N) % N;
+      _sliderIdx  += diff;   // накопленный
       _sliderDragX = 0;
       _sliderBusy  = true;
       _sliderPosition(true);
-      setTimeout(() => { _sliderBusy = false; }, 280);
+      setTimeout(() => {
+        _sliderReanchor();
+        _sliderBusy = false;
+      }, 280);
     }
   });
 
@@ -3757,7 +3782,11 @@ async function handleShopItemBtn() {
   const owned    = !!_shopInventory[itemId];
   const equipped = Object.values(_shopEquipped).includes(itemId);
 
-  if (equipped) {
+  // Реакции не надеваются — только покупаются
+  if (item.type === 'reaction') {
+    if (owned) return; // кнопка задизейблена, но на всякий случай
+    // Иначе — купить (падает ниже к логике покупки)
+  } else if (equipped) {
     await fetch('/api/unequip', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: App.user?.id, slot: item.type }),
@@ -3772,9 +3801,7 @@ async function handleShopItemBtn() {
     openShopItem(itemId);
     renderShopGrid();
     return;
-  }
-
-  if (owned) {
+  } else if (owned) {
     await fetch('/api/equip', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: App.user?.id, itemId }),
