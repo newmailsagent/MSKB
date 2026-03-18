@@ -784,6 +784,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .lb-rank { font-family: var(--font-hd); font-size: 16px; width: 28px; color: var(--hint); text-align: center; }
 .lb-rank.gold{color:#ffd700} .lb-rank.silver{color:#c0c0c0} .lb-rank.bronze{color:#cd7f32}
 .lb-avatar { width: 36px; height: 36px; border-radius: 8px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; border: 2px solid #607d8b; transition: border-color .2s; overflow: hidden; }
+.lb-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 0; display: block; }
 .lb-info   { flex: 1; }
 .lb-info strong { display: block; font-size: 14px; }
 .lb-info small  { color: var(--hint); font-size: 12px; }
@@ -791,6 +792,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 
 .stats-profile { display: flex; flex-direction: column; align-items: center; padding: 20px 0 12px; }
 .stats-avatar  { width: 60px; height: 60px; border-radius: 12px; background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; border: 3px solid var(--accent); margin-bottom: 10px; overflow: hidden; }
+.stats-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 0; display: block; }
 .stats-name    { font-family: var(--font-hd); font-size: 16px; letter-spacing: 2px; }
 .stats-grid    { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; padding: 0 16px 16px; }
 .stat-card     { background: var(--bg2); border-radius: var(--radius); padding: 12px 8px; text-align: center; border-left: 3px solid var(--hint); }
@@ -1774,7 +1776,7 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   transition: border-color .3s;
   overflow: hidden;
 }
-.gf-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.gf-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 0; display: block; }
 
 /* Уровень — цвет берётся от level-bg-N (тот же класс что везде) */
 .gf-level {
@@ -1977,13 +1979,16 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   overflow: hidden;
 }
 
-/* Плавающая дорожка: ширина задаётся JS */
+/* Плавающая дорожка */
 .rslider-track {
   display: flex;
   align-items: center;
   height: 100%;
   will-change: transform;
   cursor: grab;
+  -webkit-font-smoothing: antialiased;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 .rslider-track:active { cursor: grabbing; }
 
@@ -1996,10 +2001,12 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  transition: transform .18s cubic-bezier(.25,1,.5,1),
-              opacity  .18s ease;
-  opacity: .45;
-  transform: scale(.78);
+  transition: transform .2s cubic-bezier(.25,1,.5,1),
+              opacity  .2s ease;
+  opacity: .4;
+  transform: scale(.75);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Центральная — подсвечена */
@@ -2010,48 +2017,40 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 }
 
 .rslider-emoji {
-  font-size: 34px;
+  font-size: 32px;
   line-height: 1;
   pointer-events: none;
+  /* Убираем субпиксельные артефакты шрифтов */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .rslider-video {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   border-radius: 8px;
   pointer-events: none;
+  display: block;
 }
 
-/* Тонкая вертикальная линия-индикатор по центру */
-.rslider-center-indicator {
-  position: absolute;
-  top: 8px; bottom: 8px;
-  left: 50%; transform: translateX(-50%);
-  width: 2px;
-  border-radius: 1px;
-  background: var(--accent);
-  opacity: .35;
-  pointer-events: none;
-}
-
-/* Градиентные маски по краям — эффект fade */
+/* Градиентные маски по краям */
 .rslider-viewport::before,
 .rslider-viewport::after {
   content: '';
   position: absolute;
   top: 0; bottom: 0;
-  width: 48px;
+  width: 52px;
   z-index: 2;
   pointer-events: none;
 }
 .rslider-viewport::before {
   left: 0;
-  background: linear-gradient(to right, var(--bg2), transparent);
+  background: linear-gradient(to right, var(--bg2) 0%, transparent 100%);
 }
 .rslider-viewport::after {
   right: 0;
-  background: linear-gradient(to left, var(--bg2), transparent);
+  background: linear-gradient(to left, var(--bg2) 0%, transparent 100%);
 }
 
 /* ═══════════════════════════════════════════════════

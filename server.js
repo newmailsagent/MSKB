@@ -320,7 +320,9 @@ try {
 // Добавить реакцию no_1 если нет
 try {
   db.prepare(`INSERT OR IGNORE INTO shop_items (id,type,name,description,price_stars,preview_url,sort_order,is_active)
-    VALUES ('reaction_no_1','reaction','Реакция №1','Анимированная уникальная реакция',50,'/reactions/no_1.webm',100,1)`).run();
+    VALUES ('reaction_no_1','reaction','Нееет...','Анимированная уникальная реакция',50,'/reactions/no_1.webm',100,1)`).run();
+  // Обновить имя если уже было вставлено со старым названием
+  db.prepare(`UPDATE shop_items SET name='Нееет...' WHERE id='reaction_no_1' AND name != 'Нееет...'`).run();
 } catch(e) { console.error('[Shop] migration reaction_no_1:', e.message); }
 
 // Добавить колонку used_at в inventory (для сортировки реакций по частоте)
@@ -1072,17 +1074,22 @@ function validateNoTouch(field) {
     if (!room || !room.started || room.over) return;
     const opponent = getOpponent(room, socket.id);
     if (!opponent?.socketId) return;
-    // Разрешаем стандартные эмодзи + кастомные реакции (формат: "custom:ID")
+    // Разрешаем стандартные эмодзи + кастомные реакции (формат: "custom:reaction_no_1")
     const allowedEmoji = new Set(['👍','❤️','👎','🤬','😂']);
     let payload = null;
     if (allowedEmoji.has(emoji)) {
       payload = { type: 'emoji', value: emoji };
     } else if (typeof emoji === 'string' && emoji.startsWith('custom:')) {
-      const customId = emoji.slice(7).replace(/[^a-f0-9]/g, '');
-      if (customId.length > 0) {
-        // Проверяем что реакция существует и активна
-        const row = db.prepare(`SELECT filename FROM custom_reactions WHERE id=? AND is_active=1`).get(customId);
-        if (row) payload = { type: 'custom', id: customId, filename: row.filename };
+      // itemId = всё после 'custom:' — например 'reaction_no_1'
+      const itemId = emoji.slice(7).replace(/[^a-zA-Z0-9_]/g, '');
+      if (itemId.length > 0) {
+        const row = db.prepare(
+          `SELECT preview_url FROM shop_items WHERE id=? AND type='reaction' AND is_active=1`
+        ).get(itemId);
+        if (row) {
+          const filename = row.preview_url ? row.preview_url.replace(/^\/reactions\//, '') : null;
+          if (filename) payload = { type: 'custom', id: itemId, filename };
+        }
       }
     }
     if (!payload) return;
@@ -1397,12 +1404,21 @@ app.get('/api/admin/analytics', (req, res) => {
 
 // ─── КАСТОМНЫЕ РЕАКЦИИ ────────────────────────────────────────────────────────
 
-// GET /api/reactions — публичный список активных реакций
+// GET /api/reactions — публичный список активных реакций (из shop_items типа reaction)
 app.get('/api/reactions', (req, res) => {
   try {
     const rows = db.prepare(
-      `SELECT id, name, filename, sort_order FROM custom_reactions WHERE is_active=1 ORDER BY sort_order, created_at`
-    ).all();
+      `SELECT id, name, preview_url as filename, sort_order
+       FROM shop_items
+       WHERE type='reaction' AND is_active=1
+       ORDER BY sort_order, id`
+    ).all().map(r => ({
+      // filename: из preview_url вырезаем имя файла (/reactions/no_1.webm → no_1.webm)
+      id:         r.id,
+      name:       r.name,
+      filename:   r.filename ? r.filename.replace(/^\/reactions\//, '') : null,
+      sort_order: r.sort_order,
+    }));
     res.json({ ok: true, data: rows });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });

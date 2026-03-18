@@ -3204,7 +3204,6 @@ let _sliderOffset        = 0;   // текущий сдвиг в пикселях
 let _sliderIndex         = 0;   // логический индекс "центральной" реакции
 let _sliderDragging      = false;
 let _sliderDragStartX    = 0;
-let _sliderDragStartOff  = 0;
 let _sliderAnimating     = false;
 let _sliderPlayerReactions = []; // купленные реакции текущего игрока
 
@@ -3220,28 +3219,42 @@ const DEFAULT_REACTIONS = [
   { type: 'emoji', value: '🤬', id: 'e_angry'  },
 ];
 
-// ── Загрузка: публичный список + купленные игроком ───
+// ── Загрузка: инвентарь + публичный список реакций ──
 async function loadCustomReactions() {
   try {
     const uid = App.user?.id;
     const isGuest = !uid || uid.startsWith('guest_');
 
-    // Всегда грузим публичный список (нужен для проверки наличия)
+    // Грузим публичный каталог реакций (все активные)
     const pubRes = await fetch('/api/reactions').then(r => r.json());
     const allCustom = (pubRes.ok && pubRes.data) ? pubRes.data : [];
+    // allCustom[i].id === 'reaction_no_1', allCustom[i].filename === 'no_1.webm'
 
-    // Если авторизован — грузим купленные реакции (отсортированы по used_at)
-    let owned = [];
+    // Если авторизован — грузим инвентарь и фильтруем реакции
+    let ownedFilenames = [];
     if (!isGuest) {
       try {
-        const ownRes = await fetch(`/api/reactions/player/${uid}`).then(r => r.json());
-        if (ownRes.ok) owned = ownRes.data || [];
+        const invRes = await authFetch(`/api/inventory/${uid}`).then(r => r.json());
+        if (invRes.ok && invRes.data) {
+          // Набор купленных item_id типа reaction
+          const ownedIds = new Set(
+            (invRes.data.items || [])
+              .filter(i => i.type === 'reaction' && i.is_active !== 0)
+              .map(i => i.item_id)
+          );
+          // Фильтруем каталог — item_id === shop_items.id (напр. 'reaction_no_1')
+          ownedFilenames = allCustom.filter(r => ownedIds.has(r.id));
+        }
       } catch(e) {}
     }
 
-    _sliderPlayerReactions = owned;
+    _sliderPlayerReactions = ownedFilenames.map(r => ({
+      item_id:       r.id,       // 'reaction_no_1'
+      filename:      r.filename, // 'no_1.webm'
+      reaction_name: r.name,     // 'Нееет...'
+    }));
     _rebuildSliderItems();
-  } catch(e) {}
+  } catch(e) { console.error('[reactions] loadCustomReactions:', e); }
 }
 
 // ── Собрать итоговый список слайдера ─────────────────
@@ -3359,7 +3372,7 @@ function _selectCurrentReaction() {
     if (item.type === 'emoji') {
       WS.sendReaction(item.value);
     } else {
-      WS.sendReaction('custom:' + item.id.replace('reaction_', ''));
+      WS.sendReaction('custom:' + item.id);  // 'custom:reaction_no_1'
     }
   } else if (item.type === 'emoji' && Math.random() < 0.5) {
     const botEmojis = DEFAULT_REACTIONS.filter(r => r.type === 'emoji');
@@ -3400,21 +3413,23 @@ function initReactions() {
   }, true);
 
   // ── Drag / Swipe ─────────────────────────────────
-  const track = () => document.getElementById('rslider-track');
+  let _sliderWasDragged = false;
 
   function onDragStart(clientX) {
     if (_sliderAnimating) return;
     _sliderDragging   = true;
+    _sliderWasDragged = false;
     _sliderDragStartX = clientX;
-    _sliderDragStartOff = _sliderOffset;
-    const t = track();
+    _sliderOffset     = 0;
+    const t = document.getElementById('rslider-track');
     if (t) t.style.transition = 'none';
   }
 
   function onDragMove(clientX) {
     if (!_sliderDragging) return;
     const dx = clientX - _sliderDragStartX;
-    _sliderOffset = _sliderDragStartOff + dx;
+    if (Math.abs(dx) > 4) _sliderWasDragged = true;
+    _sliderOffset = dx;
     _applySliderTransform(false);
   }
 
@@ -3422,12 +3437,11 @@ function initReactions() {
     if (!_sliderDragging) return;
     _sliderDragging = false;
     const dx = clientX - _sliderDragStartX;
-    const steps = -Math.round((dx - _sliderOffset * 0) / SLIDER_ITEM_W);
 
-    // Snap: ближайшая ячейка
+    // Snap к ближайшей ячейке
     const snapSteps = -Math.round(dx / SLIDER_ITEM_W);
-    _sliderIndex  += snapSteps;
-    _sliderOffset  = 0;
+    _sliderIndex += snapSteps;
+    _sliderOffset = 0;
     _normalizeSliderIndex();
     _sliderAnimating = true;
     _applySliderTransform(true);
@@ -3457,28 +3471,27 @@ function initReactions() {
     if (_sliderDragging) onDragEnd(e.changedTouches[0].clientX);
   });
 
-  // Клик по ячейке: если почти не двигался — выбираем
+  // Клик по ячейке
   picker.addEventListener('click', e => {
+    // Если был реальный drag — игнорируем click (он стреляет после mouseup/touchend)
+    if (_sliderWasDragged) { _sliderWasDragged = false; return; }
+
     const cell = e.target.closest('.rslider-cell');
     if (!cell) return;
-    const dx = Math.abs(e.clientX - _sliderDragStartX);
-    if (dx > 8) return; // был свайп, не клик
 
     const clickedIdx = Number(cell.dataset.idx);
-    const centerIdx  = ((_sliderIndex % _sliderItems.length) + _sliderItems.length) % _sliderItems.length;
+    const total      = _sliderItems.length;
+    const centerIdx  = ((_sliderIndex % total) + total) % total;
 
     if (clickedIdx === centerIdx) {
-      // Центральная ячейка — отправить реакцию
       _selectCurrentReaction();
     } else {
-      // Боковая — прокрутить к ней
-      const total = _sliderItems.length;
-      // Находим кратчайший путь (по кругу)
+      // Кратчайший путь по кругу
       let diff = clickedIdx - centerIdx;
-      if (diff > total / 2)  diff -= total;
+      if (diff >  total / 2) diff -= total;
       if (diff < -total / 2) diff += total;
-      _sliderIndex  += diff;
-      _sliderOffset  = 0;
+      _sliderIndex += diff;
+      _sliderOffset = 0;
       _normalizeSliderIndex();
       _sliderAnimating = true;
       _applySliderTransform(true);
