@@ -1464,6 +1464,7 @@ app.delete('/api/admin/reactions/:id', strictLimiter, (req, res) => {
 });
 
 
+app.get('/api/stats/:id', (req, res) => {
   try {
     const data = getPlayerStats(req.params.id) || null;
     let xpInfo = null;
