@@ -3394,17 +3394,17 @@ function initReactions() {
   window.addEventListener('mousemove', e => { if (_sliderIsDragging) dragMove(e.clientX); });
   window.addEventListener('mouseup',   e => { if (_sliderIsDragging) dragEnd(e.clientX); });
 
-  // Touch
+  // Touch — touchstart на треке, но move/end на window чтобы работало за пределами пикера
   picker.addEventListener('touchstart', e => {
     if (!e.target.closest('#rslider-track')) return;
     dragStart(e.touches[0].clientX);
   }, { passive: true });
-  picker.addEventListener('touchmove', e => {
+  window.addEventListener('touchmove', e => {
     if (!_sliderIsDragging) return;
     e.preventDefault();
     dragMove(e.touches[0].clientX);
   }, { passive: false });
-  picker.addEventListener('touchend', e => {
+  window.addEventListener('touchend', e => {
     if (_sliderIsDragging) dragEnd(e.changedTouches[0].clientX);
   });
 
@@ -3685,37 +3685,54 @@ function openShopItem(itemId) {
   document.getElementById('shop-item-desc').textContent  = item.description || '';
   document.getElementById('shop-item-type-badge').textContent = ITEM_TYPE_LABELS[item.type] || item.type;
 
-  // Превью
+  // Превью — для реакций WebM
   const previewEl = document.getElementById('shop-item-preview-lg');
-  previewEl.innerHTML = item.preview_url
-    ? `<img src="${item.preview_url}" alt="${item.name}">`
-    : '🎁';
+  previewEl.innerHTML = getItemPreviewHtml(item, true);
 
   // Цена и статус
   const priceEl  = document.getElementById('shop-item-price');
   const statusEl = document.getElementById('shop-item-status');
   const btnEl    = document.getElementById('shop-item-btn');
 
-  if (equipped) {
+  // Реакции не надеваются — просто "В наличии" или "Купить"
+  if (item.type === 'reaction') {
+    if (owned) {
+      priceEl.textContent  = '';
+      statusEl.textContent = '✓ В наличии';
+      btnEl.textContent    = 'Использовать в бою';
+      btnEl.className      = 'btn btn-secondary btn-large';
+      btnEl.disabled       = true;
+    } else if (item.price_stars) {
+      priceEl.textContent  = `⭐ ${item.price_stars}`;
+      statusEl.textContent = '';
+      btnEl.textContent    = 'Купить';
+      btnEl.className      = 'btn btn-primary btn-large';
+      btnEl.disabled       = false;
+    }
+  } else if (equipped) {
     priceEl.textContent  = '';
     statusEl.textContent = '✓ Надето';
     btnEl.textContent    = 'Снять';
     btnEl.className      = 'btn btn-secondary btn-large';
+    btnEl.disabled       = false;
   } else if (owned) {
     priceEl.textContent  = '';
     statusEl.textContent = '✓ Куплено';
     btnEl.textContent    = 'Надеть';
     btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
   } else if (item.price_stars) {
     priceEl.textContent  = `⭐ ${item.price_stars}`;
     statusEl.textContent = '';
     btnEl.textContent    = 'Купить';
     btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
   } else {
     priceEl.textContent  = 'Бесплатно';
     statusEl.textContent = '';
     btnEl.textContent    = 'Получить';
     btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
   }
 
   // Кнопка назад возвращает туда откуда пришли
