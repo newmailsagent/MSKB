@@ -2764,11 +2764,23 @@ function bindNav() {
 
   // Кнопка-подсказка в расстановке
   document.getElementById('btn-placement-help')?.addEventListener('click', () => {
-    showModal(
-      'Как расставить корабли',
-      '👆 Нажми на корабль — он прикрепится к пальцу\n📍 Перетащи на поле и отпусти\n\n🔄 Двойной тап по кораблю — повернуть\n❌ Зажми корабль на поле — убрать обратно\n\n↻ Или нажми «Случайно» — расставим за тебя!',
-      [{ label: 'Понятно!', cls: 'btn-primary', action: closeModal }]
-    );
+    showModal('Как расставить корабли', '', [
+      { label: 'Понятно!', cls: 'btn-primary', action: closeModal },
+    ]);
+    const body = document.getElementById('modal-body');
+    if (body) body.innerHTML =
+      '<div class="ph-row">' +
+        '<svg class="ph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>' +
+        '<div><div class="ph-title">Поставить</div><div class="ph-desc">Нажми на корабль в доке — он прикрепится к пальцу. Затем нажми на клетку поля — корабль встанет туда.</div></div>' +
+      '</div>' +
+      '<div class="ph-row">' +
+        '<svg class="ph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-5.1"/></svg>' +
+        '<div><div class="ph-title">Повернуть</div><div class="ph-desc">Двойной тап по кораблю переключает горизонталь / вертикаль.</div></div>' +
+      '</div>' +
+      '<div class="ph-row">' +
+        '<svg class="ph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+        '<div><div class="ph-title">Убрать с поля</div><div class="ph-desc">Зажми корабль на поле — он вернётся в док.</div></div>' +
+      '</div>';
   });
 
   document.getElementById('btn-ready')?.addEventListener('click', () => {

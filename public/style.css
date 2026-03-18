@@ -838,6 +838,26 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .modal-btns { display: flex; gap: 8px; margin-top: 18px; }
 .modal-btns .btn { flex: 1; }
 
+/* Строки подсказок с SVG-иконками (расстановка кораблей) */
+.ph-row {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.ph-row:first-child { padding-top: 0; }
+.ph-row:last-child  { border-bottom: none; padding-bottom: 0; }
+.ph-icon {
+  width: 20px; height: 20px;
+  flex-shrink: 0; margin-top: 2px;
+  stroke: var(--accent); opacity: .9;
+}
+.ph-title {
+  font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 3px;
+}
+.ph-desc {
+  font-size: 12px; color: var(--hint); line-height: 1.45;
+}
+
 /* ─── УТИЛИТЫ ────────────────────────────────────── */
 .empty-state { color: var(--hint); text-align: center; padding: 32px 16px; font-size: 14px; }
 .hidden { display: none !important; }
