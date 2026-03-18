@@ -3195,176 +3195,120 @@ const Notif = {
    РЕАКЦИИ В БОЮ — бесконечный круговой слайдер
 ════════════════════════════════════════════════════ */
 
-let _reactionPickerOpen  = false;
-let _reactionTimers      = { my: null, opp: null };
-let _sliderItems         = [];   // полный список: сначала эмодзи, потом купленные кастомные
-let _sliderOffset        = 0;   // текущий сдвиг в пикселях (реальный)
-let _sliderRawIndex         = 0;   // логический индекс "центральной" реакции
-let _sliderDragging      = false;
-let _sliderDragStartX    = 0;
-let _sliderAnimating     = false;
-let _sliderPlayerReactions = []; // купленные реакции текущего игрока
+let _reactionPickerOpen    = false;
+let _reactionTimers        = { my: null, opp: null };
+let _sliderItems           = [];
+let _sliderIdx             = 0;      // центральный индекс (нормализован в [0, total))
+let _sliderDragX           = 0;      // смещение во время drag (px, 0 когда не тянем)
+let _sliderIsDragging      = false;
+let _sliderStartX          = 0;
+let _sliderWasDrag         = false;
+let _sliderBusy            = false;
+let _sliderPlayerReactions = [];
 
-const SLIDER_ITEM_W = 60;   // ширина одной ячейки px
-const SLIDER_VISIBLE = 5;   // сколько видно (нечётное — центр выделен)
+const ITEM_W    = 60;   // px на ячейку
+const SHOW_CNT  = 5;    // видимых ячеек (нечётное — центр выделен)
 
-// ── Стандартные реакции (всегда есть) ────────────────
 const DEFAULT_REACTIONS = [
-  { type: 'emoji', value: '👍', id: 'e_like'   },
-  { type: 'emoji', value: '❤️', id: 'e_heart'  },
-  { type: 'emoji', value: '😂', id: 'e_lol'    },
-  { type: 'emoji', value: '👎', id: 'e_dislike'},
-  { type: 'emoji', value: '🤬', id: 'e_angry'  },
+  { type: 'emoji', value: '👍' },
+  { type: 'emoji', value: '❤️' },
+  { type: 'emoji', value: '😂' },
+  { type: 'emoji', value: '👎' },
+  { type: 'emoji', value: '🤬' },
 ];
 
-// ── Загрузка: инвентарь + публичный список реакций ──
+// ── Загрузка реакций ─────────────────────────────────
 async function loadCustomReactions() {
   try {
-    const uid = App.user?.id;
+    const uid     = App.user?.id;
     const isGuest = !uid || uid.startsWith('guest_');
 
-    // Грузим публичный каталог реакций (все активные)
     const pubRes = await fetch('/api/reactions').then(r => r.json());
-    const allCustom = (pubRes.ok && pubRes.data) ? pubRes.data : [];
-    // allCustom[i].id === 'reaction_no_1', allCustom[i].filename === 'no_1.webm'
+    const allCat = (pubRes.ok && pubRes.data) ? pubRes.data : [];
 
-    // Если авторизован — грузим инвентарь и фильтруем реакции
-    let ownedFilenames = [];
+    let owned = [];
     if (!isGuest) {
       try {
         const invRes = await authFetch(`/api/inventory/${uid}`).then(r => r.json());
         if (invRes.ok && invRes.data) {
-          // Набор купленных item_id типа reaction
           const ownedIds = new Set(
             (invRes.data.items || [])
               .filter(i => i.type === 'reaction' && i.is_active !== 0)
               .map(i => i.item_id)
           );
-          // Фильтруем каталог — item_id === shop_items.id (напр. 'reaction_no_1')
-          ownedFilenames = allCustom.filter(r => ownedIds.has(r.id));
+          owned = allCat.filter(r => ownedIds.has(r.id));
         }
       } catch(e) {}
     }
 
-    _sliderPlayerReactions = ownedFilenames.map(r => ({
-      item_id:       r.id,       // 'reaction_no_1'
-      filename:      r.filename, // 'no_1.webm'
-      reaction_name: r.name,     // 'Нееет...'
+    _sliderPlayerReactions = owned.map(r => ({
+      item_id: r.id, filename: r.filename, reaction_name: r.name,
     }));
     _rebuildSliderItems();
-  } catch(e) { console.error('[reactions] loadCustomReactions:', e); }
+  } catch(e) {}
 }
 
-// ── Собрать итоговый список слайдера ─────────────────
 function _rebuildSliderItems() {
-  // Купленные кастомные — уже отсортированы по used_at DESC с сервера
-  const customItems = _sliderPlayerReactions.map(r => ({
-    type:     'custom',
-    id:       r.item_id,          // 'reaction_no_1'
-    filename: r.filename,
-    name:     r.reaction_name,
+  const custom = _sliderPlayerReactions.map(r => ({
+    type: 'custom', id: r.item_id, filename: r.filename, name: r.reaction_name,
   }));
-
-  _sliderItems = [...DEFAULT_REACTIONS, ...customItems];
-  _sliderRawIndex = 0;
-  _sliderOffset = 0;
-  _renderSlider(false);
+  _sliderItems = [...DEFAULT_REACTIONS, ...custom];
+  _sliderIdx   = 0;
+  _sliderDragX = 0;
+  _sliderRender();
 }
 
-// ── Рендер дорожки слайдера ──────────────────────────
-function _renderSlider() {
+// ── Рендер ───────────────────────────────────────────
+// Рисуем 3 полных копии списка чтобы прокрутка была бесконечной
+function _sliderRender() {
   const track = document.getElementById('rslider-track');
-  if (!track) return;
-
-  const total = _sliderItems.length;
-  if (total === 0) return;
-
-  // 3 копии: [copy0][copy1][copy2]
-  // _sliderRawIndex — сырой (ненормализованный), добавляем смещение copy1 как базу
-  const copies = 3;
-  const allItems = [];
-  for (let c = 0; c < copies; c++) {
-    for (let i = 0; i < total; i++) {
-      allItems.push({ item: _sliderItems[i], logicalIdx: i, copyIdx: c });
+  if (!track || !_sliderItems.length) return;
+  const N = _sliderItems.length;
+  let html = '';
+  for (let copy = 0; copy < 3; copy++) {
+    for (let i = 0; i < N; i++) {
+      const item = _sliderItems[i];
+      const inner = item.type === 'custom'
+        ? `<video src="/reactions/${item.filename}" autoplay loop muted playsinline></video>`
+        : `<span>${item.value}</span>`;
+      html += `<div class="rslider-cell" data-i="${i}">${inner}</div>`;
     }
   }
-
-  track.innerHTML = allItems.map(({ item, logicalIdx, copyIdx }) => {
-    let inner = item.type === 'custom'
-      ? `<video class="rslider-video" src="/reactions/${item.filename}" autoplay loop muted playsinline></video>`
-      : `<span class="rslider-emoji">${item.value}</span>`;
-    return `<div class="rslider-cell" data-idx="${logicalIdx}" data-copy="${copyIdx}">${inner}</div>`;
-  }).join('');
-
-  _applySliderTransform(false);
+  track.innerHTML = html;
+  _sliderPosition(false);
 }
 
 // ── Позиционирование ─────────────────────────────────
-// _sliderRawIndex — сырой индекс, не нормализованный
-// Базовая позиция: первая ячейка copy1 начинается в позиции total*SLIDER_ITEM_W от начала трека
-// Центр viewport = SLIDER_VISIBLE/2 * SLIDER_ITEM_W
-function _applySliderTransform(animate) {
+// Правильная формула:
+//   track содержит 3*N ячеек шириной ITEM_W каждая
+//   "нулевая" позиция: первая ячейка copy1 (индекс N*ITEM_W от начала) под левым краем viewport
+//   центр viewport = (SHOW_CNT/2 - 0.5) * ITEM_W = 2 * ITEM_W (при SHOW_CNT=5)
+//   translateX чтобы ячейка [_sliderIdx] из copy1 была по центру:
+//     x = -(N + _sliderIdx) * ITEM_W  +  centerOffset  +  dragOffset
+function _sliderPosition(animate) {
   const track = document.getElementById('rslider-track');
-  if (!track) return;
+  if (!track || !_sliderItems.length) return;
+  const N      = _sliderItems.length;
+  const center = Math.floor(SHOW_CNT / 2) * ITEM_W;        // 2*60 = 120px
+  const x      = Math.round(-(N + _sliderIdx) * ITEM_W + center + _sliderDragX);
 
-  const total = _sliderItems.length;
-  if (total === 0) return;
-
-  // Сдвигаем так чтобы элемент _sliderRawIndex был по центру
-  // viewport center = (SLIDER_VISIBLE/2 - 0.5) * SLIDER_ITEM_W от левого края viewport
-  // track[i] слева = i * SLIDER_ITEM_W
-  // copy1 начинается с позиции total*SLIDER_ITEM_W
-  // элемент logicalIdx в copy1 = (total + logicalIdx) * SLIDER_ITEM_W
-  // translateX чтобы этот элемент попал в центр:
-  //   x = viewportCenter - (total + rawNorm) * SLIDER_ITEM_W
-  const rawNorm = (((_sliderRawIndex % total) + total) % total);
-  const viewCenter = (SLIDER_VISIBLE / 2 - 0.5) * SLIDER_ITEM_W;
-  const xFloat = viewCenter - (total + rawNorm) * SLIDER_ITEM_W - _sliderOffset;
-  // Округляем до целых пикселей — устраняет субпиксельное размытие
-  const x = Math.round(xFloat);
-
-  track.style.transition = animate ? 'transform 0.25s cubic-bezier(0.25,1,0.5,1)' : 'none';
+  track.style.transition = animate ? 'transform .25s cubic-bezier(.3,1,.4,1)' : 'none';
   track.style.transform  = `translateX(${x}px)`;
 
   // Подсветка центра
-  const centerLogical = rawNorm;
-  track.querySelectorAll('.rslider-cell').forEach(cell => {
-    cell.classList.toggle('rslider-cell-active', Number(cell.dataset.idx) === centerLogical);
+  track.querySelectorAll('.rslider-cell').forEach(el => {
+    el.classList.toggle('rslider-cell-active', Number(el.dataset.i) === _sliderIdx);
   });
 }
 
-// ── Нормализация (тихая, без анимации) ───────────────
-function _normalizeSliderIndex() {
-  const total = _sliderItems.length;
-  if (!total) return;
-  // Приводим в [0, total) не меняя визуальную позицию
-  _sliderRawIndex = (((_sliderRawIndex % total) + total) % total);
-  // _sliderOffset уже 0 к этому моменту
-}
-
-// ── Выбрать реакцию по текущему индексу ─────────────
-function _selectCurrentReaction() {
-  _normalizeSliderIndex();
-  const item = _sliderItems[_sliderRawIndex];
+// ── Выбор реакции ────────────────────────────────────
+function _sliderSelect() {
+  const item = _sliderItems[_sliderIdx];
   if (!item) return;
-
-  // Закрыть пикер
   _closePicker();
-
-  // Показать свою реакцию
   showReactionDisplay('my', item);
 
-  // Обновить сортировку: переместить выбранную в начало
   if (item.type === 'custom') {
-    const idx = _sliderPlayerReactions.findIndex(r => r.item_id === item.id);
-    if (idx > 0) {
-      const [moved] = _sliderPlayerReactions.splice(idx, 1);
-      _sliderPlayerReactions.unshift(moved);
-      _sliderItems = [...DEFAULT_REACTIONS, ..._sliderPlayerReactions.map(r => ({
-        type: 'custom', id: r.item_id, filename: r.filename, name: r.reaction_name,
-      }))];
-    }
-    // Обновляем used_at на сервере (fire-and-forget)
     const uid = App.user?.id;
     if (uid) fetch('/api/reaction/use', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -3372,17 +3316,11 @@ function _selectCurrentReaction() {
     }).catch(() => {});
   }
 
-  // Отправить сопернику
   if (Game.mode === 'online') {
-    if (item.type === 'emoji') {
-      WS.sendReaction(item.value);
-    } else {
-      WS.sendReaction('custom:' + item.id);  // 'custom:reaction_no_1'
-    }
+    WS.sendReaction(item.type === 'emoji' ? item.value : 'custom:' + item.id);
   } else if (item.type === 'emoji' && Math.random() < 0.5) {
-    const botEmojis = DEFAULT_REACTIONS.filter(r => r.type === 'emoji');
-    const bot = botEmojis[Math.floor(Math.random() * botEmojis.length)];
-    setTimeout(() => showReactionDisplay('opp', bot), 800 + Math.random() * 1500);
+    const b = DEFAULT_REACTIONS[Math.floor(Math.random() * DEFAULT_REACTIONS.length)];
+    setTimeout(() => showReactionDisplay('opp', b), 900 + Math.random() * 1400);
   }
 }
 
@@ -3392,130 +3330,108 @@ function _closePicker() {
   document.getElementById('reaction-trigger-btn')?.classList.remove('open');
 }
 
-// ── Инициализация слайдера ───────────────────────────
+// ── Инициализация ────────────────────────────────────
 function initReactions() {
-  const triggerBtn = document.getElementById('reaction-trigger-btn');
-  const picker     = document.getElementById('reaction-picker');
-  if (!triggerBtn || !picker) return;
+  const btn    = document.getElementById('reaction-trigger-btn');
+  const picker = document.getElementById('reaction-picker');
+  if (!btn || !picker) return;
 
-  // Открыть/закрыть
-  triggerBtn.addEventListener('click', e => {
+  // Открыть / закрыть
+  btn.addEventListener('click', e => {
     e.stopPropagation();
     _reactionPickerOpen = !_reactionPickerOpen;
     picker.classList.toggle('hidden', !_reactionPickerOpen);
-    triggerBtn.classList.toggle('open', _reactionPickerOpen);
+    btn.classList.toggle('open', _reactionPickerOpen);
     if (_reactionPickerOpen) {
-      _normalizeSliderIndex();
-      _renderSlider();
-      picker.querySelectorAll('video').forEach(v => { try { v.play(); } catch(ex) {} });
+      _sliderDragX = 0;
+      _sliderRender();
     }
   });
 
-  // Закрыть при клике вне
   document.addEventListener('click', e => {
     if (!_reactionPickerOpen) return;
-    if (picker.contains(e.target) || triggerBtn.contains(e.target)) return;
+    if (picker.contains(e.target) || btn.contains(e.target)) return;
     _closePicker();
   }, true);
 
-  // ── Drag / Swipe ─────────────────────────────────
-  let _sliderWasDragged = false;
-
-  function onDragStart(clientX) {
-    if (_sliderAnimating) return;
-    _sliderDragging   = true;
-    _sliderWasDragged = false;
-    _sliderDragStartX = clientX;
-    _sliderOffset     = 0;
+  // ── Drag / Swipe ─────────────────────────────────────
+  function dragStart(x) {
+    if (_sliderBusy) return;
+    _sliderIsDragging = true;
+    _sliderWasDrag    = false;
+    _sliderStartX     = x;
+    _sliderDragX      = 0;
     const t = document.getElementById('rslider-track');
     if (t) t.style.transition = 'none';
   }
 
-  function onDragMove(clientX) {
-    if (!_sliderDragging) return;
-    const dx = clientX - _sliderDragStartX;
-    if (Math.abs(dx) > 4) _sliderWasDragged = true;
-    _sliderOffset = dx;
-    _applySliderTransform(false);
+  function dragMove(x) {
+    if (!_sliderIsDragging) return;
+    _sliderDragX = x - _sliderStartX;
+    if (Math.abs(_sliderDragX) > 5) _sliderWasDrag = true;
+    _sliderPosition(false);
   }
 
-  function onDragEnd(clientX) {
-    if (!_sliderDragging) return;
-    _sliderDragging = false;
-    const dx = clientX - _sliderDragStartX;
-
-    // Snap к ближайшей ячейке — НЕ нормализуем чтобы не было телепорта
-    const snapSteps = -Math.round(dx / SLIDER_ITEM_W);
-    _sliderRawIndex += snapSteps;
-    _sliderOffset = 0;
-    _sliderAnimating = true;
-    _applySliderTransform(true);
-    setTimeout(() => {
-      _sliderAnimating = false;
-      // Тихо нормализуем ПОСЛЕ анимации — трек мгновенно прыгает в copy1
-      // но пикер может быть уже закрыт, поэтому никто не заметит
-      _normalizeSliderIndex();
-      _applySliderTransform(false);
-    }, 280);
+  function dragEnd(x) {
+    if (!_sliderIsDragging) return;
+    _sliderIsDragging = false;
+    const dx       = x - _sliderStartX;
+    const steps    = -Math.round(dx / ITEM_W);
+    const N        = _sliderItems.length;
+    _sliderIdx     = ((_sliderIdx + steps) % N + N) % N;
+    _sliderDragX   = 0;
+    _sliderBusy    = true;
+    _sliderPosition(true);
+    setTimeout(() => { _sliderBusy = false; }, 280);
   }
 
   // Mouse
   picker.addEventListener('mousedown', e => {
     if (!e.target.closest('#rslider-track')) return;
     e.preventDefault();
-    onDragStart(e.clientX);
+    dragStart(e.clientX);
   });
-  window.addEventListener('mousemove', e => { if (_sliderDragging) onDragMove(e.clientX); });
-  window.addEventListener('mouseup',   e => { if (_sliderDragging) onDragEnd(e.clientX); });
+  window.addEventListener('mousemove', e => { if (_sliderIsDragging) dragMove(e.clientX); });
+  window.addEventListener('mouseup',   e => { if (_sliderIsDragging) dragEnd(e.clientX); });
 
   // Touch
   picker.addEventListener('touchstart', e => {
     if (!e.target.closest('#rslider-track')) return;
-    onDragStart(e.touches[0].clientX);
+    dragStart(e.touches[0].clientX);
   }, { passive: true });
   picker.addEventListener('touchmove', e => {
-    if (!_sliderDragging) return;
+    if (!_sliderIsDragging) return;
     e.preventDefault();
-    onDragMove(e.touches[0].clientX);
+    dragMove(e.touches[0].clientX);
   }, { passive: false });
   picker.addEventListener('touchend', e => {
-    if (_sliderDragging) onDragEnd(e.changedTouches[0].clientX);
+    if (_sliderIsDragging) dragEnd(e.changedTouches[0].clientX);
   });
 
-  // Клик по ячейке
+  // Клик: центральная — отправить, боковая — прокрутить
   picker.addEventListener('click', e => {
-    // Если был реальный drag — игнорируем click (он стреляет после mouseup/touchend)
-    if (_sliderWasDragged) { _sliderWasDragged = false; return; }
-
+    if (_sliderWasDrag) { _sliderWasDrag = false; return; }
     const cell = e.target.closest('.rslider-cell');
     if (!cell) return;
-
-    const clickedIdx = Number(cell.dataset.idx);
-    const total      = _sliderItems.length;
-    const centerIdx  = ((_sliderRawIndex % total) + total) % total;
-
-    if (clickedIdx === centerIdx) {
-      _selectCurrentReaction();
+    const clicked = Number(cell.dataset.i);
+    const N       = _sliderItems.length;
+    if (clicked === _sliderIdx) {
+      _sliderSelect();
     } else {
-      // Кратчайший путь по кругу
-      let diff = clickedIdx - centerIdx;
-      if (diff >  total / 2) diff -= total;
-      if (diff < -total / 2) diff += total;
-      _sliderRawIndex += diff;
-      _sliderOffset = 0;
-      _sliderAnimating = true;
-      _applySliderTransform(true);
-      setTimeout(() => {
-        _sliderAnimating = false;
-        _normalizeSliderIndex();
-        _applySliderTransform(false);
-      }, 280);
+      let diff = clicked - _sliderIdx;
+      if (diff >  N / 2) diff -= N;
+      if (diff < -N / 2) diff += N;
+      _sliderIdx   = ((_sliderIdx + diff) % N + N) % N;
+      _sliderDragX = 0;
+      _sliderBusy  = true;
+      _sliderPosition(true);
+      setTimeout(() => { _sliderBusy = false; }, 280);
     }
   });
 
-  // Первоначальный рендер (без кастомных — они придут позже)
   _rebuildSliderItems();
 }
+
 
 // payload: { type: 'emoji', value } | { type: 'custom', id, filename }
 function showReactionDisplay(side, payload) {

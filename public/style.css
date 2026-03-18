@@ -1972,14 +1972,27 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 }
 
 /* Видимое окно слайдера (300px = 5 × 60px) */
+/* Видимое окно слайдера (300px = 5 × 60px) */
 .rslider-viewport {
   position: relative;
   width: 300px;
   height: 60px;
   overflow: hidden;
-  /* Аппаратное ускорение для плавных краёв */
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
+  /* Плавное затухание по краям через CSS-маску */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 20%,
+    black 80%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 20%,
+    black 80%,
+    transparent 100%
+  );
 }
 
 /* Плавающая дорожка */
@@ -1989,11 +2002,6 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   height: 100%;
   will-change: transform;
   cursor: grab;
-  /* Фиксируем на отдельном слое — убирает пиксельность */
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
 }
 .rslider-track:active { cursor: grabbing; }
 
@@ -2006,59 +2014,32 @@ body.theme_black .profile-tabs     { background-color: #000000; }
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  transition: transform .2s cubic-bezier(.25,1,.5,1),
-              opacity  .2s ease;
-  opacity: .4;
-  transform: scale(.75);
+  transition: transform .2s cubic-bezier(.25,1,.5,1), opacity .2s ease;
+  opacity: .38;
+  transform: scale(.72);
   user-select: none;
   -webkit-user-select: none;
 }
-
-/* Центральная — подсвечена */
 .rslider-cell.rslider-cell-active {
   opacity: 1;
   transform: scale(1);
   background: rgba(255,255,255,.07);
 }
-
-.rslider-emoji {
-  font-size: 32px;
+.rslider-cell span {
+  font-size: 30px;
   line-height: 1;
   pointer-events: none;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  display: block;
 }
-
-.rslider-video {
-  width: 40px;
-  height: 40px;
+.rslider-cell video {
+  width: 38px;
+  height: 38px;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: 6px;
   pointer-events: none;
   display: block;
 }
 
-/* Градиентные маски — плавное затухание по краям */
-.rslider-viewport::before,
-.rslider-viewport::after {
-  content: '';
-  position: absolute;
-  top: 0; bottom: 0;
-  width: 60px;
-  z-index: 2;
-  pointer-events: none;
-  /* Маска на отдельном слое чтобы не мешала track */
-  transform: translateZ(1px);
-  -webkit-transform: translateZ(1px);
-}
-.rslider-viewport::before {
-  left: 0;
-  background: linear-gradient(90deg, var(--bg2) 0%, transparent 100%);
-}
-.rslider-viewport::after {
-  right: 0;
-  background: linear-gradient(270deg, var(--bg2) 0%, transparent 100%);
-}
 
 /* ═══════════════════════════════════════════════════
    ЧЁРНАЯ ТЕМА: рамки + реакции + футер
@@ -2066,8 +2047,6 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 
 body.theme_black .reaction-trigger-btn { background: #0a0a0a; border-color: #303030; }
 body.theme_black .reaction-picker      { background: #0d0d0d; border-color: #2a2a2a; }
-body.theme_black .rslider-viewport::before { background: linear-gradient(90deg,  #0d0d0d 0%, transparent 100%); }
-body.theme_black .rslider-viewport::after  { background: linear-gradient(270deg, #0d0d0d 0%, transparent 100%); }
 body.theme_black .game-footer-v2       { border-top-color: #1a1a1a; }
 body.theme_black .reactions-zone       { border-top-color: #1a1a1a; }
 
