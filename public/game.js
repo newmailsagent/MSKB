@@ -340,20 +340,21 @@ function initUser() {
   }
 
   if (tgUser) {
-    // Всегда целое число — TG иногда отдаёт float (364966070.0)
     const cleanId = String(parseInt(tgUser.id, 10));
+    // photo_url не всегда приходит — берём из localStorage если TG не отдал
+    const saved   = loadJSON('bs_user', null);
+    const savedPhoto = (saved && saved.id === cleanId) ? saved.photo : null;
     App.user = {
       id:       cleanId,
       name:     tgUser.first_name || tgUser.username || 'Игрок',
       username: tgUser.username ? '@' + tgUser.username : '',
-      photo:    tgUser.photo_url || null,
+      photo:    tgUser.photo_url || savedPhoto || null,
       isGuest:  false,
     };
   } else {
-    // Не в TG — всегда гость
     const saved = loadJSON('bs_user', null);
     if (saved?.isGuest) {
-      App.user = saved; // сохраняем guest_id
+      App.user = saved;
     } else {
       App.user = { id: 'guest_' + Date.now(), name: 'Гость', username: '', photo: null, isGuest: true };
     }
@@ -2460,13 +2461,10 @@ function updateMenuLevel() {
   // Синхронизируем цвет рамки аватара на главной с цветом в профиле
   const avatar = document.getElementById('user-avatar');
   if (avatar) {
-    avatar.style.borderColor = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
-    // Добавляем 2px border если его нет
-    if (!avatar.style.border || avatar.style.border === '') {
-      avatar.style.border = '2px solid ' + (LEVEL_FRAME_COLORS[prog.level] || '#607d8b');
-    } else {
-      avatar.style.borderColor = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
-    }
+    const color = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
+    avatar.style.borderColor = color;
+    avatar.style.borderWidth = '2px';
+    avatar.style.borderStyle = 'solid';
   }
 }
 
@@ -3201,7 +3199,7 @@ let _reactionPickerOpen  = false;
 let _reactionTimers      = { my: null, opp: null };
 let _sliderItems         = [];   // полный список: сначала эмодзи, потом купленные кастомные
 let _sliderOffset        = 0;   // текущий сдвиг в пикселях (реальный)
-let _sliderIndex         = 0;   // логический индекс "центральной" реакции
+let _sliderRawIndex         = 0;   // логический индекс "центральной" реакции
 let _sliderDragging      = false;
 let _sliderDragStartX    = 0;
 let _sliderAnimating     = false;
@@ -3268,44 +3266,43 @@ function _rebuildSliderItems() {
   }));
 
   _sliderItems = [...DEFAULT_REACTIONS, ...customItems];
-  _sliderIndex = 0;
+  _sliderRawIndex = 0;
   _sliderOffset = 0;
   _renderSlider(false);
 }
 
 // ── Рендер дорожки слайдера ──────────────────────────
-function _renderSlider(animate) {
+function _renderSlider() {
   const track = document.getElementById('rslider-track');
   if (!track) return;
 
   const total = _sliderItems.length;
   if (total === 0) return;
 
-  // Рисуем 3 копии для иллюзии бесконечности: [...items, ...items, ...items]
-  // Видимое окно: SLIDER_VISIBLE ячеек, центральная = выбранная
+  // 3 копии: [copy0][copy1][copy2]
+  // _sliderRawIndex — сырой (ненормализованный), добавляем смещение copy1 как базу
   const copies = 3;
   const allItems = [];
   for (let c = 0; c < copies; c++) {
     for (let i = 0; i < total; i++) {
-      allItems.push({ item: _sliderItems[i], gi: c * total + i });
+      allItems.push({ item: _sliderItems[i], logicalIdx: i, copyIdx: c });
     }
   }
 
-  track.innerHTML = allItems.map(({ item, gi }) => {
-    let inner = '';
-    if (item.type === 'custom') {
-      inner = `<video class="rslider-video" src="/reactions/${item.filename}" autoplay loop muted playsinline></video>`;
-    } else {
-      inner = `<span class="rslider-emoji">${item.value}</span>`;
-    }
-    return `<div class="rslider-cell" data-gi="${gi}" data-idx="${gi % total}">${inner}</div>`;
+  track.innerHTML = allItems.map(({ item, logicalIdx, copyIdx }) => {
+    let inner = item.type === 'custom'
+      ? `<video class="rslider-video" src="/reactions/${item.filename}" autoplay loop muted playsinline></video>`
+      : `<span class="rslider-emoji">${item.value}</span>`;
+    return `<div class="rslider-cell" data-idx="${logicalIdx}" data-copy="${copyIdx}">${inner}</div>`;
   }).join('');
 
-  track.style.transition = 'none';
   _applySliderTransform(false);
 }
 
 // ── Позиционирование ─────────────────────────────────
+// _sliderRawIndex — сырой индекс, не нормализованный
+// Базовая позиция: первая ячейка copy1 начинается в позиции total*SLIDER_ITEM_W от начала трека
+// Центр viewport = SLIDER_VISIBLE/2 * SLIDER_ITEM_W
 function _applySliderTransform(animate) {
   const track = document.getElementById('rslider-track');
   if (!track) return;
@@ -3313,34 +3310,42 @@ function _applySliderTransform(animate) {
   const total = _sliderItems.length;
   if (total === 0) return;
 
-  // Центр второй копии = total * SLIDER_ITEM_W
-  // Центральная ячейка видна в середине окна
-  const containerW = SLIDER_ITEM_W * SLIDER_VISIBLE;
-  const centerOff  = containerW / 2 - SLIDER_ITEM_W / 2;
-  const baseX      = -(total * SLIDER_ITEM_W) + centerOff;
-  const x          = baseX - _sliderIndex * SLIDER_ITEM_W + _sliderOffset;
+  // Сдвигаем так чтобы элемент _sliderRawIndex был по центру
+  // viewport center = (SLIDER_VISIBLE/2 - 0.5) * SLIDER_ITEM_W от левого края viewport
+  // track[i] слева = i * SLIDER_ITEM_W
+  // copy1 начинается с позиции total*SLIDER_ITEM_W
+  // элемент logicalIdx в copy1 = (total + logicalIdx) * SLIDER_ITEM_W
+  // translateX чтобы этот элемент попал в центр:
+  //   x = viewportCenter - (total + rawNorm) * SLIDER_ITEM_W
+  const rawNorm = (((_sliderRawIndex % total) + total) % total);
+  const viewCenter = (SLIDER_VISIBLE / 2 - 0.5) * SLIDER_ITEM_W;
+  const xFloat = viewCenter - (total + rawNorm) * SLIDER_ITEM_W - _sliderOffset;
+  // Округляем до целых пикселей — устраняет субпиксельное размытие
+  const x = Math.round(xFloat);
 
-  track.style.transition = animate ? 'transform 0.28s cubic-bezier(0.25,1,0.5,1)' : 'none';
+  track.style.transition = animate ? 'transform 0.25s cubic-bezier(0.25,1,0.5,1)' : 'none';
   track.style.transform  = `translateX(${x}px)`;
 
   // Подсветка центра
-  const centerIdx = ((_sliderIndex % total) + total) % total;
+  const centerLogical = rawNorm;
   track.querySelectorAll('.rslider-cell').forEach(cell => {
-    cell.classList.toggle('rslider-cell-active', Number(cell.dataset.idx) === centerIdx);
+    cell.classList.toggle('rslider-cell-active', Number(cell.dataset.idx) === centerLogical);
   });
 }
 
-// ── Нормализация индекса (wrap-around) ───────────────
+// ── Нормализация (тихая, без анимации) ───────────────
 function _normalizeSliderIndex() {
   const total = _sliderItems.length;
   if (!total) return;
-  _sliderIndex = ((_sliderIndex % total) + total) % total;
+  // Приводим в [0, total) не меняя визуальную позицию
+  _sliderRawIndex = (((_sliderRawIndex % total) + total) % total);
+  // _sliderOffset уже 0 к этому моменту
 }
 
 // ── Выбрать реакцию по текущему индексу ─────────────
 function _selectCurrentReaction() {
   _normalizeSliderIndex();
-  const item = _sliderItems[_sliderIndex];
+  const item = _sliderItems[_sliderRawIndex];
   if (!item) return;
 
   // Закрыть пикер
@@ -3400,7 +3405,8 @@ function initReactions() {
     picker.classList.toggle('hidden', !_reactionPickerOpen);
     triggerBtn.classList.toggle('open', _reactionPickerOpen);
     if (_reactionPickerOpen) {
-      _renderSlider(false);
+      _normalizeSliderIndex();
+      _renderSlider();
       picker.querySelectorAll('video').forEach(v => { try { v.play(); } catch(ex) {} });
     }
   });
@@ -3438,14 +3444,19 @@ function initReactions() {
     _sliderDragging = false;
     const dx = clientX - _sliderDragStartX;
 
-    // Snap к ближайшей ячейке
+    // Snap к ближайшей ячейке — НЕ нормализуем чтобы не было телепорта
     const snapSteps = -Math.round(dx / SLIDER_ITEM_W);
-    _sliderIndex += snapSteps;
+    _sliderRawIndex += snapSteps;
     _sliderOffset = 0;
-    _normalizeSliderIndex();
     _sliderAnimating = true;
     _applySliderTransform(true);
-    setTimeout(() => { _sliderAnimating = false; }, 300);
+    setTimeout(() => {
+      _sliderAnimating = false;
+      // Тихо нормализуем ПОСЛЕ анимации — трек мгновенно прыгает в copy1
+      // но пикер может быть уже закрыт, поэтому никто не заметит
+      _normalizeSliderIndex();
+      _applySliderTransform(false);
+    }, 280);
   }
 
   // Mouse
@@ -3481,7 +3492,7 @@ function initReactions() {
 
     const clickedIdx = Number(cell.dataset.idx);
     const total      = _sliderItems.length;
-    const centerIdx  = ((_sliderIndex % total) + total) % total;
+    const centerIdx  = ((_sliderRawIndex % total) + total) % total;
 
     if (clickedIdx === centerIdx) {
       _selectCurrentReaction();
@@ -3490,12 +3501,15 @@ function initReactions() {
       let diff = clickedIdx - centerIdx;
       if (diff >  total / 2) diff -= total;
       if (diff < -total / 2) diff += total;
-      _sliderIndex += diff;
+      _sliderRawIndex += diff;
       _sliderOffset = 0;
-      _normalizeSliderIndex();
       _sliderAnimating = true;
       _applySliderTransform(true);
-      setTimeout(() => { _sliderAnimating = false; }, 300);
+      setTimeout(() => {
+        _sliderAnimating = false;
+        _normalizeSliderIndex();
+        _applySliderTransform(false);
+      }, 280);
     }
   });
 
