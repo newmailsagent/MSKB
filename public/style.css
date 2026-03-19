@@ -628,7 +628,8 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 }
 .shop-grid {
   display: grid; grid-template-columns: 1fr 1fr;
-  gap: 12px; padding: 8px 16px 32px; overflow-y: auto;
+  gap: 12px; padding: 8px 16px 32px;
+  overflow-y: auto; flex: 1; align-content: start;
 }
 .shop-card {
   background: var(--bg2); border-radius: 12px;
@@ -636,6 +637,8 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   overflow: hidden; cursor: pointer;
   transition: border-color .15s, transform .15s;
   display: flex; flex-direction: column;
+  height: auto; /* ensure body is never clipped */
+  min-height: 0;
 }
 .shop-card:active { transform: scale(.97); border-color: rgba(255,255,255,.2); }
 .shop-card.owned { border-color: rgba(255,255,255,.25); }

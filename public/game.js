@@ -1,3 +1,4 @@
+/* BTESHIP_VERSION: ACHIEVEMENTS_V3 */
 /* ═══════════════════════════════════════════════════════════════
    МОРСКОЙ БОЙ — game.js  (переписан начисто)
    Фиксы: WS-флоу, десктоп, бургер, расстановка, поле
@@ -4574,6 +4575,7 @@ function initInventory() {
 // Переопределяем renderShopGrid здесь — после объявления FAKE_PREVIEWS и getItemPreviewHtml
 // Это гарантирует что используется правильная версия с поддержкой звания и getItemPreviewHtml
 renderShopGrid = function() {
+  console.log('[SHOP] renderShopGrid called, items:', _shopItems?.length, 'version: V3');
   const grid = document.getElementById('shop-grid');
   if (!grid) return;
 
