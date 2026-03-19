@@ -231,221 +231,6 @@ db.exec(`
   );
 `);
 
-// ─── СИСТЕМА ДОСТИЖЕНИЙ И РЕФЕРАЛОВ ──────────────────────────────────────────
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS achievements_progress (
-    user_id        TEXT NOT NULL,
-    achievement_id TEXT NOT NULL,
-    progress       INTEGER DEFAULT 0,
-    completed_at   INTEGER,          -- timestamp первого выполнения (для одноразовых)
-    times_done     INTEGER DEFAULT 0, -- сколько раз выполнено (для пополняемых)
-    notified       INTEGER DEFAULT 0, -- 1 = игрок видел уведомление
-    PRIMARY KEY (user_id, achievement_id)
-  );
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS referrals (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    inviter_id     TEXT NOT NULL,    -- кто пригласил
-    invitee_id     TEXT NOT NULL,    -- кого пригласили
-    battles_done   INTEGER DEFAULT 0, -- сколько боёв сыграл приглашённый
-    qualified      INTEGER DEFAULT 0, -- 1 = выполнил условие (>=3 боёв)
-    created_at     INTEGER DEFAULT (strftime('%s','now')),
-    UNIQUE(invitee_id)               -- игрок может быть приглашён только один раз
-  );
-`);
-
-// Определения всех достижений
-const ACHIEVEMENTS = [
-  // — С наградой (звание), ограниченные —
-  { id: 'fleet_recruit',     title: 'Новобранец флота',    desc: 'Сыграть 10 боёв',                goal: 10,   type: 'limited', reward: 'title_fleet_recruit',     countFn: 'total_battles' },
-  { id: 'exp_tester',        title: 'Опытный испытатель',  desc: 'Сыграть 50 боёв',                goal: 50,   type: 'limited', reward: 'title_exp_tester',        countFn: 'total_battles' },
-  { id: 'admiral',           title: 'Адмирал',             desc: 'Сыграть 200 боёв',               goal: 200,  type: 'limited', reward: 'title_admiral',           countFn: 'total_battles' },
-  { id: 'marshal',           title: 'Маршал',              desc: 'Сыграть 500 боёв',               goal: 500,  type: 'limited', reward: 'title_marshal',           countFn: 'total_battles' },
-  { id: 'real_intel',        title: 'Реальный интеллект',  desc: 'Выиграть 20 боёв против бота',   goal: 20,   type: 'limited', reward: 'title_real_intel',        countFn: 'bot_wins' },
-  { id: 'star_scout',        title: 'Звёздный разведчик',  desc: 'Сыграть 30 случайных боёв',      goal: 30,   type: 'limited', reward: 'title_star_scout',        countFn: 'random_battles' },
-  { id: 'anon_hunter',       title: 'Анонимный охотник',   desc: 'Сыграть 100 случайных боёв',     goal: 100,  type: 'limited', reward: 'title_anon_hunter',       countFn: 'random_battles' },
-  { id: 'friendly_fleet',    title: 'Дружеский флот',      desc: 'Сыграть 10 боёв с другом',       goal: 10,   type: 'limited', reward: 'title_friendly_fleet',    countFn: 'friend_battles' },
-  { id: 'captain_tester',    title: 'Капитан-испытатель',  desc: 'Сыграть 30 боёв с друзьями',     goal: 30,   type: 'limited', reward: 'title_captain_tester',    countFn: 'friend_battles' },
-  { id: 'duelist',           title: 'Дуэлянт',             desc: 'Сыграть 100 боёв с друзьями',    goal: 100,  type: 'limited', reward: 'title_duelist',           countFn: 'friend_battles' },
-  { id: 'sea_strategist',    title: 'Морской стратег',     desc: '50 побед в любых режимах',       goal: 50,   type: 'limited', reward: 'title_sea_strategist',    countFn: 'total_wins' },
-  { id: 'first_time',        title: 'Время первых',        desc: 'Занять первую строчку рейтинга', goal: 1,    type: 'limited', reward: 'title_first_time',        countFn: 'rating_top1' },
-  { id: 'determined',        title: 'Целеустремлённый',    desc: 'Достичь 30 уровня',              goal: 1,    type: 'limited', reward: 'title_determined',        countFn: 'level_30' },
-  { id: 'collector',         title: 'Коллекционер',        desc: 'Купить три цветовые схемы',      goal: 3,    type: 'limited', reward: 'title_collector',         countFn: 'themes_bought' },
-  { id: 'recruiter',         title: 'Рекрутер',            desc: 'Пригласить 3 новых игроков',     goal: 3,    type: 'limited', reward: 'title_recruiter',         countFn: 'referrals_qualified', hasRefPage: true },
-  { id: 'space_navigator',   title: 'Космический навигатор',desc:'Пригласить 10 новых игроков',    goal: 10,   type: 'limited', reward: 'title_space_navigator',   countFn: 'referrals_qualified', hasRefPage: true },
-  { id: 'engineer',          title: 'Инженер',             desc: 'Доступно администраторам',       goal: 1,    type: 'limited', reward: 'title_engineer',          countFn: 'admin_only' },
-  // — Без награды, пополняемые —
-  { id: 'first_exp',         title: 'Первый опыт',         desc: 'Одна победа (получается один раз)',goal:1,   type: 'once',    reward: null,                      countFn: 'total_wins' },
-  { id: 'cold_calc',         title: 'Холодный расчёт',     desc: 'Обойти соперника по точности',   goal: null, type: 'infinite',reward: null,                      countFn: 'acc_win' },
-  { id: 'last_chance',       title: 'Последний шанс',      desc: 'Выиграть, имея один корабль',    goal: null, type: 'infinite',reward: null,                      countFn: 'last_ship_win' },
-];
-
-// Звания за достижения и покупные — добавляем в shop_items
-const ACHIEVEMENT_TITLES = [
-  { id: 'title_fleet_recruit',   name: 'Новобранец флота',    rank: 'initial' },
-  { id: 'title_exp_tester',      name: 'Опытный испытатель',  rank: 'medium' },
-  { id: 'title_admiral',         name: 'Адмирал',             rank: 'high' },
-  { id: 'title_marshal',         name: 'Маршал',              rank: 'prestige' },
-  { id: 'title_real_intel',      name: 'Реальный интеллект',  rank: 'initial' },
-  { id: 'title_star_scout',      name: 'Звёздный разведчик',  rank: 'medium' },
-  { id: 'title_anon_hunter',     name: 'Анонимный охотник',   rank: 'prestige' },
-  { id: 'title_friendly_fleet',  name: 'Дружеский флот',      rank: 'initial' },
-  { id: 'title_captain_tester',  name: 'Капитан-испытатель',  rank: 'medium' },
-  { id: 'title_duelist',         name: 'Дуэлянт',             rank: 'prestige' },
-  { id: 'title_sea_strategist',  name: 'Морской стратег',     rank: 'high' },
-  { id: 'title_first_time',      name: 'Время первых',        rank: 'medium' },
-  { id: 'title_determined',      name: 'Целеустремлённый',    rank: 'prestige' },
-  { id: 'title_collector',       name: 'Коллекционер',        rank: 'high' },
-  { id: 'title_recruiter',       name: 'Рекрутер',            rank: 'medium' },
-  { id: 'title_space_navigator', name: 'Космический навигатор',rank: 'high' },
-  { id: 'title_engineer',        name: 'Инженер',             rank: 'high' },
-  // Покупные
-  { id: 'title_cyber_pirate',    name: 'Кибер-пират',         rank: 'medium',   price: 50 },
-  { id: 'title_patron',          name: 'Меценат',             rank: 'prestige', price: 1000 },
-  { id: 'title_davy_jones',      name: 'Дейви Джонс',         rank: 'medium',   price: 50 },
-  { id: 'title_four_deck',       name: 'Четырёхпалубный',     rank: 'high',     price: 100 },
-  { id: 'title_commander',       name: 'Главнокомандующий',   rank: 'prestige', price: 2500 },
-];
-
-// Специальная карточка "По умолчанию"
-try {
-  db.prepare(`INSERT OR IGNORE INTO shop_items (id,type,name,description,price_stars,sort_order,is_active)
-    VALUES ('title_default','title','По умолчанию','Звание соответствует вашему уровню',NULL,0,1)`).run();
-} catch(e) {}
-
-// Миграция: добавляем колонку rank если нет
-try { db.exec(`ALTER TABLE shop_items ADD COLUMN title_rank TEXT`); } catch(e) {}
-
-// Вставляем все звания
-for (const t of ACHIEVEMENT_TITLES) {
-  try {
-    db.prepare(`INSERT OR IGNORE INTO shop_items (id,type,name,price_stars,sort_order,is_active,title_rank)
-      VALUES (?,?,?,?,?,1,?)`).run(
-        t.id, 'title', t.name, t.price || null, 100, t.rank
-    );
-    // Обновляем rank если уже есть
-    db.prepare(`UPDATE shop_items SET title_rank=? WHERE id=?`).run(t.rank, t.id);
-  } catch(e) { console.error('[Titles] migration:', t.id, e.message); }
-}
-
-// Хелпер: вернуть цвет звания по рангу
-function titleRankColor(rank) {
-  switch(rank) {
-    case 'prestige': return '#A100FF';
-    case 'high':     return '#F30000';
-    case 'medium':   return '#0059FF';
-    case 'initial':  return '#00CA54';
-    default:         return '#FFFFFF';
-  }
-}
-
-// Хелпер: получить активное звание игрока (id + name + rank + color)
-function getActiveTitle(userId) {
-  const eq = db.prepare(`SELECT item_id FROM equipped WHERE user_id=? AND slot='title'`).get(userId);
-  if (!eq || eq.item_id === 'title_default') return null; // null = "по умолчанию"
-  const item = db.prepare(`SELECT name, title_rank FROM shop_items WHERE id=?`).get(eq.item_id);
-  if (!item) return null;
-  return { id: eq.item_id, name: item.name, rank: item.title_rank, color: titleRankColor(item.title_rank) };
-}
-
-// Хелпер: обновить прогресс достижения и выдать награду если нужно
-function updateAchievementProgress(userId, countFn, increment = 1, extraData = {}) {
-  if (!userId || userId.startsWith('guest_')) return [];
-  const newAchievements = [];
-
-  const relevant = ACHIEVEMENTS.filter(a => a.countFn === countFn);
-  for (const ach of relevant) {
-    const row = db.prepare(`SELECT * FROM achievements_progress WHERE user_id=? AND achievement_id=?`).get(userId, ach.id);
-
-    if (ach.type === 'infinite') {
-      // Пополняемые: просто считаем
-      if (row) {
-        db.prepare(`UPDATE achievements_progress SET times_done=times_done+?, notified=0 WHERE user_id=? AND achievement_id=?`).run(increment, userId, ach.id);
-      } else {
-        db.prepare(`INSERT INTO achievements_progress (user_id,achievement_id,progress,times_done,notified) VALUES (?,?,0,?,0)`).run(userId, ach.id, increment);
-      }
-      newAchievements.push({ id: ach.id, title: ach.title, type: 'infinite' });
-      continue;
-    }
-
-    if (ach.type === 'once') {
-      if (row?.completed_at) continue; // уже выполнено
-      const newProg = (row?.progress || 0) + increment;
-      if (newProg >= ach.goal) {
-        if (row) {
-          db.prepare(`UPDATE achievements_progress SET progress=?,completed_at=?,notified=0 WHERE user_id=? AND achievement_id=?`).run(ach.goal, Math.floor(Date.now()/1000), userId, ach.id);
-        } else {
-          db.prepare(`INSERT INTO achievements_progress (user_id,achievement_id,progress,completed_at,notified) VALUES (?,?,?,?,0)`).run(userId, ach.id, ach.goal, Math.floor(Date.now()/1000));
-        }
-        newAchievements.push({ id: ach.id, title: ach.title, type: 'once' });
-      } else {
-        if (row) {
-          db.prepare(`UPDATE achievements_progress SET progress=? WHERE user_id=? AND achievement_id=?`).run(newProg, userId, ach.id);
-        } else {
-          db.prepare(`INSERT INTO achievements_progress (user_id,achievement_id,progress) VALUES (?,?,?)`).run(userId, ach.id, newProg);
-        }
-      }
-      continue;
-    }
-
-    // limited
-    if (row?.completed_at) continue; // уже выполнено, не перевыдаём
-    const newProg = (row?.progress || 0) + increment;
-    if (newProg >= ach.goal) {
-      if (row) {
-        db.prepare(`UPDATE achievements_progress SET progress=?,completed_at=?,notified=0 WHERE user_id=? AND achievement_id=?`).run(ach.goal, Math.floor(Date.now()/1000), userId, ach.id);
-      } else {
-        db.prepare(`INSERT INTO achievements_progress (user_id,achievement_id,progress,completed_at,notified) VALUES (?,?,?,?,0)`).run(userId, ach.id, ach.goal, Math.floor(Date.now()/1000));
-      }
-      // Выдаём награду (звание)
-      if (ach.reward) {
-        grantItem(userId, ach.reward, 'reward');
-        console.log(`[Achievements] ${userId} earned: ${ach.id} → ${ach.reward}`);
-      }
-      newAchievements.push({ id: ach.id, title: ach.title, reward: ach.reward, type: 'limited' });
-    } else {
-      if (row) {
-        db.prepare(`UPDATE achievements_progress SET progress=? WHERE user_id=? AND achievement_id=?`).run(newProg, userId, ach.id);
-      } else {
-        db.prepare(`INSERT INTO achievements_progress (user_id,achievement_id,progress) VALUES (?,?,?)`).run(userId, ach.id, newProg);
-      }
-    }
-  }
-  return newAchievements;
-}
-
-// Хелпер: получить все достижения игрока с прогрессом
-function getAchievementsForUser(userId) {
-  const rows = db.prepare(`SELECT * FROM achievements_progress WHERE user_id=?`).all(userId);
-  const map = {};
-  for (const r of rows) map[r.achievement_id] = r;
-
-  return ACHIEVEMENTS.map(a => {
-    const p = map[a.id] || {};
-    return {
-      id:           a.id,
-      title:        a.title,
-      desc:         a.desc,
-      goal:         a.goal,
-      type:         a.type,
-      reward:       a.reward,
-      hasRefPage:   a.hasRefPage || false,
-      progress:     p.progress    || 0,
-      times_done:   p.times_done  || 0,
-      completed_at: p.completed_at || null,
-      notified:     p.notified    || 0,
-    };
-  });
-}
-
-// Хелпер: кол-во незамеченных достижений
-function getUnseenAchievementCount(userId) {
-  return db.prepare(`SELECT COUNT(*) as n FROM achievements_progress WHERE user_id=? AND notified=0 AND (completed_at IS NOT NULL OR times_done>0)`).get(userId)?.n || 0;
-}
-
 // Seed — базовые товары если таблица пустая
 const itemCount = db.prepare('SELECT COUNT(*) as c FROM shop_items').get().c;
 if (itemCount === 0) {
@@ -786,13 +571,12 @@ const MIN_LEGIT_ACCURACY = 0.25; // ниже 25% — слишком мало п�
 const MAX_LEGIT_ACCURACY = 0.60; // выше 60% — подозрительно
 const MIN_RATED_SUNKEN   = 6;    // победитель должен потопить ≥ 6 кораблей
 
-function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots = null, isRated = true, isFriend = false, opponentAcc = null, shipsLeft = null) {
+function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots = null, isRated = true, isFriend = false) {
   id = normalizeId(id);
   if (!id || id.startsWith('guest_')) return null;
   db.prepare(`UPDATE players SET wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?,
     updated_at=strftime('%s','now') WHERE id=?`).run(shots, hits, id);
   let xpResult = null;
-  const newAchievements = [];
   if (isOnline) {
     const acc = shots > 0 ? hits / shots : 0;
 
@@ -800,6 +584,7 @@ function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots =
       online_shots=online_shots+?, online_hits=online_hits+? WHERE id=?`).run(shots, hits, id);
 
     if (isRated) {
+      // Рейтинг: победитель потопил ≥ 6 кораблей И точность 25–60%
       const ratedOk = (sunkenCount || 0) >= MIN_RATED_SUNKEN
                    && acc >= MIN_LEGIT_ACCURACY
                    && acc <= MAX_LEGIT_ACCURACY;
@@ -816,32 +601,7 @@ function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots =
 
     const xpReward = calcXpReward('win', sunkenCount, shots, hits, loserShots ?? null, isFriend);
     xpResult = addXp(id, xpReward);
-
-    // Достижения за победы
-    const modeKey = isFriend ? 'friend_battles' : 'random_battles';
-    newAchievements.push(...updateAchievementProgress(id, 'total_wins', 1));
-    newAchievements.push(...updateAchievementProgress(id, 'total_battles', 1));
-    newAchievements.push(...updateAchievementProgress(id, modeKey, 1));
-    // Первый опыт
-    newAchievements.push(...updateAchievementProgress(id, 'total_wins', 0)); // уже учтён выше
-
-    // Точность выше соперника
-    if (opponentAcc !== null && acc > opponentAcc) {
-      newAchievements.push(...updateAchievementProgress(id, 'acc_win', 1));
-    }
-    // Последний шанс: победа при 1 корабле
-    if (shipsLeft === 1) {
-      newAchievements.push(...updateAchievementProgress(id, 'last_ship_win', 1));
-    }
-    // Уровень 30
-    if (xpResult?.levelAfter >= 30) {
-      newAchievements.push(...updateAchievementProgress(id, 'level_30', 1));
-    }
-    // Рефералы: обновить статистику приглашённого
-    _updateReferralBattles(id);
   }
-
-  if (xpResult) xpResult.newAchievements = newAchievements;
   return xpResult;
 }
 
@@ -851,7 +611,6 @@ function addLoss(id, shots, hits, isOnline = false, sunkenCount = 0, isRated = t
   db.prepare(`UPDATE players SET losses=losses+1, total_shots=total_shots+?, total_hits=total_hits+?,
     updated_at=strftime('%s','now') WHERE id=?`).run(shots, hits, id);
   let xpResult = null;
-  const newAchievements = [];
   if (isOnline) {
     db.prepare(`UPDATE players SET online_losses=online_losses+1,
       online_shots=online_shots+?, online_hits=online_hits+? WHERE id=?`).run(shots, hits, id);
@@ -864,32 +623,8 @@ function addLoss(id, shots, hits, isOnline = false, sunkenCount = 0, isRated = t
     }
     const xpReward = calcXpReward('loss', sunkenCount, shots, hits, null, isFriend);
     xpResult = addXp(id, xpReward);
-
-    // Достижения за бои (поражение тоже считается)
-    const modeKey = isFriend ? 'friend_battles' : 'random_battles';
-    newAchievements.push(...updateAchievementProgress(id, 'total_battles', 1));
-    newAchievements.push(...updateAchievementProgress(id, modeKey, 1));
-    _updateReferralBattles(id);
   }
-  if (xpResult) xpResult.newAchievements = newAchievements;
   return xpResult;
-}
-
-// Хелпер: после каждого боя обновляем счётчик боёв реферала у пригласившего
-function _updateReferralBattles(userId) {
-  try {
-    const ref = db.prepare(`SELECT * FROM referrals WHERE invitee_id=?`).get(userId);
-    if (!ref || ref.qualified) return;
-    const battles = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE player_id=?`).get(userId)?.n || 0;
-    db.prepare(`UPDATE referrals SET battles_done=? WHERE invitee_id=?`).run(battles, userId);
-    if (battles >= 3 && !ref.qualified) {
-      db.prepare(`UPDATE referrals SET qualified=1 WHERE invitee_id=?`).run(userId);
-      // Обновляем прогресс достижений реферера
-      const newA = updateAchievementProgress(ref.inviter_id, 'referrals_qualified', 1);
-      // Уведомляем пригласившего если он онлайн
-      if (newA.length > 0) notifyUser(ref.inviter_id, 'new_achievement', newA);
-    }
-  } catch(e) { console.error('[Referral] update error:', e.message); }
 }
 
 // Рейтинг: только rated_ (матчи когда игрок участвовал), анти-бот фильтр
@@ -1007,15 +742,12 @@ function startTurnTimer(room) {
       });
       const toSunken  = timedOutPlayer.field ? countSunkenShips(timedOutPlayer.field) : 0;
       const otherSunk = otherPlayer.field    ? countSunkenShips(otherPlayer.field)    : 0;
-      const otherShipsLeft = otherPlayer.field ? countRemainingShips(otherPlayer.field) : 0;
-      const winXpT  = addWin( otherPlayer.playerId,    otherPlayer.shots,    otherPlayer.hits,    true, toSunken,  null, !room.isFriend, room.isFriend, null, otherShipsLeft);
+      const winXpT  = addWin( otherPlayer.playerId,    otherPlayer.shots,    otherPlayer.hits,    true, toSunken,  null, !room.isFriend, room.isFriend);
       const lossXpT = addLoss(timedOutPlayer.playerId, timedOutPlayer.shots, timedOutPlayer.hits, true, otherSunk, !room.isFriend, room.isFriend);
       addBattleHistory(otherPlayer.playerId,    'win',  timedOutPlayer.name || '?', otherPlayer.shots,    otherPlayer.hits,    'online');
       addBattleHistory(timedOutPlayer.playerId, 'loss', otherPlayer.name    || '?', timedOutPlayer.shots, timedOutPlayer.hits, 'online');
       if (winXpT  && otherPlayer.socketId)    io.to(otherPlayer.socketId).emit('xp_reward', winXpT);
       if (lossXpT && timedOutPlayer.socketId) io.to(timedOutPlayer.socketId).emit('xp_reward', lossXpT);
-      if (winXpT?.newAchievements?.length  && otherPlayer.socketId)    io.to(otherPlayer.socketId).emit('new_achievement', winXpT.newAchievements);
-      if (lossXpT?.newAchievements?.length && timedOutPlayer.socketId) io.to(timedOutPlayer.socketId).emit('new_achievement', lossXpT.newAchievements);
     } else {
       // 1 просрочка — просто передаём ход
       room.turn = otherPlayer.playerId;
@@ -1249,22 +981,15 @@ function validateNoTouch(field) {
       // Потопленные корабли = все корабли цели (они все потоплены)
       const shooterSunken = countSunkenShips(target.field);
       const targetSunken  = countSunkenShips(shooter.field);
-      const shooterAcc = shooter.shots > 0 ? shooter.hits / shooter.shots : 0;
-      const targetAcc  = target.shots  > 0 ? target.hits  / target.shots  : 0;
-      const shooterShipsLeft = countRemainingShips(shooter.field);
-      const winXp  = addWin( shooter.playerId, shooter.shots, shooter.hits, true, shooterSunken, null, !room.isFriend, room.isFriend, targetAcc, shooterShipsLeft);
+      const winXp  = addWin( shooter.playerId, shooter.shots, shooter.hits, true, shooterSunken, null, !room.isFriend, room.isFriend);
       const lossXp = addLoss(target.playerId,  target.shots,  target.hits,  true, targetSunken, !room.isFriend, room.isFriend);
       // Записываем историю боя на сервере (не зависим от HTTP-запроса клиента)
       addBattleHistory(shooter.playerId, 'win',  target.name  || '?', shooter.shots, shooter.hits, 'online');
       addBattleHistory(target.playerId,  'loss', shooter.name || '?', target.shots,  target.hits,  'online');
       recordDuelResult(shooter.playerId, target.playerId);
-      checkRatingTop1(shooter.playerId);
       // Отправляем XP каждому игроку
       if (winXp  && shooter.socketId) io.to(shooter.socketId).emit('xp_reward', winXp);
       if (lossXp && target.socketId)  io.to(target.socketId).emit('xp_reward', lossXp);
-      // Уведомляем об новых достижениях
-      if (winXp?.newAchievements?.length  && shooter.socketId) io.to(shooter.socketId).emit('new_achievement', winXp.newAchievements);
-      if (lossXp?.newAchievements?.length && target.socketId)  io.to(target.socketId).emit('new_achievement', lossXp.newAchievements);
     } else {
       if (!hit) room.turn = target.playerId;
       // Запускаем таймер для следующего хода
@@ -1299,18 +1024,14 @@ function validateNoTouch(field) {
     io.to(surrenderer.socketId).emit('surrender_confirmed');
     const wSunken = surrenderer.field ? countSunkenShips(surrenderer.field) : 0; // корабли, потопленные победителем
     const lSunken = winner.field      ? countSunkenShips(winner.field)      : 0; // корабли, потопленные сдавшимся
-    const winnerShipsLeft2 = winner.field ? countRemainingShips(winner.field) : 0;
-    const winXp2  = addWin( winner.playerId,      winner.shots,      winner.hits,      true, wSunken, surrenderer.shots, !room.isFriend, room.isFriend, null, winnerShipsLeft2);
+    const winXp2  = addWin( winner.playerId,      winner.shots,      winner.hits,      true, wSunken, surrenderer.shots, !room.isFriend, room.isFriend);
     const lossXp2 = addLoss(surrenderer.playerId, surrenderer.shots, surrenderer.hits, true, lSunken, !room.isFriend, room.isFriend);
     // Записываем историю
     addBattleHistory(winner.playerId,      'win',  surrenderer.name || '?', winner.shots,      winner.hits,      'online');
     addBattleHistory(surrenderer.playerId, 'loss', winner.name      || '?', surrenderer.shots, surrenderer.hits, 'online');
     if (winXp2  && winner.socketId)      io.to(winner.socketId).emit('xp_reward', winXp2);
     if (lossXp2 && surrenderer.socketId) io.to(surrenderer.socketId).emit('xp_reward', lossXp2);
-    if (winXp2?.newAchievements?.length  && winner.socketId)      io.to(winner.socketId).emit('new_achievement', winXp2.newAchievements);
-    if (lossXp2?.newAchievements?.length && surrenderer.socketId) io.to(surrenderer.socketId).emit('new_achievement', lossXp2.newAchievements);
     recordDuelResult(winner.playerId, surrenderer.playerId);
-    checkRatingTop1(winner.playerId);
   });
 
   // ── Реакции ───────────────────────────────────────────
@@ -1438,11 +1159,9 @@ function validateNoTouch(field) {
         io.to(stayer.socketId).emit('opponent_disconnected_win');
         const dSunkenStayer = leaver.field ? countSunkenShips(leaver.field) : 0;
         const dSunkenLeaver = stayer.field ? countSunkenShips(stayer.field) : 0;
-        const stayerShipsLeft = stayer.field ? countRemainingShips(stayer.field) : 0;
-        const dWinXp  = addWin( stayer.playerId, stayer.shots, stayer.hits, true, dSunkenStayer, null, !room.isFriend, room.isFriend, null, stayerShipsLeft);
+        const dWinXp  = addWin( stayer.playerId, stayer.shots, stayer.hits, true, dSunkenStayer, null, !room.isFriend, room.isFriend);
         const dLossXp = addLoss(leaver.playerId, leaver.shots, leaver.hits, true, dSunkenLeaver, !room.isFriend, room.isFriend);
         if (dWinXp  && stayer.socketId) io.to(stayer.socketId).emit('xp_reward', dWinXp);
-        if (dWinXp?.newAchievements?.length && stayer.socketId) io.to(stayer.socketId).emit('new_achievement', dWinXp.newAchievements);
         // leaver отключён — xp_reward не шлём
         recordDuelResult(stayer.playerId, leaver.playerId);
         rooms.delete(roomId);
@@ -1511,30 +1230,6 @@ function countSunkenShips(field) {
   return count;
 }
 
-// Считаем живые корабли (клетки со значением 1, flood-fill группами)
-function countRemainingShips(field) {
-  if (!field) return 0;
-  const visited = new Set();
-  let count = 0;
-  for (let r = 0; r < 10; r++) {
-    for (let c = 0; c < 10; c++) {
-      if (field[r]?.[c] === 1 && !visited.has(r+','+c)) {
-        count++;
-        const stack = [[r, c]];
-        while (stack.length) {
-          const [cr, cc] = stack.pop();
-          const key = cr+','+cc;
-          if (visited.has(key)) continue;
-          visited.add(key);
-          for (const [nr, nc] of [[cr-1,cc],[cr+1,cc],[cr,cc-1],[cr,cc+1]])
-            if (nr>=0&&nr<10&&nc>=0&&nc<10&&field[nr]?.[nc]===1) stack.push([nr,nc]);
-        }
-      }
-    }
-  }
-  return count;
-}
-
 app.get('/api/config',     (req, res) => res.json({ botUsername: BOT_USERNAME, appName: APP_NAME }));
 app.get('/api/online',     (req, res) => res.json({ count: getOnlineCount() }));
 app.get('/api/history/:id',(req, res) => { try { const mode = req.query.mode || null; res.json({ ok: true, data: getBattleHistory(req.params.id, 30, mode) }); } catch(e) { res.status(500).json({ ok: false }); } });
@@ -1552,21 +1247,14 @@ app.post('/api/history', (req, res) => {
     const cleanHits     = Math.max(0, parseInt(hits)   || 0);
     const gameMode = cleanMode;
     addBattleHistory(cleanId, cleanResult, cleanOpponent, cleanShots, cleanHits, gameMode);
-    const newAchievements = [];
     if (!skipStats) {
       if (cleanResult === 'win') {
         db.prepare(`UPDATE players SET wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?, updated_at=strftime('%s','now') WHERE id=?`).run(cleanShots, cleanHits, cleanId);
-        newAchievements.push(...updateAchievementProgress(cleanId, 'total_wins', 1));
-        newAchievements.push(...updateAchievementProgress(cleanId, 'total_battles', 1));
-        if (cleanMode.startsWith('bot')) {
-          newAchievements.push(...updateAchievementProgress(cleanId, 'bot_wins', 1));
-        }
       } else if (cleanResult === 'loss') {
         db.prepare(`UPDATE players SET losses=losses+1, total_shots=total_shots+?, total_hits=total_hits+?, updated_at=strftime('%s','now') WHERE id=?`).run(cleanShots, cleanHits, cleanId);
-        newAchievements.push(...updateAchievementProgress(cleanId, 'total_battles', 1));
       }
     }
-    res.json({ ok: true, newAchievements });
+    res.json({ ok: true });
   } catch(e) { console.error('history post error:', e); res.status(500).json({ ok: false }); }
 });
 app.get('/api/ensure/:id', (req, res) => {
@@ -1922,33 +1610,6 @@ app.post('/api/webhook/telegram', express.json(), (req, res) => {
       db.prepare(`UPDATE pending_invoices SET status='paid' WHERE payload=?`).run(payload);
       console.log(`[Shop] ✅ Purchased: user=${invoice.user_id} item=${invoice.item_id} charge=${chargeId}`);
 
-      // Достижение Коллекционер — считаем купленные темы
-      try {
-        const item = db.prepare(`SELECT type FROM shop_items WHERE id=?`).get(invoice.item_id);
-        if (item?.type === 'theme') {
-          const themesCount = db.prepare(`SELECT COUNT(*) as n FROM inventory i JOIN shop_items s ON s.id=i.item_id WHERE i.user_id=? AND s.type='theme' AND i.is_active=1 AND i.purchase_type='stars'`).get(invoice.user_id)?.n || 0;
-          // updateAchievementProgress принимает абсолютное значение через прямой update
-          const achRow = db.prepare(`SELECT * FROM achievements_progress WHERE user_id=? AND achievement_id='collector'`).get(invoice.user_id);
-          if (achRow) {
-            if (!achRow.completed_at) {
-              db.prepare(`UPDATE achievements_progress SET progress=?,notified=0 WHERE user_id=? AND achievement_id='collector'`).run(themesCount, invoice.user_id);
-              if (themesCount >= 3) {
-                db.prepare(`UPDATE achievements_progress SET completed_at=? WHERE user_id=? AND achievement_id='collector'`).run(Math.floor(Date.now()/1000), invoice.user_id);
-                grantItem(invoice.user_id, 'title_collector', 'reward');
-                notifyUser(invoice.user_id, 'new_achievement', [{ id: 'collector', title: 'Коллекционер', reward: 'title_collector' }]);
-              }
-            }
-          } else {
-            db.prepare(`INSERT INTO achievements_progress (user_id,achievement_id,progress,notified) VALUES (?,?,?,0)`).run(invoice.user_id, 'collector', themesCount);
-            if (themesCount >= 3) {
-              db.prepare(`UPDATE achievements_progress SET completed_at=?,notified=0 WHERE user_id=? AND achievement_id='collector'`).run(Math.floor(Date.now()/1000), invoice.user_id);
-              grantItem(invoice.user_id, 'title_collector', 'reward');
-              notifyUser(invoice.user_id, 'new_achievement', [{ id: 'collector', title: 'Коллекционер', reward: 'title_collector' }]);
-            }
-          }
-        }
-      } catch(e) { console.error('[Achievements] collector check error:', e.message); }
-
       notifyUser(invoice.user_id, 'purchase_complete', { itemId: invoice.item_id });
     }
 
@@ -2020,118 +1681,6 @@ app.post('/api/reward', (req, res) => {
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
-
-// ─── ДОСТИЖЕНИЯ API ───────────────────────────────────────────────────────────
-
-// Получить все достижения игрока с прогрессом
-app.get('/api/achievements/:userId', (req, res) => {
-  try {
-    const userId = normalizeId(req.params.userId);
-    if (!userId || userId.startsWith('guest_')) return res.json({ ok: true, data: [] });
-    const data = getAchievementsForUser(userId);
-    res.json({ ok: true, data });
-  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
-});
-
-// Отметить достижения как просмотренные
-app.post('/api/achievements/seen', (req, res) => {
-  try {
-    const { userId, ids } = req.body;
-    const uid = normalizeId(userId);
-    if (!uid || uid.startsWith('guest_')) return res.json({ ok: false });
-    if (Array.isArray(ids) && ids.length > 0) {
-      const placeholders = ids.map(() => '?').join(',');
-      db.prepare(`UPDATE achievements_progress SET notified=1 WHERE user_id=? AND achievement_id IN (${placeholders})`).run(uid, ...ids);
-    } else {
-      db.prepare(`UPDATE achievements_progress SET notified=1 WHERE user_id=?`).run(uid);
-    }
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ ok: false }); }
-});
-
-// Выдать достижение админу
-app.post('/api/achievements/grant-admin', (req, res) => {
-  try {
-    const { secret, userId } = req.body;
-    if (secret !== SHOP_SECRET) return res.status(403).json({ ok: false });
-    const uid = normalizeId(userId);
-    const newA = updateAchievementProgress(uid, 'admin_only', 1);
-    res.json({ ok: true, newAchievements: newA });
-  } catch(e) { res.status(500).json({ ok: false }); }
-});
-
-// ─── РЕФЕРАЛЫ API ─────────────────────────────────────────────────────────────
-
-// Получить реферальную ссылку игрока
-app.get('/api/referral/:userId', (req, res) => {
-  try {
-    const userId = normalizeId(req.params.userId);
-    if (!userId || userId.startsWith('guest_')) return res.status(400).json({ ok: false });
-    // Ссылка ведёт на telegram mini app с параметром start
-    const refLink = `https://t.me/${BOT_USERNAME}/${APP_NAME}?startapp=ref_${userId}`;
-    // Подсчёт приглашённых
-    const invited = db.prepare(`SELECT * FROM referrals WHERE inviter_id=?`).all(userId);
-    const qualified = invited.filter(r => r.qualified).length;
-    res.json({ ok: true, data: { refLink, invited: invited.length, qualified } });
-  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
-});
-
-// Зарегистрировать реферала (вызывается при первом входе с ref_ параметром)
-app.post('/api/referral/register', (req, res) => {
-  try {
-    const { inviterId, inviteeId } = req.body;
-    const inviter = normalizeId(inviterId);
-    const invitee = normalizeId(inviteeId);
-    if (!inviter || !invitee || inviter === invitee) return res.json({ ok: false, error: 'invalid' });
-    if (invitee.startsWith('guest_') || inviter.startsWith('guest_')) return res.json({ ok: false });
-    // Проверяем что invitee не уже зарегистрирован
-    const existing = db.prepare(`SELECT 1 FROM referrals WHERE invitee_id=?`).get(invitee);
-    if (existing) return res.json({ ok: false, error: 'already registered' });
-    // Игрок должен быть новым (мало боёв)
-    const battles = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE player_id=?`).get(invitee)?.n || 0;
-    if (battles > 5) return res.json({ ok: false, error: 'not new player' });
-    db.prepare(`INSERT OR IGNORE INTO referrals (inviter_id, invitee_id) VALUES (?,?)`).run(inviter, invitee);
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ ok: false }); }
-});
-
-// ─── АКТИВНОЕ ЗВАНИЕ API ──────────────────────────────────────────────────────
-
-// Получить активное звание игрока (для отображения в игре)
-app.get('/api/title/:userId', (req, res) => {
-  try {
-    const userId = normalizeId(req.params.userId);
-    if (!userId || userId.startsWith('guest_')) return res.json({ ok: true, data: null });
-    const title = getActiveTitle(userId);
-    res.json({ ok: true, data: title });
-  } catch(e) { res.status(500).json({ ok: false }); }
-});
-
-// Получить активные звания для нескольких игроков сразу
-app.post('/api/title/batch', (req, res) => {
-  try {
-    const ids = req.body.ids || [];
-    const result = {};
-    for (const id of ids) {
-      const norm = normalizeId(id);
-      if (norm) result[norm] = getActiveTitle(norm);
-    }
-    res.json({ ok: true, data: result });
-  } catch(e) { res.status(500).json({ ok: false }); }
-});
-
-// Проверить топ-1 рейтинга и выдать достижение
-function checkRatingTop1(userId) {
-  try {
-    const rating = getRating();
-    if (rating.length > 0 && rating[0].id === userId) {
-      updateAchievementProgress(userId, 'rating_top1', 1);
-    }
-  } catch(e) {}
-}
-
-// Достижения для ботов — добавляем в /api/history
-// (патчим существующий обработчик через middleware-like логику)
 
 // Фронтенд — обязательно В САМОМ КОНЦЕ, после всех API
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
