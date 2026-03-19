@@ -2974,6 +2974,8 @@ function initSwipeBack() {
     touchStartX = null; touchStartY = null;
 
     if (['game','waiting'].includes(currentScreen)) return;
+    // Не срабатываем если касание началось внутри слайдера скриншотов
+    if (document.getElementById('shop-item-slider')?.contains(e.target)) return;
     if (startFraction >= EDGE_START && startFraction <= 0.66 && dx > SWIPE_MIN && Math.abs(dy) < Math.abs(dx)) {
       Sound.click();
       handleSwipeBack();
@@ -4288,15 +4290,19 @@ function renderShopItemSlider(item) {
   slider.id = 'shop-item-slider';
   slider.className = 'shop-item-slider';
 
-  const track = document.createElement('div');
-  track.className = 'shop-item-slider-track';
-  slider.appendChild(track);
-
   const dotsWrap = document.createElement('div');
   dotsWrap.className = 'shop-item-slider-dots';
-  slider.appendChild(dotsWrap);
+  slider.appendChild(dotsWrap);   // dots СВЕРХУ
+
+  const track = document.createElement('div');
+  track.className = 'shop-item-slider-track';
+  slider.appendChild(track);      // трек под точками
 
   detail.appendChild(slider);
+
+  // Блокируем swipe-back (глобальный обработчик) внутри слайдера
+  slider.addEventListener('touchstart', e => { e._inShopSlider = true; }, { passive: true });
+  slider.addEventListener('touchmove',  e => { e._inShopSlider = true; }, { passive: true });
 
   let cur = 0;
   let loaded = 0;

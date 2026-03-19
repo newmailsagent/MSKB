@@ -694,12 +694,12 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 
 /* Слайдер скриншотов */
 .shop-item-slider {
-  /* Растягиваем на весь экран, выходя за паддинги detail */
-  width: 100vw;
-  margin-left: calc(-16px);
+  /* На мобиле — во всю ширину экрана; на десктопе — в ширину рабочей области */
+  width: calc(100% + 32px);
+  margin-left: -16px;
   display: flex; flex-direction: column; gap: 0;
   flex-shrink: 0;
-  overflow: hidden; /* скрываем соседние слайды */
+  overflow: hidden;
 }
 .shop-item-slider-track {
   display: flex;
@@ -708,15 +708,19 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   will-change: transform;
 }
 .shop-item-slide {
-  width: 100vw;
+  width: calc(100vw);
+  max-width: calc(100% + 0px);
+  flex: 0 0 100%;   /* занимает ровно ширину slider */
   flex-shrink: 0;
 }
 .shop-item-slide img {
   width: 100%; height: auto; display: block;
   object-fit: cover;
+  max-height: 60vh;
 }
 .shop-item-slider-dots {
-  display: flex; justify-content: center; gap: 8px; padding: 10px 0 4px;
+  display: flex; justify-content: center; gap: 8px; padding: 4px 0 10px;
+  order: -1;  /* dots before track in flex column */
 }
 .slider-dot {
   width: 8px; height: 8px; border-radius: 50%;
@@ -1786,7 +1790,6 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 
 .gf-player-opp {
   flex-direction: row-reverse;
-  text-align: right;
 }
 
 .gf-avatar-wrap {
@@ -1825,26 +1828,28 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 }
 
 .gf-info-right {
-  align-items: flex-end;
+  align-items: flex-start;
 }
 
 .gf-name {
-  font-size: 13px;
+  font-size: clamp(10px, 2.8vw, 13px);
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 90px;
+  max-width: 110px;
 }
 
 .gf-rank {
   font-size: 10px;
   color: var(--hint);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 90px;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+  /* На очень маленьких экранах уменьшаем пропорционально */
+  font-size: clamp(8px, 2.2vw, 10px);
 }
 
 .gf-duel-score {
