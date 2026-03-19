@@ -712,21 +712,19 @@ function calcRank(level) {
 
 function calcXpReward(result, sunkenCount, shots, hits, loserShots, isFriend = false) {
   const sunken = sunkenCount || 0;
+  // Режим с другом — те же правила, но 70% от итога (антифарм)
+  const friendMult = isFriend ? 0.7 : 1.0;
 
   if (result === 'win') {
-    // Режим с другом — фиксированные утешительные очки
-    if (isFriend) {
-      return { total: 300, baseXp: 300, bonusXp: 0 };
+    // Соперник сдался без единого выстрела — минимум
+    if (loserShots === 0) {
+      const base = Math.round(50 * friendMult);
+      return { total: base, baseXp: base, bonusXp: 0 };
     }
 
-    // Соперник сдался без единого выстрела — минимум
-    if (loserShots === 0) return { total: 50, baseXp: 50, bonusXp: 0 };
-
     // Антифарм: полный XP только если потоплено >= 2 кораблей врага
-    // (sunkenCount = корабли потопленные победителем у проигравшего)
     if (sunken < 2) {
-      // Мало потоплено — урезанная награда пропорционально
-      const partial = Math.round(200 + sunken * 150);  // 200 за 0, 350 за 1
+      const partial = Math.round((200 + sunken * 150) * friendMult);
       return { total: partial, baseXp: partial, bonusXp: 0 };
     }
 
@@ -736,21 +734,18 @@ function calcXpReward(result, sunkenCount, shots, hits, loserShots, isFriend = f
     if (acc >= 0.50) accBonus = 500;
     else if (acc >= 0.45) accBonus = 300;
     else if (acc >= 0.40) accBonus = 150;
-    return { total: 1000 + accBonus, baseXp: 1000, bonusXp: accBonus };
+    const base  = Math.round(1000 * friendMult);
+    const bonus = Math.round(accBonus * friendMult);
+    return { total: base + bonus, baseXp: base, bonusXp: bonus };
 
   } else {
-    // Режим с другом — фиксированные очки за поражение
-    if (isFriend) {
-      return { total: 100, baseXp: 100, bonusXp: 0 };
-    }
-
     // Сдался без выстрелов и без уничтоженных кораблей — 0 XP
     if (shots === 0 && sunken === 0) {
       return { total: 0, baseXp: 0, bonusXp: 0 };
     }
 
     // Стандарт: 300 + 10 за каждый потопленный корабль, максимум 400
-    const total = Math.min(400, 300 + 10 * sunken);
+    const total = Math.round(Math.min(400, 300 + 10 * sunken) * friendMult);
     return { total, baseXp: total, bonusXp: 0 };
   }
 }

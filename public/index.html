@@ -10,6 +10,7 @@
   <meta name="keywords" content="морской бой, морской бой онлайн, battleship, игра морской бой, telegram игра, морской бой в telegram" />
   <meta name="author" content="bteship" />
   <meta name="robots" content="index, follow" />
+  <meta name="yandex-verification" content="b7b5983bd04e2af1" />
   <link rel="canonical" href="https://morskoy-boy.ru/" />
 
   <!-- Open Graph -->
@@ -458,6 +459,7 @@
         </div>
       </div>
       <div class="xp-levelup hidden" id="xp-levelup">Новый уровень!</div>
+      <div class="xp-new-achievement hidden" id="xp-new-achievement">Новое достижение</div>
     </div>
 
     <!-- Блок 3: кнопки -->
@@ -518,6 +520,14 @@
           <div class="profile-xp-nums">
             <span id="profile-xp-current">0</span> / <span id="profile-xp-needed">1000</span> XP
           </div>
+        </div>
+      </div>
+
+      <!-- Достижения -->
+      <div class="achievements-section" id="achievements-section">
+        <div class="achievements-title">Достижения</div>
+        <div class="achievements-list" id="achievements-list">
+          <div class="shop-loading">Загрузка...</div>
         </div>
       </div>
     </div>
@@ -581,6 +591,70 @@
     <a class="btn btn-primary btn-large profile-tg-btn" href="https://t.me/bteship_bot/bteship" target="_blank">
       Открыть в Telegram
     </a>
+  </div>
+</div>
+
+<!-- РЕФЕРАЛЫ -->
+<div id="screen-referral" class="screen">
+  <div class="page-header">
+    <button class="btn-back" id="referral-back-btn">← Назад</button>
+    <h2>Пригласить друзей</h2>
+  </div>
+  <div class="referral-inner">
+    <div class="referral-hero-icon">🚀</div>
+    <div class="referral-desc">
+      Поделись своей ссылкой — когда приглашённый сыграет 3 боя, ты получишь зачёт. Собери нужное количество и получи звание!
+    </div>
+    <div class="referral-stats-row">
+      <div class="referral-stat">
+        <span id="ref-invited-count">0</span>
+        <small>приглашено</small>
+      </div>
+      <div class="referral-stat">
+        <span id="ref-qualified-count">0</span>
+        <small>квалифицировано</small>
+      </div>
+    </div>
+    <div class="referral-link-block">
+      <div class="referral-link-label">Твоя реферальная ссылка</div>
+      <div class="referral-link-wrap">
+        <input class="referral-link-input" id="referral-link-input" type="text" readonly value="" />
+        <button class="btn-copy-ref" id="btn-copy-ref" title="Копировать">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+      </div>
+      <button class="btn btn-primary referral-share-btn" id="btn-share-ref">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        Поделиться в Telegram
+      </button>
+    </div>
+    <div class="referral-achievements">
+      <div class="referral-ach-title">Награды за приглашения</div>
+      <div class="referral-ach-item">
+        <div class="referral-ach-info">
+          <span class="referral-ach-name" style="color:#0059FF">Рекрутер</span>
+          <span class="referral-ach-req">3 квалифицированных игрока</span>
+        </div>
+        <div class="referral-ach-progress">
+          <div class="referral-prog-bar-wrap">
+            <div class="referral-prog-bar" id="ref-prog-3" style="width:0%"></div>
+          </div>
+          <span class="referral-prog-nums" id="ref-nums-3">0 / 3</span>
+        </div>
+      </div>
+      <div class="referral-ach-item">
+        <div class="referral-ach-info">
+          <span class="referral-ach-name" style="color:#F30000">Космический навигатор</span>
+          <span class="referral-ach-req">10 квалифицированных игроков</span>
+        </div>
+        <div class="referral-ach-progress">
+          <div class="referral-prog-bar-wrap">
+            <div class="referral-prog-bar" id="ref-prog-10" style="width:0%"></div>
+          </div>
+          <span class="referral-prog-nums" id="ref-nums-10">0 / 10</span>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 

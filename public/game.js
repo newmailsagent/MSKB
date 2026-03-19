@@ -2743,10 +2743,10 @@ function setRingProgress(rectEl, pct, size) {
 /* ─── ДОСТИЖЕНИЯ ─────────────────────────────────── */
 
 const TITLE_RANK_COLORS = {
-  prestige: '#A100FF',
-  high:     '#F30000',
-  medium:   '#0059FF',
-  initial:  '#00CA54',
+  prestige: '#C261FB',
+  high:     '#D43838',
+  medium:   '#4C7DD7',
+  initial:  '#4EAA74',
 };
 
 function titleRankColor(rank) {
@@ -2758,19 +2758,24 @@ async function loadAndRenderAchievements() {
   if (App.user.isGuest) return;
   const listEl = document.getElementById('achievements-list');
   if (!listEl) return;
-  try {
-    // Убеждаемся что данные магазина загружены — нужны для названий и рангов звания
-    if (!_shopItems.length) await loadShopData();
-    // Заполняем кэш мета из _shopItems (до рендера карточек)
-    _shopItems.filter(i => i.type === 'title').forEach(i => {
-      _titleMeta[i.id] = { name: i.name, rank: i.title_rank };
-    });
 
+  // Заполняем _titleMeta из статического справочника (всегда доступен, не зависит от загрузки магазина)
+  Object.entries(TITLE_NAMES_RU).forEach(([id, name]) => {
+    if (!_titleMeta[id]) _titleMeta[id] = { name };
+  });
+  // Дополняем rank из _shopItems если есть
+  _shopItems.filter(i => i.type === 'title').forEach(i => {
+    _titleMeta[i.id] = { name: i.name, rank: i.title_rank };
+  });
+
+  try {
     const res = await fetch('/api/achievements/' + App.user.id);
     const j   = await res.json();
-    if (!j.ok) return;
+    if (!j.ok) {
+      listEl.innerHTML = '<p class="empty-state">Не удалось загрузить</p>';
+      return;
+    }
     _renderAchievements(j.data, listEl);
-    // Отмечаем как прочитанные те, что видим
     const unseenIds = j.data.filter(a => !a.notified && (a.completed_at || a.times_done > 0)).map(a => a.id);
     if (unseenIds.length) {
       fetch('/api/achievements/seen', {
@@ -2779,7 +2784,10 @@ async function loadAndRenderAchievements() {
         body: JSON.stringify({ userId: App.user.id, ids: unseenIds }),
       }).catch(() => {});
     }
-  } catch(e) { console.error('[Achievements] load error:', e); }
+  } catch(e) {
+    console.error('[Achievements] load error:', e);
+    listEl.innerHTML = '<p class="empty-state">Ошибка загрузки</p>';
+  }
 }
 
 function _renderAchievements(achievements, listEl) {
@@ -4144,7 +4152,6 @@ function renderShopGrid() {
         </div>
         <div class="shop-card-body">
           <div class="shop-card-type">Звание</div>
-          <div class="shop-card-name" style="color:${color}">${item.name}</div>
           ${priceHtml}
         </div>
       </div>`;
@@ -4219,7 +4226,7 @@ function openShopItem(itemId) {
     if (owned) {
       priceEl.textContent  = '';
       statusEl.textContent = '✓ В наличии';
-      btnEl.textContent    = 'Использовать в бою';
+      btnEl.textContent    = 'Используется в бою автоматически';
       btnEl.className      = 'btn btn-secondary btn-large';
       btnEl.disabled       = true;
     } else if (item.price_stars) {
@@ -4257,9 +4264,24 @@ function openShopItem(itemId) {
 
   // Кнопка назад возвращает туда откуда пришли
   _shopItemBackTarget = currentScreen === 'profile' ? 'profile' : 'shop';
-  document.getElementById('shop-item-back').onclick = () => showScreen(_shopItemBackTarget, { isBack: true });
+
+  // Для темы — применяем её временно для предпросмотра
+  if (item.type === 'theme') {
+    resetTheme();
+    if (itemId !== 'theme_dark') applyEquippedTheme(itemId);
+    const restoreTheme = () => applyEquippedThemeFromState();
+    document.getElementById('shop-item-back').onclick = () => {
+      restoreTheme();
+      showScreen(_shopItemBackTarget, { isBack: true });
+    };
+  } else {
+    document.getElementById('shop-item-back').onclick = () => showScreen(_shopItemBackTarget, { isBack: true });
+  }
 
   showScreen('shop-item');
+
+  // Слайдер — после showScreen чтобы DOM был виден
+  requestAnimationFrame(() => renderShopItemSlider(item));
 }
 
 // Действие кнопки на странице товара
@@ -4532,7 +4554,6 @@ function renderInventory() {
         </div>
         <div class="shop-card-body">
           <div class="shop-card-type">Звание</div>
-          <div class="shop-card-name" style="color:${color}">${item.name}</div>
           ${actionBtn}
         </div>
       </div>`;
