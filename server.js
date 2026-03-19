@@ -486,31 +486,46 @@ function calcRank(level) {
 }
 
 function calcXpReward(result, sunkenCount, shots, hits, loserShots, isFriend = false) {
+  const sunken = sunkenCount || 0;
+
   if (result === 'win') {
-    // Режим с другом — только утешительные очки, без полного начисления
+    // Режим с другом — фиксированные утешительные очки
     if (isFriend) {
       return { total: 300, baseXp: 300, bonusXp: 0 };
     }
-    // Если соперник сдался не выстрелив — утешительные 50 XP
+
+    // Соперник сдался без единого выстрела — минимум
     if (loserShots === 0) return { total: 50, baseXp: 50, bonusXp: 0 };
+
+    // Антифарм: полный XP только если потоплено >= 2 кораблей врага
+    // (sunkenCount = корабли потопленные победителем у проигравшего)
+    if (sunken < 2) {
+      // Мало потоплено — урезанная награда пропорционально
+      const partial = Math.round(200 + sunken * 150);  // 200 за 0, 350 за 1
+      return { total: partial, baseXp: partial, bonusXp: 0 };
+    }
+
+    // Нормальный бой: базовые 1000 + бонус за точность
     const acc = shots > 0 ? hits / shots : 0;
     let accBonus = 0;
     if (acc >= 0.50) accBonus = 500;
     else if (acc >= 0.45) accBonus = 300;
     else if (acc >= 0.40) accBonus = 150;
-    const baseXp  = 1000;
-    const bonusXp = accBonus;
-    return { total: baseXp + bonusXp, baseXp, bonusXp };
+    return { total: 1000 + accBonus, baseXp: 1000, bonusXp: accBonus };
+
   } else {
-    // Режим с другом — минимальные очки за поражение
+    // Режим с другом — фиксированные очки за поражение
     if (isFriend) {
       return { total: 100, baseXp: 100, bonusXp: 0 };
     }
-    // Проиграл: 0 XP если сдался без единого выстрела и без уничтожения кораблей
-    if (shots === 0 && (sunkenCount || 0) === 0) {
+
+    // Сдался без выстрелов и без уничтоженных кораблей — 0 XP
+    if (shots === 0 && sunken === 0) {
       return { total: 0, baseXp: 0, bonusXp: 0 };
     }
-    const total = Math.min(400, 300 + 10 * (sunkenCount || 0));
+
+    // Стандарт: 300 + 10 за каждый потопленный корабль, максимум 400
+    const total = Math.min(400, 300 + 10 * sunken);
     return { total, baseXp: total, bonusXp: 0 };
   }
 }
