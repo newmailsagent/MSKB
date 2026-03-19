@@ -694,12 +694,12 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 
 /* Слайдер скриншотов */
 .shop-item-slider {
-  width: calc(100% + 32px);
-  margin-left: -16px;
-  display: flex;
-  flex-direction: column;
+  /* Растягиваем на весь экран, выходя за паддинги detail */
+  width: 100vw;
+  margin-left: calc(-16px);
+  display: flex; flex-direction: column; gap: 0;
   flex-shrink: 0;
-  overflow: hidden;
+  overflow: hidden; /* скрываем соседние слайды */
 }
 .shop-item-slider-track {
   display: flex;
@@ -708,19 +708,15 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   will-change: transform;
 }
 .shop-item-slide {
-  flex: 0 0 100%;
-  width: 100%;
+  width: 100vw;
+  flex-shrink: 0;
 }
 .shop-item-slide img {
-  width: 100%;
-  height: auto;
-  display: block;
-  object-fit: contain;
-  background: var(--bg);
+  width: 100%; height: auto; display: block;
+  object-fit: cover;
 }
 .shop-item-slider-dots {
-  display: flex; justify-content: center; gap: 8px; padding: 4px 0 10px;
-  order: -1;  /* dots before track in flex column */
+  display: flex; justify-content: center; gap: 8px; padding: 10px 0 4px;
 }
 .slider-dot {
   width: 8px; height: 8px; border-radius: 50%;
@@ -1790,6 +1786,7 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 
 .gf-player-opp {
   flex-direction: row-reverse;
+  text-align: right;
 }
 
 .gf-avatar-wrap {
@@ -1828,28 +1825,26 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 }
 
 .gf-info-right {
-  align-items: flex-start;
+  align-items: flex-end;
 }
 
 .gf-name {
-  font-size: clamp(10px, 2.8vw, 13px);
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 110px;
+  max-width: 90px;
 }
 
 .gf-rank {
   font-size: 10px;
   color: var(--hint);
   white-space: nowrap;
-  overflow: visible;
-  text-overflow: clip;
-  max-width: none;
-  /* На очень маленьких экранах уменьшаем пропорционально */
-  font-size: clamp(8px, 2.2vw, 10px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
 }
 
 .gf-duel-score {
@@ -2199,433 +2194,3 @@ body.theme-light .burger-item-chat { background: rgba(0,0,0,.05) !important; }
   animation: bellRing .6s cubic-bezier(.36,.07,.19,.97) both;
   transform-origin: top center;
 }
-
-/* ═══════════════════════════════════════════════════════
-   ДОСТИЖЕНИЯ
-   ═══════════════════════════════════════════════════════ */
-
-.achievements-section {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255,255,255,.08);
-}
-.achievements-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,.45);
-  margin-bottom: 12px;
-}
-.achievements-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Карточка достижения */
-.achievement-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: 12px;
-  padding: 12px 14px;
-  position: relative;
-  transition: opacity .2s;
-  user-select: none;
-}
-.achievement-card.done {
-  opacity: .45;
-  filter: saturate(.4);
-}
-.achievement-card.new-dot::after {
-  content: '';
-  position: absolute;
-  top: 10px; right: 10px;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: #5b9bff;
-  box-shadow: 0 0 6px #5b9bff;
-}
-
-.ach-icon {
-  width: 40px; height: 40px;
-  border-radius: 10px;
-  background: rgba(255,255,255,.07);
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  font-size: 20px;
-}
-.ach-body {
-  flex: 1;
-  min-width: 0;
-}
-.ach-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 3px;
-}
-.ach-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ach-desc {
-  font-size: 12px;
-  color: rgba(255,255,255,.5);
-  margin-bottom: 6px;
-  line-height: 1.4;
-}
-.ach-reward {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: rgba(255,255,255,.08);
-  display: inline-block;
-  margin-bottom: 5px;
-}
-
-/* Прогресс-бар достижения */
-.ach-progress-wrap {
-  position: relative;
-  height: 5px;
-  background: rgba(255,255,255,.1);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 3px;
-}
-.ach-progress-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 3px;
-  transition: width .4s ease;
-}
-.ach-progress-nums {
-  font-size: 11px;
-  color: rgba(255,255,255,.4);
-}
-.ach-infinite-count {
-  font-size: 20px;
-  font-weight: 700;
-  color: #fff;
-  line-height: 1;
-}
-.ach-infinite-label {
-  font-size: 11px;
-  color: rgba(255,255,255,.4);
-}
-
-/* Темы */
-body.theme-light .achievement-card {
-  background: rgba(0,0,0,.04);
-  border-color: rgba(0,0,0,.07);
-}
-body.theme-light .ach-icon { background: rgba(0,0,0,.06); }
-body.theme-light .ach-name { color: #111; }
-body.theme-light .ach-desc { color: rgba(0,0,0,.5); }
-body.theme_black .achievement-card { background: #111; border-color: #222; }
-
-/* ─── Тег "Новое достижение" в XP-блоке ─── */
-.xp-new-achievement {
-  display: inline-block;
-  background: linear-gradient(135deg, #1a4fff 0%, #5b9bff 100%);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: .03em;
-  padding: 6px 16px;
-  border-radius: 20px;
-  margin-top: 6px;
-  pointer-events: none;
-}
-.xp-new-achievement.anim-levelup {
-  animation: levelUpPop .5s cubic-bezier(.36,.07,.19,.97) both;
-}
-
-/* ═══════════════════════════════════════════════════════
-   РЕФЕРАЛЫ
-   ═══════════════════════════════════════════════════════ */
-
-.referral-inner {
-  padding: 0 16px 32px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
-.referral-hero-icon {
-  font-size: 52px;
-  margin-top: 8px;
-}
-.referral-desc {
-  font-size: 14px;
-  color: rgba(255,255,255,.6);
-  text-align: center;
-  line-height: 1.6;
-  max-width: 320px;
-}
-.referral-stats-row {
-  display: flex;
-  gap: 24px;
-}
-.referral-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-.referral-stat span {
-  font-size: 28px;
-  font-weight: 700;
-  color: #fff;
-}
-.referral-stat small {
-  font-size: 12px;
-  color: rgba(255,255,255,.45);
-}
-.referral-link-block {
-  width: 100%;
-  max-width: 360px;
-}
-.referral-link-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255,255,255,.45);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  margin-bottom: 8px;
-}
-.referral-link-wrap {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.referral-link-input {
-  flex: 1;
-  background: rgba(255,255,255,.07);
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: 10px;
-  color: #fff;
-  font-size: 12px;
-  padding: 10px 12px;
-  font-family: var(--font-ui);
-  outline: none;
-  min-width: 0;
-}
-.btn-copy-ref {
-  width: 42px; height: 42px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,.15);
-  background: rgba(255,255,255,.07);
-  color: #fff;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  transition: background .15s;
-}
-.btn-copy-ref:active { background: rgba(255,255,255,.14); }
-.referral-share-btn {
-  width: 100%;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-}
-.referral-achievements {
-  width: 100%;
-  max-width: 360px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.referral-ach-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: .07em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,.4);
-  margin-bottom: 4px;
-}
-.referral-ach-item {
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: 12px;
-  padding: 12px 14px;
-}
-.referral-ach-info {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-.referral-ach-name {
-  font-size: 14px;
-  font-weight: 700;
-}
-.referral-ach-req {
-  font-size: 12px;
-  color: rgba(255,255,255,.4);
-}
-.referral-prog-bar-wrap {
-  height: 5px;
-  background: rgba(255,255,255,.1);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 4px;
-}
-.referral-prog-bar {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 3px;
-  transition: width .4s ease;
-}
-.referral-prog-nums {
-  font-size: 11px;
-  color: rgba(255,255,255,.4);
-}
-
-/* Светлые темы */
-body.theme-light .referral-desc { color: rgba(0,0,0,.55); }
-body.theme-light .referral-stat small { color: rgba(0,0,0,.4); }
-body.theme-light .referral-link-input { background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.12); color: #111; }
-body.theme-light .btn-copy-ref { background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.12); color: #111; }
-body.theme-light .referral-ach-item { background: rgba(0,0,0,.03); border-color: rgba(0,0,0,.07); }
-body.theme-light .referral-ach-req { color: rgba(0,0,0,.45); }
-body.theme-light .referral-prog-nums { color: rgba(0,0,0,.4); }
-body.theme-light .referral-ach-title { color: rgba(0,0,0,.4); }
-
-/* ═══════════════════════════════════════════════════════
-   ЗВАНИЯ — ЦВЕТА РАНГОВ
-   ═══════════════════════════════════════════════════════ */
-
-.title-rank-initial  { color: #00CA54; }
-.title-rank-medium   { color: #0059FF; }
-.title-rank-high     { color: #F30000; }
-.title-rank-prestige { color: #A100FF; }
-
-/* Метка ранга на карточке звания */
-.title-rank-badge {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(255,255,255,.08);
-}
-
-/* В инвентаре название звания отображается своим цветом */
-.inv-title-name {
-  font-weight: 700;
-}
-
-/* ═══════════════════════════════════════════════════════
-   КАРТОЧКИ ЗВАНИЯ — горизонтальный layout
-   ═══════════════════════════════════════════════════════ */
-
-/* В сетке магазина/инвентаря — во всю ширину (не квадрат) */
-.shop-card-title-row {
-  grid-column: 1 / -1;   /* растягиваем на всю сетку */
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  padding: 0 !important;
-  overflow: hidden;
-  min-height: 60px;
-  max-width: 100%;
-}
-
-/* Цветная полоска слева */
-.title-card-accent {
-  width: 4px;
-  align-self: stretch;
-  flex-shrink: 0;
-  border-radius: 0;
-}
-
-/* Тело карточки звания */
-.title-card-body {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.title-card-rank {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  opacity: .8;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.title-card-name {
-  font-size: 15px;
-  font-weight: 700;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Кнопка/цена в карточке звания */
-.shop-card-title-row .shop-card-price,
-.shop-card-title-row .shop-card-action {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-/* Скрываем preview-квадрат если он пустой */
-.shop-card-preview:empty {
-  display: none !important;
-}
-
-/* ═══════════════════════════════════════════════════════
-   ВЫРАВНИВАНИЕ БЛОКА ДОСТИЖЕНИЙ
-   ═══════════════════════════════════════════════════════ */
-
-/* Вкладка уровня — выравниваем контент как XP-секция */
-#profile-tab-xp {
-  padding: 0;
-}
-
-.profile-xp-section {
-  padding: 16px 16px 0;
-}
-
-.achievements-section {
-  padding: 0 16px 24px;
-  margin-top: 16px;
-}
-
-/* Заголовок достижений — выравниваем как секции в статистике */
-.achievements-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,.4);
-  margin-bottom: 10px;
-}
-
-/* Карточки достижений совпадают по ширине с XP-блоком */
-.achievements-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Светлые темы */
-body.theme-light .achievements-title { color: rgba(0,0,0,.4); }
-body.theme-light .title-card-body    { background: transparent; }

@@ -478,20 +478,6 @@ function recordResult(result, shots, hits, oppName) {
     App.historyBots.unshift({ result, opponent: oppName || 'Бот', shots, hits, date: Date.now() });
     if (App.historyBots.length > 50) App.historyBots.pop();
     saveJSON('bs_history_bots', App.historyBots);
-    // Сохраняем бот-результат на сервере для отслеживания достижений
-    if (!App.user.isGuest) {
-      fetch('/api/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: App.user.id, result, opponent: oppName || 'Бот', shots, hits, skipStats: false, mode: Game.mode }),
-      }).then(r => r.json()).then(j => {
-        if (j.newAchievements?.length) {
-          Game._pendingAchievements = (Game._pendingAchievements || []).concat(j.newAchievements);
-          if (currentScreen === 'gameover') _showNewAchievementTag();
-          _markAchievementsUnseen(j.newAchievements.map(a => a.id));
-        }
-      }).catch(() => {});
-    }
   } else {
     // Онлайн-статистика — обновляем локально сразу
     App.stats.wins       += result === 'win'  ? 1 : 0;
@@ -669,10 +655,6 @@ function renderRatingList(data) {
     const isMe = entry.id === App.user?.id;
     const level = entry.level || 1;
     const rank  = entry.rank  || 'Новобранец Неона';
-    // Кастомное звание если есть
-    const rankDisplay = entry.titleName
-      ? `<span style="color:${entry.titleColor || '#fff'};font-weight:700">${entry.titleName}</span>`
-      : rank;
     const div  = document.createElement('div');
     div.className = 'lb-item' + (isMe ? ' lb-item-me' : '');
     div.innerHTML =
@@ -680,7 +662,7 @@ function renderRatingList(data) {
       '<div class="lb-avatar-wrap"><div class="lb-avatar lb-frame-' + level + '">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
       '<div class="lb-level-dot level-bg-' + level + '">' + level + '</div></div>' +
       '<div class="lb-info"><strong>' + (entry.name||'Игрок') + (isMe ? ' <small>(вы)</small>' : '') + '</strong>' +
-      '<small class="lb-rank-name">' + rankDisplay + ' · ' + rw + 'W · ' + wr + '% WR</small></div>' +
+      '<small class="lb-rank-name">' + rank + ' · ' + rw + 'W · ' + wr + '% WR</small></div>' +
       '<div class="lb-wins">' + rw + '</div>';
     list.appendChild(div);
   });
@@ -1756,15 +1738,11 @@ function endGame(result) {
   setTimeout(() => {
     showScreen('gameover');
     const xpBlock = document.getElementById('xp-reward-block');
-      // Сбрасываем тег достижения
-      const achTagEl = document.getElementById('xp-new-achievement');
-      if (achTagEl) { achTagEl.classList.add('hidden'); achTagEl.classList.remove('anim-levelup'); }
-
-      if (Game.mode === 'online' && !App.user.isGuest) {
+    if (Game.mode === 'online' && !App.user.isGuest) {
       // Показываем блок сразу — с текущим прогрессом, без анимации
       if (xpBlock) {
         xpBlock.classList.remove('hidden');
-        // Рисуем «скелет» — текущий прогресс до получения данных с сервера
+        // Рисуем "скелет" — текущий прогресс до получения данных с сервера
         const prog = getXpProgress(App.user.xp || 0);
         setText('xp-ring-level', prog.level);
         setText('xp-progress-text', prog.xpInLevel + ' / ' + prog.xpNeeded + ' XP');
@@ -1789,10 +1767,6 @@ function endGame(result) {
             gainEl2.innerHTML = '<span class="xp-zero">+0 XP</span>';
           }
         }, 4000);
-      }
-      // Показываем тег достижения если уже накоплены
-      if (Game._pendingAchievements?.length) {
-        setTimeout(() => { _showNewAchievementTag(); Game._pendingAchievements = []; }, 400);
       }
     } else {
       if (xpBlock) xpBlock.classList.add('hidden');
@@ -1821,56 +1795,11 @@ const WS = {
   },
 
   _init(serverUrl, resolve, reject) {
-    // Определяем сокет: переиспользуем presence-сокет если подключён
-    const existingSock = initOnlineCounter._sock;
-    let sock;
+    if (this.socket) { this.socket.disconnect(); this.socket = null; }
+    this.socket = io(serverUrl || window.location.origin, { transports: ['websocket','polling'] });
+    this.socket.once('connect',       () => resolve());
+    this.socket.once('connect_error', () => reject(new Error('Ошибка подключения')));
 
-    if (existingSock && existingSock.connected) {
-      // Переиспользуем — не создаём второй сокет
-      if (this.socket && this.socket !== existingSock) {
-        this.socket.off(); // снимаем старые обработчики
-        this.socket.disconnect();
-      }
-      sock = existingSock;
-    } else {
-      // Создаём новый
-      if (this.socket) { this.socket.off(); this.socket.disconnect(); this.socket = null; }
-      sock = io(serverUrl || window.location.origin, { transports: ['websocket','polling'] });
-      initOnlineCounter._sock = sock;
-      sock.on('online_count', ({ count }) => {
-        if (initOnlineCounter.update) initOnlineCounter.update(count);
-      });
-    }
-
-    this.socket = sock;
-
-    // Снимаем предыдущие игровые обработчики (чтобы не дублировались при реюзе)
-    const gameEvents = ['disconnect','room_created','matched','opponent_placed','shot_result',
-      'your_turn','game_over','opponent_surrendered','surrender_confirmed','rematch_requested',
-      'rematch_accepted','rematch_declined','opponent_left','opponent_disconnected_win',
-      'xp_reward','reaction_received','turn_warning','purchase_complete','item_revoked'];
-    gameEvents.forEach(ev => sock.off(ev));
-
-    // Регистрируем игровые обработчики
-    this._registerHandlers();
-
-    // Актуализируем identify
-    if (sock.connected) {
-      sock.emit('identify', { playerId: App.user?.id || null });
-      resolve();
-    } else {
-      sock.once('connect', () => {
-        sock.emit('identify', { playerId: App.user?.id || null });
-        resolve();
-      });
-      sock.once('connect_error', () => reject(new Error('Ошибка подключения')));
-    }
-  },
-
-  _registerHandlers() {
-    const socket = this.socket;
-
-    // Потеря соединения
     this.socket.on('disconnect', () => {
       if (Game.active) showModal('Соединение потеряно', 'Игра прервана.', [
         { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); goToMenu(); }},
@@ -1927,7 +1856,7 @@ const WS = {
       stopSearchUI();
       this.roomId  = roomId;
       Game.roomId  = roomId;
-      Game.opponent = { name: opponent.name, id: opponent.playerId, level: opponent.level || 1, rank: opponent.rank || '', titleId: opponent.titleId || null, titleName: opponent.titleName || null, titleColor: opponent.titleColor || null };
+      Game.opponent = { name: opponent.name, id: opponent.playerId, level: opponent.level || 1, rank: opponent.rank || '' };
       setText('waiting-title', `Соперник: ${opponent.name}`);
       setText('waiting-sub',   'Расставляй корабли!');
       const block = document.getElementById('invite-block');
@@ -2083,16 +2012,6 @@ const WS = {
       Game._pendingXp = xpData;
       // Применяем сразу если уже на экране gameover, иначе endGame подберёт
       if (currentScreen === 'gameover') showXpReward(xpData);
-    });
-
-    // ── Новые достижения ─────────────────────────────
-    this.socket.on('new_achievement', (achievements) => {
-      if (!Array.isArray(achievements) || !achievements.length) return;
-      // Показываем тег в XP-блоке если уже на экране gameover
-      if (currentScreen === 'gameover') _showNewAchievementTag();
-      else Game._pendingAchievements = (Game._pendingAchievements || []).concat(achievements);
-      // Обновляем точки на карточках достижений если профиль открыт
-      _markAchievementsUnseen(achievements.map(a => a.id));
     });
 
     // ── Реакция соперника ────────────────────────────
@@ -2536,6 +2455,7 @@ function updateMenuLevel() {
   const xp    = App.user.xp || 0;
   const prog  = getXpProgress(xp);
   setText('menu-level-badge', prog.level);
+  setText('user-rank', prog.rank);
   const badge = document.getElementById('menu-level-badge');
   if (badge) badge.className = 'level-badge level-bg-' + prog.level;
   // Синхронизируем цвет рамки аватара на главной с цветом в профиле
@@ -2545,20 +2465,6 @@ function updateMenuLevel() {
     avatar.style.borderColor = color;
     avatar.style.borderWidth = '2px';
     avatar.style.borderStyle = 'solid';
-  }
-  // Показываем активное звание (кастомное или по умолчанию)
-  const rankEl = document.getElementById('user-rank');
-  if (rankEl) {
-    const equippedTitleId = _shopEquipped?.['title'];
-    if (equippedTitleId && equippedTitleId !== 'title_default') {
-      const titleItem = _shopItems.find(i => i.id === equippedTitleId);
-      if (titleItem) {
-        const color = titleRankColor(titleItem.title_rank);
-        rankEl.innerHTML = `<span style="color:${color};font-weight:700">${titleItem.name}</span>`;
-        return;
-      }
-    }
-    rankEl.textContent = prog.rank;
   }
 }
 
@@ -2739,222 +2645,6 @@ function setRingProgress(rectEl, pct, size) {
 }
 
 /* ─── ЭКРАН ПРОФИЛЯ ──────────────────────────────── */
-
-/* ─── ДОСТИЖЕНИЯ ─────────────────────────────────── */
-
-const TITLE_RANK_COLORS = {
-  prestige: '#A100FF',
-  high:     '#F30000',
-  medium:   '#0059FF',
-  initial:  '#00CA54',
-};
-
-function titleRankColor(rank) {
-  return TITLE_RANK_COLORS[rank] || '#FFFFFF';
-}
-
-// Загружает достижения с сервера и рендерит список
-async function loadAndRenderAchievements() {
-  if (App.user.isGuest) return;
-  const listEl = document.getElementById('achievements-list');
-  if (!listEl) return;
-  try {
-    // Убеждаемся что данные магазина загружены — нужны для названий и рангов звания
-    if (!_shopItems.length) await loadShopData();
-    // Заполняем кэш мета из _shopItems (до рендера карточек)
-    _shopItems.filter(i => i.type === 'title').forEach(i => {
-      _titleMeta[i.id] = { name: i.name, rank: i.title_rank };
-    });
-
-    const res = await fetch('/api/achievements/' + App.user.id);
-    const j   = await res.json();
-    if (!j.ok) return;
-    _renderAchievements(j.data, listEl);
-    // Отмечаем как прочитанные те, что видим
-    const unseenIds = j.data.filter(a => !a.notified && (a.completed_at || a.times_done > 0)).map(a => a.id);
-    if (unseenIds.length) {
-      fetch('/api/achievements/seen', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: App.user.id, ids: unseenIds }),
-      }).catch(() => {});
-    }
-  } catch(e) { console.error('[Achievements] load error:', e); }
-}
-
-function _renderAchievements(achievements, listEl) {
-  if (!achievements || !achievements.length) {
-    listEl.innerHTML = '<p class="empty-state">Нет данных</p>';
-    return;
-  }
-  listEl.innerHTML = achievements.map(a => _achievementCardHTML(a)).join('');
-
-  // Клик по достижениям с реферальной страницей
-  listEl.querySelectorAll('.achievement-card[data-has-ref]').forEach(card => {
-    card.addEventListener('click', () => {
-      showReferralScreen();
-    });
-  });
-}
-
-function _achievementCardHTML(a) {
-  const isDone     = a.type === 'limited' && !!a.completed_at;
-  const isOnceDone = a.type === 'once'    && !!a.completed_at;
-  const hasNew     = !a.notified && (a.completed_at || a.times_done > 0);
-
-  const doneClass = (isDone || isOnceDone) ? ' done' : '';
-  const dotClass  = hasNew ? ' new-dot' : '';
-  const refAttr   = a.hasRefPage ? ' data-has-ref="1" style="cursor:pointer"' : '';
-
-  // Иконка достижения
-  const icon = `<div class="ach-icon">🏅</div>`;
-
-  // Награда — звание
-  let rewardHTML = '';
-  if (a.reward) {
-    const titleName = _getTitleName(a.reward);
-    const rank      = _getTitleRank(a.reward);
-    const color     = titleRankColor(rank);
-    rewardHTML = `<div class="ach-reward" style="color:${color}">⭐ ${titleName}</div>`;
-  }
-
-  // Прогресс / счётчик
-  let progressHTML = '';
-  if (a.type === 'infinite') {
-    progressHTML = `
-      <div class="ach-infinite-count">${a.times_done}</div>
-      <div class="ach-infinite-label">раз выполнено</div>`;
-  } else if (a.type === 'limited' || a.type === 'once') {
-    const cur = Math.min(a.progress, a.goal);
-    const pct = a.goal ? Math.round(cur / a.goal * 100) : (a.completed_at ? 100 : 0);
-    progressHTML = `
-      <div class="ach-progress-wrap">
-        <div class="ach-progress-fill" style="width:${pct}%"></div>
-      </div>
-      <div class="ach-progress-nums">${cur} / ${a.goal}</div>`;
-  }
-
-  return `
-    <div class="achievement-card${doneClass}${dotClass}"${refAttr}>
-      ${icon}
-      <div class="ach-body">
-        <div class="ach-header">
-          <span class="ach-name">${_esc(a.title)}</span>
-        </div>
-        <div class="ach-desc">${_esc(a.desc)}${a.hasRefPage ? ' <span style="color:var(--accent);font-size:11px">→ Открыть</span>' : ''}</div>
-        ${rewardHTML}
-        ${progressHTML}
-      </div>
-    </div>`;
-}
-
-// Кэш названий и рангов из инвентаря/магазина (заполняется при загрузке)
-const _titleMeta = {};
-function _getTitleName(id) { return _titleMeta[id]?.name || id.replace('title_', '').replace(/_/g,' '); }
-function _getTitleRank(id) { return _titleMeta[id]?.rank || 'initial'; }
-
-// Добавляет точку-индикатор на карточки достижений (без перезагрузки)
-function _markAchievementsUnseen(ids) {
-  if (!ids || !ids.length) return;
-  const listEl = document.getElementById('achievements-list');
-  if (!listEl) return;
-  ids.forEach(id => {
-    const card = listEl.querySelector(`.achievement-card[data-ach-id="${id}"]`);
-    if (card) card.classList.add('new-dot');
-  });
-}
-
-// Показывает тег "Новое достижение" в XP-блоке
-function _showNewAchievementTag() {
-  const el = document.getElementById('xp-new-achievement');
-  if (!el) return;
-  el.classList.remove('hidden', 'anim-levelup');
-  void el.offsetWidth;
-  el.classList.add('anim-levelup');
-}
-
-// Экранирование HTML
-function _esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-/* ─── РЕФЕРАЛЫ ───────────────────────────────────── */
-
-async function showReferralScreen() {
-  if (App.user.isGuest) return;
-  Sound.click();
-  // Загружаем данные
-  try {
-    const res = await fetch('/api/referral/' + App.user.id);
-    const j   = await res.json();
-    if (j.ok && j.data) {
-      const d = j.data;
-      setText('ref-invited-count',   d.invited   || 0);
-      setText('ref-qualified-count', d.qualified || 0);
-      const linkInput = document.getElementById('referral-link-input');
-      if (linkInput) linkInput.value = d.refLink || '';
-      // Обновляем прогресс-бары
-      const q = d.qualified || 0;
-      const p3  = document.getElementById('ref-prog-3');
-      const n3  = document.getElementById('ref-nums-3');
-      const p10 = document.getElementById('ref-prog-10');
-      const n10 = document.getElementById('ref-nums-10');
-      if (p3)  p3.style.width  = Math.min(100, q / 3  * 100) + '%';
-      if (n3)  n3.textContent  = q + ' / 3';
-      if (p10) p10.style.width = Math.min(100, q / 10 * 100) + '%';
-      if (n10) n10.textContent = q + ' / 10';
-    }
-  } catch(e) {}
-  showScreen('referral');
-}
-
-function initReferralScreen() {
-  // Кнопка назад
-  document.getElementById('referral-back-btn')?.addEventListener('click', () => {
-    Sound.click();
-    showScreen('profile', { isBack: true });
-  });
-  // Копировать ссылку
-  document.getElementById('btn-copy-ref')?.addEventListener('click', () => {
-    const input = document.getElementById('referral-link-input');
-    if (!input) return;
-    navigator.clipboard?.writeText(input.value).then(() => {
-      const btn = document.getElementById('btn-copy-ref');
-      if (btn) { btn.innerHTML = '✓'; setTimeout(() => { btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'; }, 1500); }
-    }).catch(() => { input.select(); document.execCommand('copy'); });
-  });
-  // Поделиться в Telegram
-  document.getElementById('btn-share-ref')?.addEventListener('click', () => {
-    const input = document.getElementById('referral-link-input');
-    const link  = input?.value || '';
-    if (!link) return;
-    const text = encodeURIComponent('Сыграем в Морской бой? 🚢\n' + link);
-    if (window.Telegram?.WebApp?.openTelegramLink) {
-      window.Telegram.WebApp.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + text);
-    } else {
-      window.open('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + text, '_blank');
-    }
-  });
-}
-
-// Регистрируем реферала при запуске если есть startapp=ref_XXX
-async function checkAndRegisterReferral() {
-  if (App.user.isGuest) return;
-  try {
-    // Telegram WebApp startParam
-    const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param || '';
-    if (!startParam.startsWith('ref_')) return;
-    const inviterId = startParam.slice(4);
-    if (!inviterId || inviterId === String(App.user.id)) return;
-    // Проверяем что ещё не регистрировались
-    const key = 'bs_ref_registered';
-    if (localStorage.getItem(key)) return;
-    await fetch('/api/referral/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inviterId, inviteeId: App.user.id }),
-    });
-    localStorage.setItem(key, '1');
-  } catch(e) {}
-}
 async function renderProfileScreen(tab) {
   const isGuest = !!App.user.isGuest;
   const authBlock  = document.getElementById('profile-content-auth');
@@ -2992,22 +2682,7 @@ async function renderProfileScreen(tab) {
   const prog  = getXpProgress(xp);
 
   setText('profile-name',  App.user.name);
-  // Звание в профиле — кастомное или по умолчанию
-  const profileRankEl = document.getElementById('profile-rank');
-  if (profileRankEl) {
-    const equippedTitleId = _shopEquipped?.['title'];
-    if (equippedTitleId && equippedTitleId !== 'title_default') {
-      const titleItem = _shopItems.find(i => i.id === equippedTitleId);
-      if (titleItem) {
-        const color = titleRankColor(titleItem.title_rank);
-        profileRankEl.innerHTML = `<span style="color:${color};font-weight:700">${titleItem.name}</span>`;
-      } else {
-        profileRankEl.textContent = prog.rank;
-      }
-    } else {
-      profileRankEl.textContent = prog.rank;
-    }
-  }
+  setText('profile-rank',  prog.rank);
   setText('profile-level-tag', 'Ур. ' + prog.level);
   setText('profile-ring-level', prog.level);
   setText('profile-xp-current', prog.xpInLevel);
@@ -3055,8 +2730,6 @@ async function renderProfileScreen(tab) {
         updateMenuLevel();
       }
     } catch(e) {}
-    // Загружаем достижения
-    loadAndRenderAchievements();
   }
 }
 
@@ -3245,8 +2918,9 @@ function initOnlineCounter() {
   };
   initOnlineCounter.update = update;
 
+  // Загружаем socket.io и создаём один постоянный сокет присутствия
   const connect = () => {
-    if (initOnlineCounter._sock) return; // уже есть — переиспользуется WS
+    if (initOnlineCounter._sock) return; // уже есть
     const sock = io(window.location.origin, {
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -3255,12 +2929,12 @@ function initOnlineCounter() {
     initOnlineCounter._sock = sock;
 
     sock.on('connect', () => {
-      // При каждом (ре)подключении шлём identify с актуальным playerId
+      // Сообщаем серверу кто мы — сразу при подключении и при реконнекте
       sock.emit('identify', { playerId: App.user?.id || null });
     });
     sock.on('online_count', ({ count }) => update(count));
 
-    // Heartbeat каждые 4 минуты
+    // Heartbeat каждые 4 минуты — обновляем lastActive на сервере
     setInterval(() => {
       if (sock.connected) sock.emit('active');
     }, 4 * 60 * 1000);
@@ -3300,8 +2974,6 @@ function initSwipeBack() {
     touchStartX = null; touchStartY = null;
 
     if (['game','waiting'].includes(currentScreen)) return;
-    // Не срабатываем если касание началось внутри слайдера скриншотов
-    if (document.getElementById('shop-item-slider')?.contains(e.target)) return;
     if (startFraction >= EDGE_START && startFraction <= 0.66 && dx > SWIPE_MIN && Math.abs(dy) < Math.abs(dx)) {
       Sound.click();
       handleSwipeBack();
@@ -3366,17 +3038,7 @@ function updateGameFooter() {
     meLevel.className   = `gf-level level-bg-${myProg.level}`;
   }
   setText('gf-me-name', App.user.name || 'Я');
-  // Своё звание — кастомное или по умолчанию
-  const meRankEl = document.getElementById('gf-me-rank');
-  if (meRankEl) {
-    const equippedTitleId = _shopEquipped?.['title'];
-    if (equippedTitleId && equippedTitleId !== 'title_default') {
-      const tItem = _shopItems.find(i => i.id === equippedTitleId);
-      if (tItem) {
-        meRankEl.innerHTML = `<span style="color:${titleRankColor(tItem.title_rank)};font-weight:700">${tItem.name}</span>`;
-      } else { meRankEl.textContent = myProg.rank; }
-    } else { meRankEl.textContent = myProg.rank; }
-  }
+  setText('gf-me-rank', myProg.rank);
 
   // Аватар соперника
   const oppAvatar = document.getElementById('gf-opp-avatar');
@@ -3395,17 +3057,7 @@ function updateGameFooter() {
     }
   }
   setText('gf-opp-name', oppName);
-  // Звание соперника — получаем из данных матча
-  const oppRankEl = document.getElementById('gf-opp-rank');
-  if (oppRankEl) {
-    if (isBot) {
-      oppRankEl.textContent = '';
-    } else if (Game.opponent?.titleName && Game.opponent?.titleColor) {
-      oppRankEl.innerHTML = `<span style="color:${Game.opponent.titleColor};font-weight:700">${Game.opponent.titleName}</span>`;
-    } else {
-      oppRankEl.textContent = oppRank || '';
-    }
-  }
+  setText('gf-opp-rank', isBot ? '' : oppRank);
 
   // Счёт дуэлей по центру футера (кнопки сдаться в футере больше нет — только бургер)
   const duelBlock = document.getElementById('gf-duel-score');
@@ -3838,22 +3490,11 @@ function showReactionDisplay(side, payload) {
   container.innerHTML = '';
   if (!payload) return;
 
-  // Нормализуем payload — поддерживаем старый формат { emoji } и новый { type, value }
-  let type, value, filename;
-  if (typeof payload === 'string') {
-    type = 'emoji'; value = payload;
-  } else if (payload.type === 'custom' && payload.filename) {
-    type = 'custom'; filename = payload.filename;
-  } else {
-    type  = 'emoji';
-    value = payload.value || payload.emoji || String(payload);
-  }
-
   let el;
-  if (type === 'custom') {
+  if (payload.type === 'custom' && payload.filename) {
     el = document.createElement('video');
     el.className   = 'reaction-video-show';
-    el.src         = '/reactions/' + filename;
+    el.src         = '/reactions/' + payload.filename;
     el.autoplay    = true;
     el.loop        = true;
     el.muted       = true;
@@ -3861,7 +3502,7 @@ function showReactionDisplay(side, payload) {
   } else {
     el = document.createElement('span');
     el.className   = 'reaction-emoji-show';
-    el.textContent = value;
+    el.textContent = payload.value || String(payload);
   }
 
   container.appendChild(el);
@@ -3922,11 +3563,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initInventory();
   initReactions();
   loadCustomReactions();
-  initReferralScreen();
   Notif.init();
-
-  // Регистрируем реферала если пришли по ссылке
-  checkAndRegisterReferral().catch(() => {});
 
   // WebSocket события магазина — вешаем когда сокет будет готов
   const _shopSocketInterval = setInterval(() => {
@@ -4048,35 +3685,8 @@ function renderShopGrid() {
 
   grid.innerHTML = items.map(item => {
     const owned    = !!_shopInventory[item.id];
-    const equipped = item.type === 'title'
-      ? (_shopEquipped['title'] === item.id)
-      : Object.values(_shopEquipped).includes(item.id);
-    const cls = equipped ? 'shop-card equipped' : owned ? 'shop-card owned' : 'shop-card';
-
-    // Звание — горизонтальная карточка без квадратика превью
-    if (item.type === 'title') {
-      const rank  = item.title_rank || 'initial';
-      const color = titleRankColor(rank);
-      _titleMeta[item.id] = { name: item.name, rank };
-      const rankLabel = { prestige: 'Престижный', high: 'Высокий', medium: 'Средний', initial: 'Начальный' }[rank] || rank;
-      const priceHtml = equipped
-        ? '<span class="shop-card-price owned">✓ Применено</span>'
-        : owned
-          ? '<span class="shop-card-price owned">✓ Куплено</span>'
-          : item.price_stars
-            ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
-            : '';
-      return `<div class="${cls} shop-card-title-row" data-item-id="${item.id}">
-        <div class="title-card-accent" style="background:${color}"></div>
-        <div class="title-card-body">
-          <div class="title-card-rank" style="color:${color}">${rankLabel}</div>
-          <div class="title-card-name" style="color:${color}">${item.name}</div>
-          ${priceHtml}
-        </div>
-      </div>`;
-    }
-
-    // Обычная карточка (тема, реакция, рамка)
+    const equipped = Object.values(_shopEquipped).includes(item.id);
+    const cls      = equipped ? 'shop-card equipped' : owned ? 'shop-card owned' : 'shop-card';
     const priceHtml = equipped
       ? '<span class="shop-card-price owned">✓ Куплено</span>'
       : owned
@@ -4084,9 +3694,12 @@ function renderShopGrid() {
         : item.price_stars
           ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
           : '<span class="shop-card-price owned">Бесплатно</span>';
+    const preview = item.preview_url
+      ? `<img src="${item.preview_url}" alt="${item.name}" loading="lazy">`
+      : '🎁';
 
     return `<div class="${cls}" data-item-id="${item.id}">
-      <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
+      <div class="shop-card-preview">${preview}</div>
       <div class="shop-card-body">
         <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
         <div class="shop-card-name">${item.name}</div>
@@ -4095,6 +3708,7 @@ function renderShopGrid() {
     </div>`;
   }).join('');
 
+  // Клик по карточке — открыть страницу товара
   grid.querySelectorAll('.shop-card').forEach(card => {
     card.addEventListener('click', () => openShopItem(card.dataset.itemId));
   });
@@ -4107,33 +3721,16 @@ function openShopItem(itemId) {
   _currentShopItemId = itemId;
 
   const owned    = !!_shopInventory[itemId];
-  const equipped = item.type === 'title'
-    ? (_shopEquipped['title'] === itemId)
-    : Object.values(_shopEquipped).includes(itemId);
+  const equipped = Object.values(_shopEquipped).includes(itemId);
 
-  // Для звания — имя в цвете ранга
-  const titleEl = document.getElementById('shop-item-title');
-  const nameEl  = document.getElementById('shop-item-name');
-  if (item.type === 'title' && item.title_rank) {
-    const color = titleRankColor(item.title_rank);
-    if (titleEl) titleEl.innerHTML = `<span style="color:${color}">${item.name}</span>`;
-    if (nameEl)  nameEl.innerHTML  = `<span style="color:${color}">${item.name}</span>`;
-  } else {
-    if (titleEl) titleEl.textContent = item.name;
-    if (nameEl)  nameEl.textContent  = item.name;
-  }
+  document.getElementById('shop-item-title').textContent = item.name;
+  document.getElementById('shop-item-name').textContent  = item.name;
   document.getElementById('shop-item-desc').textContent  = item.description || '';
   document.getElementById('shop-item-type-badge').textContent = ITEM_TYPE_LABELS[item.type] || item.type;
 
-  // Превью — для реакций WebM, для звания — плашка с цветом
+  // Превью — для реакций WebM
   const previewEl = document.getElementById('shop-item-preview-lg');
-  if (item.type === 'title') {
-    const rank  = item.title_rank || 'initial';
-    const color = titleRankColor(rank);
-    previewEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:80px"><span style="color:${color};font-size:22px;font-weight:800">${item.name}</span></div>`;
-  } else {
-    previewEl.innerHTML = getItemPreviewHtml(item, true);
-  }
+  previewEl.innerHTML = getItemPreviewHtml(item, true);
 
   // Цена и статус
   const priceEl  = document.getElementById('shop-item-price');
@@ -4201,9 +3798,7 @@ async function handleShopItemBtn() {
   }
 
   const owned    = !!_shopInventory[itemId];
-  const equipped = item.type === 'title'
-    ? (_shopEquipped['title'] === itemId)
-    : Object.values(_shopEquipped).includes(itemId);
+  const equipped = Object.values(_shopEquipped).includes(itemId);
 
   // Реакции не надеваются — только покупаются
   if (item.type === 'reaction') {
@@ -4344,9 +3939,6 @@ const FAKE_PREVIEWS = {
 
 // Патчим getPreviewHtml — SVG для страницы товара (large=true), PNG для карточки
 function getItemPreviewHtml(item, large = false) {
-  // Звание — нет картинки, используем специальный рендер
-  if (item.type === 'title') return '';
-
   // Реакция — WebM видео
   if (item.type === 'reaction' && item.preview_url) {
     const cls = large ? 'shop-reaction-preview-lg' : 'shop-reaction-preview';
@@ -4354,6 +3946,7 @@ function getItemPreviewHtml(item, large = false) {
   }
 
   if (large) {
+    // На странице товара — SVG если есть
     const svgUrl = item.preview_url ? item.preview_url.replace(/\.(png|jpg)$/i, '.svg') : null;
     if (svgUrl && !/\.webm$/i.test(item.preview_url)) {
       return `<img src="${svgUrl}" alt="${item.name}" loading="lazy" class="shop-preview-lg-img">`;
@@ -4363,6 +3956,7 @@ function getItemPreviewHtml(item, large = false) {
     }
     return '🎁';
   }
+  // В карточке сетки
   if (item.preview_url) {
     return `<img src="${item.preview_url}" alt="${item.name}" loading="lazy" class="shop-card-img">`;
   }
@@ -4381,18 +3975,11 @@ function renderInventory() {
   if (!grid) return;
 
   // Тёмная тема всегда в инвентаре для авторизованных
-  const darkTheme    = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
-  // Звание "По умолчанию" всегда в инвентаре
-  const defaultTitle = { id: 'title_default', type: 'title', name: 'По умолчанию', description: 'Звание соответствует вашему уровню', title_rank: null };
+  const darkTheme = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
   const ownedIds  = new Set(Object.keys(_shopInventory));
-  const owned     = [darkTheme, defaultTitle, ..._shopItems.filter(i => ownedIds.has(i.id))];
+  const owned     = [darkTheme, ..._shopItems.filter(i => ownedIds.has(i.id))];
 
-  // Кэшируем meta звания для _achievementCardHTML
-  _shopItems.filter(i => i.type === 'title').forEach(i => {
-    _titleMeta[i.id] = { name: i.name, rank: i.title_rank };
-  });
-
-  if (owned.length <= 2 && !ownedIds.size) {
+  if (owned.length <= 1 && !ownedIds.size) {
     grid.innerHTML = '';
     emptyEl?.classList.remove('hidden');
     return;
@@ -4418,47 +4005,21 @@ function renderInventory() {
         </div>
       </div>`;
     }
-
-    // Определяем equipped
+    // Для всех предметов включая темы — источник правды _shopEquipped (с сервера)
     let equipped;
     if (item.type === 'theme') {
       const activeTheme = _shopEquipped['theme'] || null;
       equipped = item.id === 'theme_dark' ? !activeTheme : activeTheme === item.id;
-    } else if (item.type === 'title') {
-      const activeTitle = _shopEquipped['title'] || null;
-      equipped = item.id === 'title_default' ? !activeTitle : activeTitle === item.id;
     } else {
       equipped = Object.values(_shopEquipped).includes(item.id);
     }
-
-    const actionBtn = equipped
-      ? '<button class="shop-card-action applied">Применено</button>'
-      : `<button class="shop-card-action" data-inv-action="${item.id}">Применить</button>`;
-
-    // Звание — горизонтальная карточка
-    if (item.type === 'title') {
-      const rank  = item.title_rank || null;
-      const color = rank ? titleRankColor(rank) : 'rgba(255,255,255,.7)';
-      const rankLabel = { prestige: 'Престижный', high: 'Высокий', medium: 'Средний', initial: 'Начальный' }[rank] || 'По умолчанию';
-      const cls = equipped ? 'shop-card shop-card-title-row equipped' : 'shop-card shop-card-title-row owned';
-      return `<div class="${cls}" data-inv-item="${item.id}">
-        <div class="title-card-accent" style="background:${color}"></div>
-        <div class="title-card-body">
-          <div class="title-card-rank" style="color:${color}">${rankLabel}</div>
-          <div class="title-card-name" style="color:${color}">${item.name}</div>
-          ${actionBtn}
-        </div>
-      </div>`;
-    }
-
-    // Обычная карточка
     const cls = equipped ? 'shop-card equipped' : 'shop-card owned';
     return `<div class="${cls}" data-inv-item="${item.id}">
       <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
       <div class="shop-card-body">
         <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
         <div class="shop-card-name">${item.name}</div>
-        ${actionBtn}
+        ${equipped ? '<button class="shop-card-action applied">Применено</button>' : `<button class="shop-card-action" data-inv-action="${item.id}">Применить</button>`}
       </div>
     </div>`;
   }).join('');
@@ -4469,12 +4030,9 @@ function renderInventory() {
       if (e.target.closest('[data-inv-action]')) return;
       const id = card.dataset.invItem;
       (_shopItems.length ? Promise.resolve() : loadShopData()).then(() => {
-        // Виртуальные предметы — добавляем в _shopItems если нет
+        // theme_dark — виртуальный, добавляем в _shopItems если нет
         if (id === 'theme_dark' && !_shopItems.find(i => i.id === 'theme_dark')) {
           _shopItems.unshift({ id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' });
-        }
-        if (id === 'title_default' && !_shopItems.find(i => i.id === 'title_default')) {
-          _shopItems.unshift({ id: 'title_default', type: 'title', name: 'По умолчанию', description: 'Звание соответствует вашему уровню', title_rank: null });
         }
         _shopItemBackTarget = 'profile';
         showScreen('shop-item');
@@ -4486,24 +4044,20 @@ function renderInventory() {
   // Клики по кнопкам
   grid.querySelectorAll('[data-inv-action]').forEach(btn => {
     const itemId = btn.dataset.invAction;
-    // Виртуальные предметы
+    // theme_dark — виртуальный, не из _shopItems
     const item = itemId === 'theme_dark'
       ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' }
-      : itemId === 'title_default'
-      ? { id: 'title_default', type: 'title', name: 'По умолчанию', description: 'Звание соответствует вашему уровню' }
       : _shopItems.find(i => i.id === itemId);
     if (!item) return;
     const activeTheme = _shopEquipped['theme'] || null;
-    const activeTitle = _shopEquipped['title'] || null;
     const equipped = item.type === 'theme'
       ? (item.id === 'theme_dark' ? !activeTheme : activeTheme === itemId)
-      : item.type === 'title'
-      ? (item.id === 'title_default' ? !activeTitle : activeTitle === itemId)
       : Object.values(_shopEquipped).includes(itemId);
     if (equipped) return; // уже применено — не кликается
     btn.addEventListener('click', async e => {
       e.stopPropagation();
       if (item.type === 'theme') {
+        // Сбросить текущую тему (установить тёмную) или применить новую
         if (itemId === 'theme_dark') {
           if (_shopEquipped['theme']) {
             await fetch('/api/unequip', {
@@ -4528,18 +4082,6 @@ function renderInventory() {
             setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
           });
         }
-        return;
-      }
-      // Звание "По умолчанию" — снимаем текущее
-      if (item.type === 'title' && itemId === 'title_default') {
-        if (_shopEquipped['title']) {
-          await fetch('/api/unequip', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: App.user?.id, slot: 'title' }),
-          });
-          delete _shopEquipped['title'];
-        }
-        renderInventory();
         return;
       }
       await fetch('/api/equip', {
@@ -4570,6 +4112,147 @@ function initInventory() {
     showScreen('shop');
   });
 }
+
+// Патчим renderShopGrid — используем getItemPreviewHtml
+const _origRenderShopGrid = renderShopGrid;
+renderShopGrid = function() {
+  const grid = document.getElementById('shop-grid');
+  if (!grid) return;
+
+  const items = _shopFilter === 'all'
+    ? _shopItems
+    : _shopItems.filter(i => i.type === _shopFilter);
+
+  if (!items.length) {
+    grid.innerHTML = '<div class="shop-loading">Нет товаров</div>';
+    return;
+  }
+
+  grid.innerHTML = items.map(item => {
+    const owned    = !!_shopInventory[item.id];
+    const equipped = Object.values(_shopEquipped).includes(item.id);
+    const cls      = equipped ? 'shop-card equipped' : owned ? 'shop-card owned' : 'shop-card';
+    const priceHtml = equipped
+      ? '<span class="shop-card-price owned">✓ Куплено</span>'
+      : owned
+        ? '<span class="shop-card-price owned">✓ Куплено</span>'
+        : item.price_stars
+          ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
+          : '<span class="shop-card-price owned">Бесплатно</span>';
+
+    return `<div class="${cls}" data-item-id="${item.id}">
+      <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
+      <div class="shop-card-body">
+        <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
+        <div class="shop-card-name">${item.name}</div>
+        ${priceHtml}
+      </div>
+    </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.shop-card').forEach(card => {
+    card.addEventListener('click', () => openShopItem(card.dataset.itemId));
+  });
+};
+
+// Патчим openShopItem — используем getItemPreviewHtml
+const _origOpenShopItem = openShopItem;
+openShopItem = function(itemId) {
+  // theme_dark — виртуальный товар, не в _shopItems
+  let item = _shopItems.find(i => i.id === itemId);
+  if (!item && itemId === 'theme_dark') {
+    item = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
+  }
+  if (!item) return;
+  _currentShopItemId = itemId;
+
+  const owned    = !!_shopInventory[itemId];
+  const equipped = Object.values(_shopEquipped).includes(itemId);
+
+  document.getElementById('shop-item-title').textContent = item.name;
+  document.getElementById('shop-item-name').textContent  = item.name;
+  document.getElementById('shop-item-desc').textContent  = item.description || '';
+  document.getElementById('shop-item-type-badge').textContent = ITEM_TYPE_LABELS[item.type] || item.type;
+
+  const previewEl = document.getElementById('shop-item-preview-lg');
+  previewEl.innerHTML = getItemPreviewHtml(item, true);
+
+  const priceEl  = document.getElementById('shop-item-price');
+  const statusEl = document.getElementById('shop-item-status');
+  const btnEl    = document.getElementById('shop-item-btn');
+
+  // Реакции — не надеваются
+  if (item.type === 'reaction') {
+    if (owned) {
+      priceEl.textContent  = '';
+      statusEl.textContent = '✓ В наличии';
+      btnEl.textContent    = 'Используется в бою автоматически';
+      btnEl.className      = 'btn btn-secondary btn-large';
+      btnEl.disabled       = true;
+    } else if (item.price_stars) {
+      priceEl.textContent  = `⭐ ${item.price_stars}`;
+      statusEl.textContent = '';
+      btnEl.textContent    = 'Купить';
+      btnEl.className      = 'btn btn-primary btn-large';
+      btnEl.disabled       = false;
+    } else {
+      priceEl.textContent  = 'Бесплатно';
+      statusEl.textContent = '';
+      btnEl.textContent    = 'Получить';
+      btnEl.className      = 'btn btn-primary btn-large';
+      btnEl.disabled       = false;
+    }
+  } else if (equipped) {
+    priceEl.textContent  = '';
+    statusEl.textContent = '✓ Применено';
+    btnEl.textContent    = 'Снять';
+    btnEl.className      = 'btn btn-secondary btn-large';
+    btnEl.disabled       = false;
+  } else if (owned || itemId === 'theme_dark') {
+    priceEl.textContent  = '';
+    statusEl.textContent = '✓ Куплено';
+    btnEl.textContent    = 'Применить';
+    btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
+  } else if (item.price_stars) {
+    priceEl.textContent  = `⭐ ${item.price_stars}`;
+    statusEl.textContent = '';
+    btnEl.textContent    = 'Купить';
+    btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
+  } else {
+    priceEl.textContent  = 'Бесплатно';
+    statusEl.textContent = '';
+    btnEl.textContent    = 'Получить';
+    btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
+  }
+
+  // ── Предпросмотр темы ──────────────────────────────────────────────────
+  // Если это страница темы — применяем её временно для предпросмотра
+  if (item.type === 'theme') {
+    resetTheme();
+    if (itemId === 'theme_dark') {
+      // тёмная — это дефолт, просто сбрасываем
+    } else {
+      applyEquippedTheme(itemId);
+    }
+    // При уходе со страницы — восстанавливаем реальную тему
+    const restoreTheme = () => applyEquippedThemeFromState();
+    document.getElementById('shop-item-back').onclick = () => {
+      restoreTheme();
+      showScreen(_shopItemBackTarget, { isBack: true });
+    };
+  } else {
+    document.getElementById('shop-item-back').onclick = () => showScreen(_shopItemBackTarget, { isBack: true });
+  }
+
+  showScreen('shop-item');
+
+  // Слайдер — после showScreen чтобы DOM был виден
+  requestAnimationFrame(() => renderShopItemSlider(item));
+};
+
 
 /* ─── СЛАЙДЕР СКРИНШОТОВ ТОВАРА ──────────────────── */
 
@@ -4605,19 +4288,15 @@ function renderShopItemSlider(item) {
   slider.id = 'shop-item-slider';
   slider.className = 'shop-item-slider';
 
-  const dotsWrap = document.createElement('div');
-  dotsWrap.className = 'shop-item-slider-dots';
-  slider.appendChild(dotsWrap);   // dots СВЕРХУ
-
   const track = document.createElement('div');
   track.className = 'shop-item-slider-track';
-  slider.appendChild(track);      // трек под точками
+  slider.appendChild(track);
+
+  const dotsWrap = document.createElement('div');
+  dotsWrap.className = 'shop-item-slider-dots';
+  slider.appendChild(dotsWrap);
 
   detail.appendChild(slider);
-
-  // Блокируем swipe-back (глобальный обработчик) внутри слайдера
-  slider.addEventListener('touchstart', e => { e._inShopSlider = true; }, { passive: true });
-  slider.addEventListener('touchmove',  e => { e._inShopSlider = true; }, { passive: true });
 
   let cur = 0;
   let loaded = 0;
