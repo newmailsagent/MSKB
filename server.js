@@ -1041,10 +1041,27 @@ function validateNoTouch(field) {
     if (!room || !room.started || room.over) return;
     const opponent = getOpponent(room, socket.id);
     if (!opponent?.socketId) return;
-    // Разрешаем только безопасные эмодзи
-    const allowed = ['👍','❤️','👎','🤬','😂'];
-    if (!allowed.includes(emoji)) return;
-    io.to(opponent.socketId).emit('reaction_received', { emoji });
+
+    const allowedEmoji = new Set(['👍','❤️','👎','🤬','😂']);
+    let payload = null;
+
+    if (allowedEmoji.has(emoji)) {
+      payload = { type: 'emoji', value: emoji };
+    } else if (typeof emoji === 'string' && emoji.startsWith('custom:')) {
+      const itemId = emoji.slice(7).replace(/[^a-zA-Z0-9_]/g, '');
+      if (itemId.length > 0) {
+        const row = db.prepare(
+          `SELECT preview_url FROM shop_items WHERE id=? AND type='reaction' AND is_active=1`
+        ).get(itemId);
+        if (row) {
+          const filename = row.preview_url ? row.preview_url.replace(/^\/reactions\//, '') : null;
+          if (filename) payload = { type: 'custom', id: itemId, filename };
+        }
+      }
+    }
+
+    if (!payload) return;
+    io.to(opponent.socketId).emit('reaction_received', payload);
   });
 
   // ── Реванш ───────────────────────────────────────

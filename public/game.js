@@ -1795,34 +1795,56 @@ const WS = {
   },
 
   _init(serverUrl, resolve, reject) {
-    // Переиспользуем presence-сокет если он уже есть и подключён —
-    // это гарантирует один сокет на клиента, счётчик онлайна не задваивается
+    // Определяем сокет: переиспользуем presence-сокет если подключён
     const existingSock = initOnlineCounter._sock;
+    let sock;
+
     if (existingSock && existingSock.connected) {
+      // Переиспользуем — не создаём второй сокет
       if (this.socket && this.socket !== existingSock) {
+        this.socket.off(); // снимаем старые обработчики
         this.socket.disconnect();
       }
-      this.socket = existingSock;
-      // Актуализируем identify с текущим playerId
-      this.socket.emit('identify', { playerId: App.user?.id || null });
-      resolve();
-      return;
+      sock = existingSock;
+    } else {
+      // Создаём новый
+      if (this.socket) { this.socket.off(); this.socket.disconnect(); this.socket = null; }
+      sock = io(serverUrl || window.location.origin, { transports: ['websocket','polling'] });
+      initOnlineCounter._sock = sock;
+      sock.on('online_count', ({ count }) => {
+        if (initOnlineCounter.update) initOnlineCounter.update(count);
+      });
     }
 
-    if (this.socket) { this.socket.disconnect(); this.socket = null; }
-    this.socket = io(serverUrl || window.location.origin, { transports: ['websocket','polling'] });
-    // Регистрируем как presence-сокет чтобы не создавать второй
-    initOnlineCounter._sock = this.socket;
-    this.socket.once('connect',       () => {
-      this.socket.emit('identify', { playerId: App.user?.id || null });
-      resolve();
-    });
-    this.socket.once('connect_error', () => reject(new Error('Ошибка подключения')));
-    // Подписываем на online_count (на случай если initOnlineCounter ещё не добавил)
-    this.socket.on('online_count', ({ count }) => {
-      if (initOnlineCounter.update) initOnlineCounter.update(count);
-    });
+    this.socket = sock;
 
+    // Снимаем предыдущие игровые обработчики (чтобы не дублировались при реюзе)
+    const gameEvents = ['disconnect','room_created','matched','opponent_placed','shot_result',
+      'your_turn','game_over','opponent_surrendered','surrender_confirmed','rematch_requested',
+      'rematch_accepted','rematch_declined','opponent_left','opponent_disconnected_win',
+      'xp_reward','reaction_received','turn_warning','purchase_complete','item_revoked'];
+    gameEvents.forEach(ev => sock.off(ev));
+
+    // Регистрируем игровые обработчики
+    this._registerHandlers();
+
+    // Актуализируем identify
+    if (sock.connected) {
+      sock.emit('identify', { playerId: App.user?.id || null });
+      resolve();
+    } else {
+      sock.once('connect', () => {
+        sock.emit('identify', { playerId: App.user?.id || null });
+        resolve();
+      });
+      sock.once('connect_error', () => reject(new Error('Ошибка подключения')));
+    }
+  },
+
+  _registerHandlers() {
+    const socket = this.socket;
+
+    // Потеря соединения
     this.socket.on('disconnect', () => {
       if (Game.active) showModal('Соединение потеряно', 'Игра прервана.', [
         { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); goToMenu(); }},
@@ -3514,11 +3536,22 @@ function showReactionDisplay(side, payload) {
   container.innerHTML = '';
   if (!payload) return;
 
+  // Нормализуем payload — поддерживаем старый формат { emoji } и новый { type, value }
+  let type, value, filename;
+  if (typeof payload === 'string') {
+    type = 'emoji'; value = payload;
+  } else if (payload.type === 'custom' && payload.filename) {
+    type = 'custom'; filename = payload.filename;
+  } else {
+    type  = 'emoji';
+    value = payload.value || payload.emoji || String(payload);
+  }
+
   let el;
-  if (payload.type === 'custom' && payload.filename) {
+  if (type === 'custom') {
     el = document.createElement('video');
     el.className   = 'reaction-video-show';
-    el.src         = '/reactions/' + payload.filename;
+    el.src         = '/reactions/' + filename;
     el.autoplay    = true;
     el.loop        = true;
     el.muted       = true;
@@ -3526,7 +3559,7 @@ function showReactionDisplay(side, payload) {
   } else {
     el = document.createElement('span');
     el.className   = 'reaction-emoji-show';
-    el.textContent = payload.value || String(payload);
+    el.textContent = value;
   }
 
   container.appendChild(el);
