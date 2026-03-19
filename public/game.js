@@ -4176,171 +4176,7 @@ async function loadShopData() {
 }
 
 // Отрисовать карточки с учётом фильтра
-function renderShopGrid() {
-  const grid = document.getElementById('shop-grid');
-  if (!grid) return;
-
-  const items = _shopFilter === 'all'
-    ? _shopItems
-    : _shopItems.filter(i => i.type === _shopFilter);
-
-  if (!items.length) {
-    grid.innerHTML = '<div class="shop-loading">Нет товаров</div>';
-    return;
-  }
-
-  grid.innerHTML = items.map(item => {
-    const owned    = !!_shopInventory[item.id];
-    const equipped = item.type === 'title'
-      ? (_shopEquipped['title'] === item.id)
-      : Object.values(_shopEquipped).includes(item.id);
-    const cls = equipped ? 'shop-card equipped' : owned ? 'shop-card owned' : 'shop-card';
-    const priceHtml = equipped
-      ? '<span class="shop-card-price owned">✓ Куплено</span>'
-      : owned
-        ? '<span class="shop-card-price owned">✓ Куплено</span>'
-        : item.price_stars
-          ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
-          : '<span class="shop-card-price owned">Бесплатно</span>';
-
-    // Звание — квадратная карточка, в превью само название
-    if (item.type === 'title') {
-      const rank  = item.title_rank || _getTitleRank(item.id) || 'initial';
-      const color = titleRankColor(rank);
-      _titleMeta[item.id] = { name: item.name, rank };
-      return `<div class="${cls}" data-item-id="${item.id}">
-        <div class="shop-card-preview title-preview-cell">
-          <span class="title-preview-text" style="color:${color}">${item.name}</span>
-        </div>
-        <div class="shop-card-body">
-          <div class="shop-card-type">Звание</div>
-          ${priceHtml}
-        </div>
-      </div>`;
-    }
-
-    // Все остальные карточки — оригинальный рендер
-    return `<div class="${cls}" data-item-id="${item.id}">
-      <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
-      <div class="shop-card-body">
-        <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
-        <div class="shop-card-name">${item.name}</div>
-        ${priceHtml}
-      </div>
-    </div>`;
-  }).join('');
-
-  grid.querySelectorAll('.shop-card').forEach(card => {
-    card.addEventListener('click', () => openShopItem(card.dataset.itemId));
-  });
-}
-
 // Открыть страницу товара
-function openShopItem(itemId) {
-  const item = _shopItems.find(i => i.id === itemId);
-  if (!item) return;
-  _currentShopItemId = itemId;
-
-  const owned    = !!_shopInventory[itemId];
-  const equipped = item.type === 'title'
-    ? (_shopEquipped['title'] === itemId)
-    : Object.values(_shopEquipped).includes(itemId);
-
-  // Для звания — имя в цвете ранга
-  const titleEl = document.getElementById('shop-item-title');
-  const nameEl  = document.getElementById('shop-item-name');
-  if (item.type === 'title' && item.title_rank) {
-    const color = titleRankColor(item.title_rank);
-    if (titleEl) titleEl.innerHTML = `<span style="color:${color}">${item.name}</span>`;
-    if (nameEl)  nameEl.innerHTML  = `<span style="color:${color}">${item.name}</span>`;
-  } else {
-    if (titleEl) titleEl.textContent = item.name;
-    if (nameEl)  nameEl.textContent  = item.name;
-  }
-  document.getElementById('shop-item-desc').textContent  = item.description || '';
-  document.getElementById('shop-item-type-badge').textContent = ITEM_TYPE_LABELS[item.type] || item.type;
-
-  // Превью — для реакций WebM, для звания — плашка с цветом
-  const previewEl = document.getElementById('shop-item-preview-lg');
-  if (item.type === 'title') {
-    const rank  = item.title_rank || 'initial';
-    const color = titleRankColor(rank);
-    previewEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:80px"><span style="color:${color};font-size:22px;font-weight:800">${item.name}</span></div>`;
-  } else {
-    previewEl.innerHTML = getItemPreviewHtml(item, true);
-  }
-
-  // Цена и статус
-  const priceEl  = document.getElementById('shop-item-price');
-  const statusEl = document.getElementById('shop-item-status');
-  const btnEl    = document.getElementById('shop-item-btn');
-
-  // Реакции не надеваются — просто "В наличии" или "Купить"
-  if (item.type === 'reaction') {
-    if (owned) {
-      priceEl.textContent  = '';
-      statusEl.textContent = '✓ В наличии';
-      btnEl.textContent    = 'Используется в бою автоматически';
-      btnEl.className      = 'btn btn-secondary btn-large';
-      btnEl.disabled       = true;
-    } else if (item.price_stars) {
-      priceEl.textContent  = `⭐ ${item.price_stars}`;
-      statusEl.textContent = '';
-      btnEl.textContent    = 'Купить';
-      btnEl.className      = 'btn btn-primary btn-large';
-      btnEl.disabled       = false;
-    }
-  } else if (equipped) {
-    priceEl.textContent  = '';
-    statusEl.textContent = '✓ Надето';
-    btnEl.textContent    = 'Снять';
-    btnEl.className      = 'btn btn-secondary btn-large';
-    btnEl.disabled       = false;
-  } else if (owned) {
-    priceEl.textContent  = '';
-    statusEl.textContent = '✓ Куплено';
-    btnEl.textContent    = 'Надеть';
-    btnEl.className      = 'btn btn-primary btn-large';
-    btnEl.disabled       = false;
-  } else if (item.price_stars) {
-    priceEl.textContent  = `⭐ ${item.price_stars}`;
-    statusEl.textContent = '';
-    btnEl.textContent    = 'Купить';
-    btnEl.className      = 'btn btn-primary btn-large';
-    btnEl.disabled       = false;
-  } else {
-    priceEl.textContent  = 'Бесплатно';
-    statusEl.textContent = '';
-    btnEl.textContent    = 'Получить';
-    btnEl.className      = 'btn btn-primary btn-large';
-    btnEl.disabled       = false;
-  }
-
-  // Кнопка назад — target уже установлен вызывающим кодом ДО showScreen,
-  // но если открываем напрямую из магазина — устанавливаем здесь
-  if (currentScreen !== 'shop-item') {
-    _shopItemBackTarget = currentScreen === 'profile' ? 'profile' : 'shop';
-  }
-
-  // Для темы — применяем её временно для предпросмотра
-  if (item.type === 'theme') {
-    resetTheme();
-    if (itemId !== 'theme_dark') applyEquippedTheme(itemId);
-    const restoreTheme = () => applyEquippedThemeFromState();
-    document.getElementById('shop-item-back').onclick = () => {
-      restoreTheme();
-      showScreen(_shopItemBackTarget, { isBack: true });
-    };
-  } else {
-    document.getElementById('shop-item-back').onclick = () => showScreen(_shopItemBackTarget, { isBack: true });
-  }
-
-  showScreen('shop-item');
-
-  // Слайдер — после showScreen чтобы DOM был виден
-  requestAnimationFrame(() => renderShopItemSlider(item));
-}
-
 // Действие кнопки на странице товара
 async function handleShopItemBtn() {
   const itemId = _currentShopItemId;
@@ -4600,11 +4436,12 @@ function renderInventory() {
     // Звание — квадратная карточка, вместо превью — само название
     if (item.type === 'title') {
       const rank  = item.title_rank || null;
-      const color = rank ? titleRankColor(rank) : 'rgba(255,255,255,.75)';
+      // Для "По умолчанию" (нет ранга) — используем CSS-переменную чтобы работало в любой теме
+      const colorStyle = rank ? `color:${titleRankColor(rank)}` : 'color:var(--text)';
       const cls = equipped ? 'shop-card equipped' : 'shop-card owned';
       return `<div class="${cls}" data-inv-item="${item.id}">
         <div class="shop-card-preview title-preview-cell">
-          <span class="title-preview-text" style="color:${color}">${item.name}</span>
+          <span class="title-preview-text" style="${colorStyle}">${item.name}</span>
         </div>
         <div class="shop-card-body">
           <div class="shop-card-type">Звание</div>

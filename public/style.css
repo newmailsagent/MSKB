@@ -2567,7 +2567,7 @@ body.theme-light .referral-ach-title { color: rgba(0,0,0,.4); }
 
 /* Вкладка уровня — выравниваем контент как XP-секция */
 #profile-tab-xp {
-  padding: 0;
+  padding: 20px 0 40px;
 }
 
 
