@@ -2795,7 +2795,25 @@ function _renderAchievements(achievements, listEl) {
     listEl.innerHTML = '<p class="empty-state">Нет данных</p>';
     return;
   }
-  listEl.innerHTML = achievements.map(a => _achievementCardHTML(a)).join('');
+
+  // Сортировка: последнее выполненное — первым
+  // Для infinite: сортируем по убыванию times_done если > 0
+  // Для limited/once: сортируем по убыванию completed_at
+  const sorted = [...achievements].sort((a, b) => {
+    const aTime = a.completed_at || (a.times_done > 0 ? 1 : 0);
+    const bTime = b.completed_at || (b.times_done > 0 ? 1 : 0);
+    if (aTime && bTime) {
+      // Оба выполнены — по времени (для infinite у которых нет completed_at — по times_done)
+      const aVal = a.completed_at || a.times_done;
+      const bVal = b.completed_at || b.times_done;
+      return bVal - aVal;
+    }
+    if (aTime && !bTime) return -1; // a выполнено, b нет → a первее
+    if (!aTime && bTime) return 1;
+    return 0; // оба не выполнены — оставляем порядок
+  });
+
+  listEl.innerHTML = sorted.map(a => _achievementCardHTML(a)).join('');
 
   // Клик по достижениям с реферальной страницей
   listEl.querySelectorAll('.achievement-card[data-has-ref]').forEach(card => {
@@ -3029,6 +3047,18 @@ async function renderProfileScreen(tab) {
   if (guestBlock) guestBlock.style.display = isGuest ? ''     : 'none';
   if (isGuest) return;
 
+  // Всегда сбрасываем на первую вкладку (xp) и скроллим наверх
+  const targetTab = tab || 'xp';
+  document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === targetTab));
+  document.querySelectorAll('.profile-tab-content').forEach(el => el.classList.toggle('hidden', el.id !== 'profile-tab-' + targetTab));
+  if (targetTab === 'stats') renderStatsScreen();
+  if (targetTab === 'inventory') { (_shopItems.length ? Promise.resolve() : loadShopData()).then(() => renderInventory()); }
+
+  // Скролл к началу
+  const screenEl = document.getElementById('screen-profile');
+  if (screenEl) screenEl.scrollTop = 0;
+  if (authBlock) authBlock.scrollTop = 0;
+
   // Инициализируем табы один раз
   if (!renderProfileScreen._tabsInited) {
     renderProfileScreen._tabsInited = true;
@@ -3045,13 +3075,6 @@ async function renderProfileScreen(tab) {
       const btn = e.target.closest('[data-mode]');
       if (btn) renderStatsScreen(btn.dataset.mode);
     });
-  }
-
-  // Открываем нужную вкладку если передана
-  if (tab) {
-    document.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    document.querySelectorAll('.profile-tab-content').forEach(el => el.classList.toggle('hidden', el.id !== 'profile-tab-' + tab));
-    if (tab === 'stats') renderStatsScreen();
   }
 
   const xp    = App.user.xp || 0;
@@ -4321,7 +4344,11 @@ function openShopItem(itemId) {
 // Действие кнопки на странице товара
 async function handleShopItemBtn() {
   const itemId = _currentShopItemId;
-  const item   = _shopItems.find(i => i.id === itemId);
+  // theme_dark и title_default — виртуальные предметы
+  let item = _shopItems.find(i => i.id === itemId);
+  if (!item && itemId === 'theme_dark') {
+    item = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
+  }
   if (!item) return;
 
   // Гость — предлагаем войти через TG
@@ -4330,7 +4357,7 @@ async function handleShopItemBtn() {
     return;
   }
 
-  const owned    = !!_shopInventory[itemId];
+  const owned    = !!_shopInventory[itemId] || itemId === 'theme_dark';
   const equipped = item.type === 'title'
     ? (_shopEquipped['title'] === itemId)
     : Object.values(_shopEquipped).includes(itemId);
@@ -4340,7 +4367,6 @@ async function handleShopItemBtn() {
     if (owned) return;
     // Иначе — купить (падает ниже к логике покупки)
   } else if (equipped) {
-    // Снять
     if (item.type === 'title') {
       await applyTitleAndRefresh(itemId, false);
       return;
@@ -4355,13 +4381,11 @@ async function handleShopItemBtn() {
       showLoaderOverMenu(hide => {
         setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
       });
-    } else {
-      openShopItem(itemId);
-      renderShopGrid();
     }
+    openShopItem(itemId);
+    renderShopGrid();
     return;
   } else if (owned) {
-    // Надеть
     if (item.type === 'title') {
       await applyTitleAndRefresh(itemId, true);
       return;
@@ -4377,10 +4401,9 @@ async function handleShopItemBtn() {
         applyEquippedTheme(itemId);
         setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
       });
-    } else {
-      openShopItem(itemId);
-      renderShopGrid();
     }
+    openShopItem(itemId);
+    renderShopGrid();
     return;
   }
 
@@ -4397,7 +4420,6 @@ async function handleShopItemBtn() {
     if (btnEl) { btnEl.textContent = 'Купить'; btnEl.disabled = false; }
 
     if (res.ok && res.free) {
-      // Админ — выдано бесплатно
       _shopInventory[itemId] = true;
       openShopItem(itemId);
       renderShopGrid();
@@ -4406,7 +4428,6 @@ async function handleShopItemBtn() {
 
     if (res.ok && res.invoiceUrl) {
       if (window.Telegram?.WebApp?.openInvoice) {
-        // Внутри Telegram Mini App
         window.Telegram.WebApp.openInvoice(res.invoiceUrl, status => {
           if (status === 'paid') {
             _shopInventory[itemId] = true;
@@ -4415,7 +4436,6 @@ async function handleShopItemBtn() {
           }
         });
       } else {
-        // Фолбэк для браузера — открываем ссылку
         window.open(res.invoiceUrl, '_blank');
       }
     } else {
@@ -4711,6 +4731,176 @@ function initInventory() {
     showScreen('shop');
   });
 }
+
+// Переопределяем renderShopGrid здесь — после объявления FAKE_PREVIEWS и getItemPreviewHtml
+// Это гарантирует что используется правильная версия с поддержкой звания и getItemPreviewHtml
+renderShopGrid = function() {
+  const grid = document.getElementById('shop-grid');
+  if (!grid) return;
+
+  const items = _shopFilter === 'all'
+    ? _shopItems
+    : _shopItems.filter(i => i.type === _shopFilter);
+
+  if (!items.length) {
+    grid.innerHTML = '<div class="shop-loading">Нет товаров</div>';
+    return;
+  }
+
+  grid.innerHTML = items.map(item => {
+    const owned    = !!_shopInventory[item.id];
+    const equipped = item.type === 'title'
+      ? (_shopEquipped['title'] === item.id)
+      : Object.values(_shopEquipped).includes(item.id);
+    const cls = equipped ? 'shop-card equipped' : owned ? 'shop-card owned' : 'shop-card';
+    const priceHtml = equipped
+      ? '<span class="shop-card-price owned">✓ Куплено</span>'
+      : owned
+        ? '<span class="shop-card-price owned">✓ Куплено</span>'
+        : item.price_stars
+          ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
+          : '<span class="shop-card-price owned">Бесплатно</span>';
+
+    // Звание — квадратная карточка с названием в превью
+    if (item.type === 'title') {
+      const rank  = item.title_rank || _getTitleRank(item.id) || 'initial';
+      const color = titleRankColor(rank);
+      _titleMeta[item.id] = { name: item.name, rank };
+      return `<div class="${cls}" data-item-id="${item.id}">
+        <div class="shop-card-preview title-preview-cell">
+          <span class="title-preview-text" style="color:${color}">${item.name}</span>
+        </div>
+        <div class="shop-card-body">
+          <div class="shop-card-type">Звание</div>
+          ${priceHtml}
+        </div>
+      </div>`;
+    }
+
+    return `<div class="${cls}" data-item-id="${item.id}">
+      <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
+      <div class="shop-card-body">
+        <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
+        <div class="shop-card-name">${item.name}</div>
+        ${priceHtml}
+      </div>
+    </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.shop-card').forEach(card => {
+    card.addEventListener('click', () => openShopItem(card.dataset.itemId));
+  });
+};
+
+// Переопределяем openShopItem — добавляем поддержку theme_dark, звания, слайдера и превью темы
+openShopItem = function(itemId) {
+  let item = _shopItems.find(i => i.id === itemId);
+  if (!item && itemId === 'theme_dark') {
+    item = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
+  }
+  if (!item) return;
+  _currentShopItemId = itemId;
+
+  const owned    = !!_shopInventory[itemId] || itemId === 'theme_dark';
+  const equipped = item.type === 'title'
+    ? (_shopEquipped['title'] === itemId)
+    : Object.values(_shopEquipped).includes(itemId);
+
+  // Название
+  const titleEl = document.getElementById('shop-item-title');
+  const nameEl  = document.getElementById('shop-item-name');
+  if (item.type === 'title' && item.title_rank) {
+    const color = titleRankColor(item.title_rank);
+    if (titleEl) titleEl.innerHTML = `<span style="color:${color}">${item.name}</span>`;
+    if (nameEl)  nameEl.innerHTML  = `<span style="color:${color}">${item.name}</span>`;
+  } else {
+    if (titleEl) titleEl.textContent = item.name;
+    if (nameEl)  nameEl.textContent  = item.name;
+  }
+  document.getElementById('shop-item-desc').textContent = item.description || '';
+  document.getElementById('shop-item-type-badge').textContent = ITEM_TYPE_LABELS[item.type] || item.type;
+
+  // Превью
+  const previewEl = document.getElementById('shop-item-preview-lg');
+  if (item.type === 'title') {
+    const rank  = item.title_rank || _getTitleRank(item.id) || 'initial';
+    const color = titleRankColor(rank);
+    previewEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:80px"><span style="color:${color};font-size:22px;font-weight:800">${item.name}</span></div>`;
+  } else {
+    previewEl.innerHTML = getItemPreviewHtml(item, true);
+  }
+
+  // Цена и статус
+  const priceEl  = document.getElementById('shop-item-price');
+  const statusEl = document.getElementById('shop-item-status');
+  const btnEl    = document.getElementById('shop-item-btn');
+
+  if (item.type === 'reaction') {
+    if (owned) {
+      priceEl.textContent  = '';
+      statusEl.textContent = '✓ В наличии';
+      btnEl.textContent    = 'Используется в бою автоматически';
+      btnEl.className      = 'btn btn-secondary btn-large';
+      btnEl.disabled       = true;
+    } else if (item.price_stars) {
+      priceEl.textContent  = `⭐ ${item.price_stars}`;
+      statusEl.textContent = '';
+      btnEl.textContent    = 'Купить';
+      btnEl.className      = 'btn btn-primary btn-large';
+      btnEl.disabled       = false;
+    } else {
+      priceEl.textContent  = 'Бесплатно';
+      statusEl.textContent = '';
+      btnEl.textContent    = 'Получить';
+      btnEl.className      = 'btn btn-primary btn-large';
+      btnEl.disabled       = false;
+    }
+  } else if (equipped) {
+    priceEl.textContent  = '';
+    statusEl.textContent = '✓ Применено';
+    btnEl.textContent    = 'Снять';
+    btnEl.className      = 'btn btn-secondary btn-large';
+    btnEl.disabled       = false;
+  } else if (owned) {
+    priceEl.textContent  = '';
+    statusEl.textContent = '✓ Куплено';
+    btnEl.textContent    = 'Применить';
+    btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
+  } else if (item.price_stars) {
+    priceEl.textContent  = `⭐ ${item.price_stars}`;
+    statusEl.textContent = '';
+    btnEl.textContent    = 'Купить';
+    btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
+  } else {
+    priceEl.textContent  = 'Бесплатно';
+    statusEl.textContent = '';
+    btnEl.textContent    = 'Получить';
+    btnEl.className      = 'btn btn-primary btn-large';
+    btnEl.disabled       = false;
+  }
+
+  // Кнопка назад — устанавливаем target только если ещё не установлен снаружи
+  if (currentScreen !== 'shop-item') {
+    _shopItemBackTarget = currentScreen === 'profile' ? 'profile' : 'shop';
+  }
+
+  // Для темы — применяем временно для предпросмотра
+  if (item.type === 'theme') {
+    resetTheme();
+    if (itemId !== 'theme_dark') applyEquippedTheme(itemId);
+    document.getElementById('shop-item-back').onclick = () => {
+      applyEquippedThemeFromState();
+      showScreen(_shopItemBackTarget, { isBack: true });
+    };
+  } else {
+    document.getElementById('shop-item-back').onclick = () => showScreen(_shopItemBackTarget, { isBack: true });
+  }
+
+  showScreen('shop-item');
+  requestAnimationFrame(() => renderShopItemSlider(item));
+};
 
 /* ─── СЛАЙДЕР СКРИНШОТОВ ТОВАРА ──────────────────── */
 

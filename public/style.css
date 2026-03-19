@@ -86,6 +86,11 @@ html, body {
   .screen.slide-back {
     transform: translateX(calc(-50% - 100vw)) !important;
   }
+  /* Магазин и инвентарь — 4 карточки в ряд на десктопе */
+  .shop-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
 }
 
 /* ─── ЭКРАНЫ ─────────────────────────────────────── */
@@ -1224,6 +1229,7 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 /* ── Контент вкладок ── */
 .profile-tab-content {
   padding: 20px 0 40px;
+  overflow-y: auto;
 }
 .profile-tab-content.hidden { display: none; }
 
