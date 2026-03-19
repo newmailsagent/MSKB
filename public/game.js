@@ -478,6 +478,20 @@ function recordResult(result, shots, hits, oppName) {
     App.historyBots.unshift({ result, opponent: oppName || 'Бот', shots, hits, date: Date.now() });
     if (App.historyBots.length > 50) App.historyBots.pop();
     saveJSON('bs_history_bots', App.historyBots);
+    // Сохраняем бот-результат на сервере для отслеживания достижений
+    if (!App.user.isGuest) {
+      fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: App.user.id, result, opponent: oppName || 'Бот', shots, hits, skipStats: false, mode: Game.mode }),
+      }).then(r => r.json()).then(j => {
+        if (j.newAchievements?.length) {
+          Game._pendingAchievements = (Game._pendingAchievements || []).concat(j.newAchievements);
+          if (currentScreen === 'gameover') _showNewAchievementTag();
+          _markAchievementsUnseen(j.newAchievements.map(a => a.id));
+        }
+      }).catch(() => {});
+    }
   } else {
     // Онлайн-статистика — обновляем локально сразу
     App.stats.wins       += result === 'win'  ? 1 : 0;
@@ -1738,11 +1752,15 @@ function endGame(result) {
   setTimeout(() => {
     showScreen('gameover');
     const xpBlock = document.getElementById('xp-reward-block');
-    if (Game.mode === 'online' && !App.user.isGuest) {
+      // Сбрасываем тег достижения
+      const achTagEl = document.getElementById('xp-new-achievement');
+      if (achTagEl) { achTagEl.classList.add('hidden'); achTagEl.classList.remove('anim-levelup'); }
+
+      if (Game.mode === 'online' && !App.user.isGuest) {
       // Показываем блок сразу — с текущим прогрессом, без анимации
       if (xpBlock) {
         xpBlock.classList.remove('hidden');
-        // Рисуем "скелет" — текущий прогресс до получения данных с сервера
+        // Рисуем «скелет» — текущий прогресс до получения данных с сервера
         const prog = getXpProgress(App.user.xp || 0);
         setText('xp-ring-level', prog.level);
         setText('xp-progress-text', prog.xpInLevel + ' / ' + prog.xpNeeded + ' XP');
@@ -1767,6 +1785,10 @@ function endGame(result) {
             gainEl2.innerHTML = '<span class="xp-zero">+0 XP</span>';
           }
         }, 4000);
+      }
+      // Показываем тег достижения если уже накоплены
+      if (Game._pendingAchievements?.length) {
+        setTimeout(() => { _showNewAchievementTag(); Game._pendingAchievements = []; }, 400);
       }
     } else {
       if (xpBlock) xpBlock.classList.add('hidden');
@@ -2057,6 +2079,16 @@ const WS = {
       Game._pendingXp = xpData;
       // Применяем сразу если уже на экране gameover, иначе endGame подберёт
       if (currentScreen === 'gameover') showXpReward(xpData);
+    });
+
+    // ── Новые достижения ─────────────────────────────
+    this.socket.on('new_achievement', (achievements) => {
+      if (!Array.isArray(achievements) || !achievements.length) return;
+      // Показываем тег в XP-блоке если уже на экране gameover
+      if (currentScreen === 'gameover') _showNewAchievementTag();
+      else Game._pendingAchievements = (Game._pendingAchievements || []).concat(achievements);
+      // Обновляем точки на карточках достижений если профиль открыт
+      _markAchievementsUnseen(achievements.map(a => a.id));
     });
 
     // ── Реакция соперника ────────────────────────────
@@ -2500,7 +2532,6 @@ function updateMenuLevel() {
   const xp    = App.user.xp || 0;
   const prog  = getXpProgress(xp);
   setText('menu-level-badge', prog.level);
-  setText('user-rank', prog.rank);
   const badge = document.getElementById('menu-level-badge');
   if (badge) badge.className = 'level-badge level-bg-' + prog.level;
   // Синхронизируем цвет рамки аватара на главной с цветом в профиле
@@ -2510,6 +2541,20 @@ function updateMenuLevel() {
     avatar.style.borderColor = color;
     avatar.style.borderWidth = '2px';
     avatar.style.borderStyle = 'solid';
+  }
+  // Показываем активное звание (кастомное или по умолчанию)
+  const rankEl = document.getElementById('user-rank');
+  if (rankEl) {
+    const equippedTitleId = _shopEquipped?.['title'];
+    if (equippedTitleId && equippedTitleId !== 'title_default') {
+      const titleItem = _shopItems.find(i => i.id === equippedTitleId);
+      if (titleItem) {
+        const color = titleRankColor(titleItem.title_rank);
+        rankEl.innerHTML = `<span style="color:${color};font-weight:700">${titleItem.name}</span>`;
+        return;
+      }
+    }
+    rankEl.textContent = prog.rank;
   }
 }
 
@@ -2690,6 +2735,215 @@ function setRingProgress(rectEl, pct, size) {
 }
 
 /* ─── ЭКРАН ПРОФИЛЯ ──────────────────────────────── */
+
+/* ─── ДОСТИЖЕНИЯ ─────────────────────────────────── */
+
+const TITLE_RANK_COLORS = {
+  prestige: '#A100FF',
+  high:     '#F30000',
+  medium:   '#0059FF',
+  initial:  '#00CA54',
+};
+
+function titleRankColor(rank) {
+  return TITLE_RANK_COLORS[rank] || '#FFFFFF';
+}
+
+// Загружает достижения с сервера и рендерит список
+async function loadAndRenderAchievements() {
+  if (App.user.isGuest) return;
+  const listEl = document.getElementById('achievements-list');
+  if (!listEl) return;
+  try {
+    const res = await fetch('/api/achievements/' + App.user.id);
+    const j   = await res.json();
+    if (!j.ok) return;
+    _renderAchievements(j.data, listEl);
+    // Отмечаем как прочитанные те, что видим
+    const unseenIds = j.data.filter(a => !a.notified && (a.completed_at || a.times_done > 0)).map(a => a.id);
+    if (unseenIds.length) {
+      fetch('/api/achievements/seen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: App.user.id, ids: unseenIds }),
+      }).catch(() => {});
+    }
+  } catch(e) {}
+}
+
+function _renderAchievements(achievements, listEl) {
+  if (!achievements || !achievements.length) {
+    listEl.innerHTML = '<p class="empty-state">Нет данных</p>';
+    return;
+  }
+  listEl.innerHTML = achievements.map(a => _achievementCardHTML(a)).join('');
+
+  // Клик по достижениям с реферальной страницей
+  listEl.querySelectorAll('.achievement-card[data-has-ref]').forEach(card => {
+    card.addEventListener('click', () => {
+      showReferralScreen();
+    });
+  });
+}
+
+function _achievementCardHTML(a) {
+  const isDone     = a.type === 'limited' && !!a.completed_at;
+  const isOnceDone = a.type === 'once'    && !!a.completed_at;
+  const hasNew     = !a.notified && (a.completed_at || a.times_done > 0);
+
+  const doneClass = (isDone || isOnceDone) ? ' done' : '';
+  const dotClass  = hasNew ? ' new-dot' : '';
+  const refAttr   = a.hasRefPage ? ' data-has-ref="1" style="cursor:pointer"' : '';
+
+  // Иконка достижения
+  const icon = `<div class="ach-icon">🏅</div>`;
+
+  // Награда — звание
+  let rewardHTML = '';
+  if (a.reward) {
+    const titleName = _getTitleName(a.reward);
+    const rank      = _getTitleRank(a.reward);
+    const color     = titleRankColor(rank);
+    rewardHTML = `<div class="ach-reward" style="color:${color}">⭐ ${titleName}</div>`;
+  }
+
+  // Прогресс / счётчик
+  let progressHTML = '';
+  if (a.type === 'infinite') {
+    progressHTML = `
+      <div class="ach-infinite-count">${a.times_done}</div>
+      <div class="ach-infinite-label">раз выполнено</div>`;
+  } else if (a.type === 'limited' || a.type === 'once') {
+    const cur = Math.min(a.progress, a.goal);
+    const pct = a.goal ? Math.round(cur / a.goal * 100) : (a.completed_at ? 100 : 0);
+    progressHTML = `
+      <div class="ach-progress-wrap">
+        <div class="ach-progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="ach-progress-nums">${cur} / ${a.goal}</div>`;
+  }
+
+  return `
+    <div class="achievement-card${doneClass}${dotClass}"${refAttr}>
+      ${icon}
+      <div class="ach-body">
+        <div class="ach-header">
+          <span class="ach-name">${_esc(a.title)}</span>
+        </div>
+        <div class="ach-desc">${_esc(a.desc)}${a.hasRefPage ? ' <span style="color:var(--accent);font-size:11px">→ Открыть</span>' : ''}</div>
+        ${rewardHTML}
+        ${progressHTML}
+      </div>
+    </div>`;
+}
+
+// Кэш названий и рангов из инвентаря/магазина (заполняется при загрузке)
+const _titleMeta = {};
+function _getTitleName(id) { return _titleMeta[id]?.name || id.replace('title_', '').replace(/_/g,' '); }
+function _getTitleRank(id) { return _titleMeta[id]?.rank || 'initial'; }
+
+// Добавляет точку-индикатор на карточки достижений (без перезагрузки)
+function _markAchievementsUnseen(ids) {
+  if (!ids || !ids.length) return;
+  const listEl = document.getElementById('achievements-list');
+  if (!listEl) return;
+  ids.forEach(id => {
+    const card = listEl.querySelector(`.achievement-card[data-ach-id="${id}"]`);
+    if (card) card.classList.add('new-dot');
+  });
+}
+
+// Показывает тег "Новое достижение" в XP-блоке
+function _showNewAchievementTag() {
+  const el = document.getElementById('xp-new-achievement');
+  if (!el) return;
+  el.classList.remove('hidden', 'anim-levelup');
+  void el.offsetWidth;
+  el.classList.add('anim-levelup');
+}
+
+// Экранирование HTML
+function _esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ─── РЕФЕРАЛЫ ───────────────────────────────────── */
+
+async function showReferralScreen() {
+  if (App.user.isGuest) return;
+  Sound.click();
+  // Загружаем данные
+  try {
+    const res = await fetch('/api/referral/' + App.user.id);
+    const j   = await res.json();
+    if (j.ok && j.data) {
+      const d = j.data;
+      setText('ref-invited-count',   d.invited   || 0);
+      setText('ref-qualified-count', d.qualified || 0);
+      const linkInput = document.getElementById('referral-link-input');
+      if (linkInput) linkInput.value = d.refLink || '';
+      // Обновляем прогресс-бары
+      const q = d.qualified || 0;
+      const p3  = document.getElementById('ref-prog-3');
+      const n3  = document.getElementById('ref-nums-3');
+      const p10 = document.getElementById('ref-prog-10');
+      const n10 = document.getElementById('ref-nums-10');
+      if (p3)  p3.style.width  = Math.min(100, q / 3  * 100) + '%';
+      if (n3)  n3.textContent  = q + ' / 3';
+      if (p10) p10.style.width = Math.min(100, q / 10 * 100) + '%';
+      if (n10) n10.textContent = q + ' / 10';
+    }
+  } catch(e) {}
+  showScreen('referral');
+}
+
+function initReferralScreen() {
+  // Кнопка назад
+  document.getElementById('referral-back-btn')?.addEventListener('click', () => {
+    Sound.click();
+    showScreen('profile', { isBack: true });
+  });
+  // Копировать ссылку
+  document.getElementById('btn-copy-ref')?.addEventListener('click', () => {
+    const input = document.getElementById('referral-link-input');
+    if (!input) return;
+    navigator.clipboard?.writeText(input.value).then(() => {
+      const btn = document.getElementById('btn-copy-ref');
+      if (btn) { btn.innerHTML = '✓'; setTimeout(() => { btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'; }, 1500); }
+    }).catch(() => { input.select(); document.execCommand('copy'); });
+  });
+  // Поделиться в Telegram
+  document.getElementById('btn-share-ref')?.addEventListener('click', () => {
+    const input = document.getElementById('referral-link-input');
+    const link  = input?.value || '';
+    if (!link) return;
+    const text = encodeURIComponent('Сыграем в Морской бой? 🚢\n' + link);
+    if (window.Telegram?.WebApp?.openTelegramLink) {
+      window.Telegram.WebApp.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + text);
+    } else {
+      window.open('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + text, '_blank');
+    }
+  });
+}
+
+// Регистрируем реферала при запуске если есть startapp=ref_XXX
+async function checkAndRegisterReferral() {
+  if (App.user.isGuest) return;
+  try {
+    // Telegram WebApp startParam
+    const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param || '';
+    if (!startParam.startsWith('ref_')) return;
+    const inviterId = startParam.slice(4);
+    if (!inviterId || inviterId === String(App.user.id)) return;
+    // Проверяем что ещё не регистрировались
+    const key = 'bs_ref_registered';
+    if (localStorage.getItem(key)) return;
+    await fetch('/api/referral/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviterId, inviteeId: App.user.id }),
+    });
+    localStorage.setItem(key, '1');
+  } catch(e) {}
+}
 async function renderProfileScreen(tab) {
   const isGuest = !!App.user.isGuest;
   const authBlock  = document.getElementById('profile-content-auth');
@@ -2727,7 +2981,22 @@ async function renderProfileScreen(tab) {
   const prog  = getXpProgress(xp);
 
   setText('profile-name',  App.user.name);
-  setText('profile-rank',  prog.rank);
+  // Звание в профиле — кастомное или по умолчанию
+  const profileRankEl = document.getElementById('profile-rank');
+  if (profileRankEl) {
+    const equippedTitleId = _shopEquipped?.['title'];
+    if (equippedTitleId && equippedTitleId !== 'title_default') {
+      const titleItem = _shopItems.find(i => i.id === equippedTitleId);
+      if (titleItem) {
+        const color = titleRankColor(titleItem.title_rank);
+        profileRankEl.innerHTML = `<span style="color:${color};font-weight:700">${titleItem.name}</span>`;
+      } else {
+        profileRankEl.textContent = prog.rank;
+      }
+    } else {
+      profileRankEl.textContent = prog.rank;
+    }
+  }
   setText('profile-level-tag', 'Ур. ' + prog.level);
   setText('profile-ring-level', prog.level);
   setText('profile-xp-current', prog.xpInLevel);
@@ -2775,6 +3044,8 @@ async function renderProfileScreen(tab) {
         updateMenuLevel();
       }
     } catch(e) {}
+    // Загружаем достижения
+    loadAndRenderAchievements();
   }
 }
 
@@ -3620,7 +3891,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   initInventory();
   initReactions();
   loadCustomReactions();
+  initReferralScreen();
   Notif.init();
+
+  // Регистрируем реферала если пришли по ссылке
+  checkAndRegisterReferral().catch(() => {});
 
   // WebSocket события магазина — вешаем когда сокет будет готов
   const _shopSocketInterval = setInterval(() => {
@@ -3742,7 +4017,9 @@ function renderShopGrid() {
 
   grid.innerHTML = items.map(item => {
     const owned    = !!_shopInventory[item.id];
-    const equipped = Object.values(_shopEquipped).includes(item.id);
+    const equipped = item.type === 'title'
+      ? (_shopEquipped['title'] === item.id)
+      : Object.values(_shopEquipped).includes(item.id);
     const cls      = equipped ? 'shop-card equipped' : owned ? 'shop-card owned' : 'shop-card';
     const priceHtml = equipped
       ? '<span class="shop-card-price owned">✓ Куплено</span>'
@@ -3755,11 +4032,22 @@ function renderShopGrid() {
       ? `<img src="${item.preview_url}" alt="${item.name}" loading="lazy">`
       : '🎁';
 
+    // Для звания — имя в цвете ранга + превью-плашка
+    let nameHtml = item.name;
+    let previewHtml = preview;
+    if (item.type === 'title') {
+      const rank  = item.title_rank || 'initial';
+      const color = titleRankColor(rank);
+      nameHtml    = `<span class="inv-title-name" style="color:${color}">${item.name}</span>`;
+      previewHtml = `<div class="title-shop-preview" style="background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;height:100%;border-radius:8px;padding:8px;"><span style="color:${color};font-size:14px;font-weight:700;text-align:center;line-height:1.3">${item.name}</span></div>`;
+      _titleMeta[item.id] = { name: item.name, rank };
+    }
+
     return `<div class="${cls}" data-item-id="${item.id}">
-      <div class="shop-card-preview">${preview}</div>
+      <div class="shop-card-preview">${previewHtml}</div>
       <div class="shop-card-body">
         <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
-        <div class="shop-card-name">${item.name}</div>
+        <div class="shop-card-name">${nameHtml}</div>
         ${priceHtml}
       </div>
     </div>`;
@@ -3778,16 +4066,33 @@ function openShopItem(itemId) {
   _currentShopItemId = itemId;
 
   const owned    = !!_shopInventory[itemId];
-  const equipped = Object.values(_shopEquipped).includes(itemId);
+  const equipped = item.type === 'title'
+    ? (_shopEquipped['title'] === itemId)
+    : Object.values(_shopEquipped).includes(itemId);
 
-  document.getElementById('shop-item-title').textContent = item.name;
-  document.getElementById('shop-item-name').textContent  = item.name;
+  // Для звания — имя в цвете ранга
+  const titleEl = document.getElementById('shop-item-title');
+  const nameEl  = document.getElementById('shop-item-name');
+  if (item.type === 'title' && item.title_rank) {
+    const color = titleRankColor(item.title_rank);
+    if (titleEl) titleEl.innerHTML = `<span style="color:${color}">${item.name}</span>`;
+    if (nameEl)  nameEl.innerHTML  = `<span style="color:${color}">${item.name}</span>`;
+  } else {
+    if (titleEl) titleEl.textContent = item.name;
+    if (nameEl)  nameEl.textContent  = item.name;
+  }
   document.getElementById('shop-item-desc').textContent  = item.description || '';
   document.getElementById('shop-item-type-badge').textContent = ITEM_TYPE_LABELS[item.type] || item.type;
 
-  // Превью — для реакций WebM
+  // Превью — для реакций WebM, для звания — плашка с цветом
   const previewEl = document.getElementById('shop-item-preview-lg');
-  previewEl.innerHTML = getItemPreviewHtml(item, true);
+  if (item.type === 'title') {
+    const rank  = item.title_rank || 'initial';
+    const color = titleRankColor(rank);
+    previewEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:80px"><span style="color:${color};font-size:22px;font-weight:800">${item.name}</span></div>`;
+  } else {
+    previewEl.innerHTML = getItemPreviewHtml(item, true);
+  }
 
   // Цена и статус
   const priceEl  = document.getElementById('shop-item-price');
@@ -3855,7 +4160,9 @@ async function handleShopItemBtn() {
   }
 
   const owned    = !!_shopInventory[itemId];
-  const equipped = Object.values(_shopEquipped).includes(itemId);
+  const equipped = item.type === 'title'
+    ? (_shopEquipped['title'] === itemId)
+    : Object.values(_shopEquipped).includes(itemId);
 
   // Реакции не надеваются — только покупаются
   if (item.type === 'reaction') {
@@ -4032,11 +4339,18 @@ function renderInventory() {
   if (!grid) return;
 
   // Тёмная тема всегда в инвентаре для авторизованных
-  const darkTheme = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
+  const darkTheme    = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
+  // Звание "По умолчанию" всегда в инвентаре
+  const defaultTitle = { id: 'title_default', type: 'title', name: 'По умолчанию', description: 'Звание соответствует вашему уровню', title_rank: null };
   const ownedIds  = new Set(Object.keys(_shopInventory));
-  const owned     = [darkTheme, ..._shopItems.filter(i => ownedIds.has(i.id))];
+  const owned     = [darkTheme, defaultTitle, ..._shopItems.filter(i => ownedIds.has(i.id))];
 
-  if (owned.length <= 1 && !ownedIds.size) {
+  // Кэшируем meta звания для _achievementCardHTML
+  _shopItems.filter(i => i.type === 'title').forEach(i => {
+    _titleMeta[i.id] = { name: i.name, rank: i.title_rank };
+  });
+
+  if (owned.length <= 2 && !ownedIds.size) {
     grid.innerHTML = '';
     emptyEl?.classList.remove('hidden');
     return;
@@ -4067,15 +4381,26 @@ function renderInventory() {
     if (item.type === 'theme') {
       const activeTheme = _shopEquipped['theme'] || null;
       equipped = item.id === 'theme_dark' ? !activeTheme : activeTheme === item.id;
+    } else if (item.type === 'title') {
+      const activeTitle = _shopEquipped['title'] || null;
+      equipped = item.id === 'title_default' ? !activeTitle : activeTitle === item.id;
     } else {
       equipped = Object.values(_shopEquipped).includes(item.id);
     }
     const cls = equipped ? 'shop-card equipped' : 'shop-card owned';
+
+    // Для звания — показываем имя в цвете ранга
+    let nameHtml = item.name;
+    if (item.type === 'title' && item.title_rank) {
+      const color = titleRankColor(item.title_rank);
+      nameHtml = `<span class="inv-title-name" style="color:${color}">${item.name}</span>`;
+    }
+
     return `<div class="${cls}" data-inv-item="${item.id}">
       <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
       <div class="shop-card-body">
         <div class="shop-card-type">${ITEM_TYPE_LABELS[item.type] || item.type}</div>
-        <div class="shop-card-name">${item.name}</div>
+        <div class="shop-card-name">${nameHtml}</div>
         ${equipped ? '<button class="shop-card-action applied">Применено</button>' : `<button class="shop-card-action" data-inv-action="${item.id}">Применить</button>`}
       </div>
     </div>`;
@@ -4087,9 +4412,12 @@ function renderInventory() {
       if (e.target.closest('[data-inv-action]')) return;
       const id = card.dataset.invItem;
       (_shopItems.length ? Promise.resolve() : loadShopData()).then(() => {
-        // theme_dark — виртуальный, добавляем в _shopItems если нет
+        // Виртуальные предметы — добавляем в _shopItems если нет
         if (id === 'theme_dark' && !_shopItems.find(i => i.id === 'theme_dark')) {
           _shopItems.unshift({ id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' });
+        }
+        if (id === 'title_default' && !_shopItems.find(i => i.id === 'title_default')) {
+          _shopItems.unshift({ id: 'title_default', type: 'title', name: 'По умолчанию', description: 'Звание соответствует вашему уровню', title_rank: null });
         }
         _shopItemBackTarget = 'profile';
         showScreen('shop-item');
@@ -4101,20 +4429,24 @@ function renderInventory() {
   // Клики по кнопкам
   grid.querySelectorAll('[data-inv-action]').forEach(btn => {
     const itemId = btn.dataset.invAction;
-    // theme_dark — виртуальный, не из _shopItems
+    // Виртуальные предметы
     const item = itemId === 'theme_dark'
       ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' }
+      : itemId === 'title_default'
+      ? { id: 'title_default', type: 'title', name: 'По умолчанию', description: 'Звание соответствует вашему уровню' }
       : _shopItems.find(i => i.id === itemId);
     if (!item) return;
     const activeTheme = _shopEquipped['theme'] || null;
+    const activeTitle = _shopEquipped['title'] || null;
     const equipped = item.type === 'theme'
       ? (item.id === 'theme_dark' ? !activeTheme : activeTheme === itemId)
+      : item.type === 'title'
+      ? (item.id === 'title_default' ? !activeTitle : activeTitle === itemId)
       : Object.values(_shopEquipped).includes(itemId);
     if (equipped) return; // уже применено — не кликается
     btn.addEventListener('click', async e => {
       e.stopPropagation();
       if (item.type === 'theme') {
-        // Сбросить текущую тему (установить тёмную) или применить новую
         if (itemId === 'theme_dark') {
           if (_shopEquipped['theme']) {
             await fetch('/api/unequip', {
@@ -4139,6 +4471,18 @@ function renderInventory() {
             setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
           });
         }
+        return;
+      }
+      // Звание "По умолчанию" — снимаем текущее
+      if (item.type === 'title' && itemId === 'title_default') {
+        if (_shopEquipped['title']) {
+          await fetch('/api/unequip', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: App.user?.id, slot: 'title' }),
+          });
+          delete _shopEquipped['title'];
+        }
+        renderInventory();
         return;
       }
       await fetch('/api/equip', {
