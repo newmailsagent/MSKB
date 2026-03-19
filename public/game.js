@@ -4131,6 +4131,8 @@ let _shopItems     = [];   // весь каталог
 let _shopInventory = {};   // { itemId: true } — что куплено
 let _shopEquipped  = {};   // { slot: itemId } — что надето
 let _shopFilter    = 'all';
+let renderShopGrid = null;  // инициализируется ниже после всех зависимостей
+let openShopItem   = null;  // инициализируется ниже после всех зависимостей
 let _currentShopItemId = null;
 let _shopItemBackTarget = 'shop'; // откуда открыли страницу товара
 
