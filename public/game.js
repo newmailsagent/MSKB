@@ -2889,7 +2889,35 @@ const TITLE_NAMES_RU = {
 function _getTitleName(id) {
   return _titleMeta[id]?.name || TITLE_NAMES_RU[id] || id;
 }
-function _getTitleRank(id) { return _titleMeta[id]?.rank || 'initial'; }
+function _getTitleRank(id) {
+  return _titleMeta[id]?.rank || TITLE_RANKS_STATIC[id] || 'initial';
+}
+
+// Статические ранги — для наградных звания которые не попадают в _shopItems
+const TITLE_RANKS_STATIC = {
+  title_fleet_recruit:   'initial',
+  title_exp_tester:      'medium',
+  title_admiral:         'high',
+  title_marshal:         'prestige',
+  title_real_intel:      'initial',
+  title_star_scout:      'medium',
+  title_anon_hunter:     'prestige',
+  title_friendly_fleet:  'initial',
+  title_captain_tester:  'medium',
+  title_duelist:         'prestige',
+  title_sea_strategist:  'high',
+  title_first_time:      'medium',
+  title_determined:      'prestige',
+  title_collector:       'high',
+  title_recruiter:       'medium',
+  title_space_navigator: 'high',
+  title_engineer:        'high',
+  title_cyber_pirate:    'medium',
+  title_patron:          'prestige',
+  title_davy_jones:      'medium',
+  title_four_deck:       'high',
+  title_commander:       'prestige',
+};
 
 // Добавляет точку-индикатор на карточки достижений (без перезагрузки)
 function _markAchievementsUnseen(ids) {
@@ -4098,13 +4126,24 @@ async function loadShopData() {
     if (itemsRes.ok)  _shopItems = itemsRes.data || [];
     if (invRes.ok) {
       _shopInventory = {};
-      (invRes.data.items || []).forEach(i => { _shopInventory[i.item_id] = true; });
+      (invRes.data.items || []).forEach(i => {
+        _shopInventory[i.item_id] = true;
+        // Если айтем есть в инвентаре но не в каталоге (напр. title_engineer) — добавляем
+        if (i.item_id && !_shopItems.find(s => s.id === i.item_id)) {
+          _shopItems.push({
+            id:          i.item_id,
+            type:        i.type,
+            name:        i.name,
+            description: i.description || '',
+            preview_url: i.preview_url || null,
+            title_rank:  i.title_rank  || null,
+            price_stars: null,
+            is_active:   0,
+          });
+        }
+      });
       _shopEquipped  = invRes.data.equipped || {};
-      // НЕ трогаем localStorage здесь — он управляется только через кнопки Применить/Снять
-      // Но если сервер говорит что тема экипирована — применяем визуально если ещё не применена
       const serverTheme = _shopEquipped['theme'] || null;
-      // Сервер — единственный источник правды для темы
-      // Применяем то что сказал сервер, localStorage больше не используем
       resetTheme();
       if (serverTheme) applyEquippedTheme(serverTheme);
     }
@@ -4133,19 +4172,19 @@ function renderShopGrid() {
       ? (_shopEquipped['title'] === item.id)
       : Object.values(_shopEquipped).includes(item.id);
     const cls = equipped ? 'shop-card equipped' : owned ? 'shop-card owned' : 'shop-card';
+    const priceHtml = equipped
+      ? '<span class="shop-card-price owned">✓ Куплено</span>'
+      : owned
+        ? '<span class="shop-card-price owned">✓ Куплено</span>'
+        : item.price_stars
+          ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
+          : '<span class="shop-card-price owned">Бесплатно</span>';
 
-    // Звание — квадратная карточка как у остальных, только вместо превью — название
+    // Звание — квадратная карточка, в превью само название
     if (item.type === 'title') {
-      const rank  = item.title_rank || 'initial';
+      const rank  = item.title_rank || _getTitleRank(item.id) || 'initial';
       const color = titleRankColor(rank);
       _titleMeta[item.id] = { name: item.name, rank };
-      const priceHtml = equipped
-        ? '<span class="shop-card-price owned">✓ Применено</span>'
-        : owned
-          ? '<span class="shop-card-price owned">✓ Куплено</span>'
-          : item.price_stars
-            ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
-            : '';
       return `<div class="${cls}" data-item-id="${item.id}">
         <div class="shop-card-preview title-preview-cell">
           <span class="title-preview-text" style="color:${color}">${item.name}</span>
@@ -4157,15 +4196,7 @@ function renderShopGrid() {
       </div>`;
     }
 
-    // Обычная карточка (тема, реакция, рамка)
-    const priceHtml = equipped
-      ? '<span class="shop-card-price owned">✓ Куплено</span>'
-      : owned
-        ? '<span class="shop-card-price owned">✓ Куплено</span>'
-        : item.price_stars
-          ? `<span class="shop-card-price">⭐ ${item.price_stars}</span>`
-          : '<span class="shop-card-price owned">Бесплатно</span>';
-
+    // Все остальные карточки — оригинальный рендер
     return `<div class="${cls}" data-item-id="${item.id}">
       <div class="shop-card-preview">${getItemPreviewHtml(item)}</div>
       <div class="shop-card-body">
@@ -4262,8 +4293,11 @@ function openShopItem(itemId) {
     btnEl.disabled       = false;
   }
 
-  // Кнопка назад возвращает туда откуда пришли
-  _shopItemBackTarget = currentScreen === 'profile' ? 'profile' : 'shop';
+  // Кнопка назад — target уже установлен вызывающим кодом ДО showScreen,
+  // но если открываем напрямую из магазина — устанавливаем здесь
+  if (currentScreen !== 'shop-item') {
+    _shopItemBackTarget = currentScreen === 'profile' ? 'profile' : 'shop';
+  }
 
   // Для темы — применяем её временно для предпросмотра
   if (item.type === 'theme') {

@@ -336,10 +336,10 @@ for (const t of ACHIEVEMENT_TITLES) {
 // Хелпер: вернуть цвет звания по рангу
 function titleRankColor(rank) {
   switch(rank) {
-    case 'prestige': return '#A100FF';
-    case 'high':     return '#F30000';
-    case 'medium':   return '#0059FF';
-    case 'initial':  return '#00CA54';
+    case 'prestige': return '#C261FB';
+    case 'high':     return '#D43838';
+    case 'medium':   return '#4C7DD7';
+    case 'initial':  return '#4EAA74';
     default:         return '#FFFFFF';
   }
 }

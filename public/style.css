@@ -2205,8 +2205,8 @@ body.theme-light .burger-item-chat { background: rgba(0,0,0,.05) !important; }
    ═══════════════════════════════════════════════════════ */
 
 .achievements-section {
-  margin-top: 20px;
-  padding-top: 16px;
+  margin-top: 16px;
+  padding: 0 16px 24px;
   border-top: 1px solid rgba(255,255,255,.08);
 }
 .achievements-title {
@@ -2216,11 +2216,6 @@ body.theme-light .burger-item-chat { background: rgba(0,0,0,.05) !important; }
   text-transform: uppercase;
   color: rgba(255,255,255,.45);
   margin-bottom: 12px;
-}
-.achievements-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 /* Карточка достижения */
@@ -2569,24 +2564,7 @@ body.theme-light .referral-ach-title { color: rgba(0,0,0,.4); }
   padding: 0;
 }
 
-.profile-xp-section {
-  padding: 16px 16px 0;
-}
 
-.achievements-section {
-  padding: 0 16px 24px;
-  margin-top: 16px;
-}
-
-/* Заголовок достижений — выравниваем как секции в статистике */
-.achievements-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,.4);
-  margin-bottom: 10px;
-}
 
 /* Карточки достижений совпадают по ширине с XP-блоком */
 .achievements-list {
