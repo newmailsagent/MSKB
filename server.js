@@ -567,7 +567,9 @@ function getXpInfo(id) {
   return { xp, level, rank, xpInLevel, xpNeeded, xpForNext };
 }
 
-const MAX_LEGIT_ACCURACY = 0.60; // выше 60% — подозрительно, XP не начисляется
+const MIN_LEGIT_ACCURACY = 0.25; // ниже 25% — слишком мало попаданий, не рейтинг
+const MAX_LEGIT_ACCURACY = 0.60; // выше 60% — подозрительно
+const MIN_RATED_SUNKEN   = 6;    // победитель должен потопить ≥ 6 кораблей
 
 function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots = null, isRated = true, isFriend = false) {
   id = normalizeId(id);
@@ -577,31 +579,28 @@ function addWin(id, shots, hits, isOnline = false, sunkenCount = 0, loserShots =
   let xpResult = null;
   if (isOnline) {
     const acc = shots > 0 ? hits / shots : 0;
-    const isLegit = loserShots === 0 ? true : acc <= MAX_LEGIT_ACCURACY;
 
     db.prepare(`UPDATE players SET online_wins=online_wins+1,
       online_shots=online_shots+?, online_hits=online_hits+? WHERE id=?`).run(shots, hits, id);
 
-    if (isLegit) {
-      if (isRated) {
+    if (isRated) {
+      // Рейтинг: победитель потопил ≥ 6 кораблей И точность 25–60%
+      const ratedOk = (sunkenCount || 0) >= MIN_RATED_SUNKEN
+                   && acc >= MIN_LEGIT_ACCURACY
+                   && acc <= MAX_LEGIT_ACCURACY;
+      if (ratedOk) {
         const p = db.prepare(`SELECT rating_active FROM players WHERE id=?`).get(id);
         if (p?.rating_active === 1) {
           db.prepare(`UPDATE players SET rated_wins=rated_wins+1,
             rated_shots=rated_shots+?, rated_hits=rated_hits+? WHERE id=?`).run(shots, hits, id);
         }
+      } else {
+        console.log(`[RATING] Skipped: sunken=${sunkenCount} acc=${(acc*100).toFixed(1)}%`);
       }
-      const xpReward = calcXpReward('win', sunkenCount, shots, hits, loserShots ?? null, isFriend);
-      xpResult = addXp(id, xpReward);
-    } else {
-      console.log(`[ANTI-FARM] Blocked: ${id} acc=${(acc*100).toFixed(1)}%`);
-      const row = db.prepare(`SELECT xp FROM players WHERE id=?`).get(id);
-      const xpNow = row?.xp || 0;
-      xpResult = {
-        xpBefore: xpNow, xpAfter: xpNow, xpGain: 0,
-        baseXp: 0, bonusXp: 0,
-        levelBefore: calcLevel(xpNow), levelAfter: calcLevel(xpNow), levelUp: false,
-      };
     }
+
+    const xpReward = calcXpReward('win', sunkenCount, shots, hits, loserShots ?? null, isFriend);
+    xpResult = addXp(id, xpReward);
   }
   return xpResult;
 }
