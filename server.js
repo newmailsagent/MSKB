@@ -1429,6 +1429,22 @@ app.get('/api/shop/items', (req, res) => {
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// Публичный список кастомных реакций (из shop_items type='reaction')
+// Возвращает id, name, filename (из preview_url), sort_order
+app.get('/api/reactions', (req, res) => {
+  try {
+    const rows = db.prepare(
+      `SELECT id, name, preview_url, sort_order FROM shop_items WHERE type='reaction' AND is_active=1 ORDER BY sort_order, id`
+    ).all().map(r => ({
+      id:         r.id,
+      name:       r.name,
+      filename:   r.preview_url ? r.preview_url.replace(/^\/reactions\//, '') : null,
+      sort_order: r.sort_order,
+    })).filter(r => r.filename);
+    res.json({ ok: true, data: rows });
+  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // Страница конкретного товара
 app.get('/api/shop/item/:id', (req, res) => {
   try {
