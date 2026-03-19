@@ -1795,10 +1795,33 @@ const WS = {
   },
 
   _init(serverUrl, resolve, reject) {
+    // Переиспользуем presence-сокет если он уже есть и подключён —
+    // это гарантирует один сокет на клиента, счётчик онлайна не задваивается
+    const existingSock = initOnlineCounter._sock;
+    if (existingSock && existingSock.connected) {
+      if (this.socket && this.socket !== existingSock) {
+        this.socket.disconnect();
+      }
+      this.socket = existingSock;
+      // Актуализируем identify с текущим playerId
+      this.socket.emit('identify', { playerId: App.user?.id || null });
+      resolve();
+      return;
+    }
+
     if (this.socket) { this.socket.disconnect(); this.socket = null; }
     this.socket = io(serverUrl || window.location.origin, { transports: ['websocket','polling'] });
-    this.socket.once('connect',       () => resolve());
+    // Регистрируем как presence-сокет чтобы не создавать второй
+    initOnlineCounter._sock = this.socket;
+    this.socket.once('connect',       () => {
+      this.socket.emit('identify', { playerId: App.user?.id || null });
+      resolve();
+    });
     this.socket.once('connect_error', () => reject(new Error('Ошибка подключения')));
+    // Подписываем на online_count (на случай если initOnlineCounter ещё не добавил)
+    this.socket.on('online_count', ({ count }) => {
+      if (initOnlineCounter.update) initOnlineCounter.update(count);
+    });
 
     this.socket.on('disconnect', () => {
       if (Game.active) showModal('Соединение потеряно', 'Игра прервана.', [
@@ -2918,9 +2941,8 @@ function initOnlineCounter() {
   };
   initOnlineCounter.update = update;
 
-  // Загружаем socket.io и создаём один постоянный сокет присутствия
   const connect = () => {
-    if (initOnlineCounter._sock) return; // уже есть
+    if (initOnlineCounter._sock) return; // уже есть — переиспользуется WS
     const sock = io(window.location.origin, {
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -2929,12 +2951,12 @@ function initOnlineCounter() {
     initOnlineCounter._sock = sock;
 
     sock.on('connect', () => {
-      // Сообщаем серверу кто мы — сразу при подключении и при реконнекте
+      // При каждом (ре)подключении шлём identify с актуальным playerId
       sock.emit('identify', { playerId: App.user?.id || null });
     });
     sock.on('online_count', ({ count }) => update(count));
 
-    // Heartbeat каждые 4 минуты — обновляем lastActive на сервере
+    // Heartbeat каждые 4 минуты
     setInterval(() => {
       if (sock.connected) sock.emit('active');
     }, 4 * 60 * 1000);

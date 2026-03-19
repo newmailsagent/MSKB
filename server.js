@@ -364,11 +364,19 @@ function getOnlineCount() {
   const seen = new Set();
   for (const [, s] of onlineSessions) {
     if (now - s.lastActive > IDLE_TIMEOUT_MS) continue;
-    // TG-игрок: дедупликация по playerId (десктоп + мобайл = 1)
-    // Гость: считаем по socketId
+    // Не считаем сокет, который подключился но ещё не прислал identify
+    // (у него нет playerId и он моложе 5 секунд — ещё в процессе handshake)
+    const ageSec = (now - s.connectedAt) / 1000;
+    if (!s.playerId && !s.identified && ageSec < 5) continue;
+
     if (s.playerId && !s.playerId.startsWith('guest_')) {
+      // Зарегистрированный: дедупликация по playerId
       seen.add('p:' + s.playerId);
+    } else if (s.playerId && s.playerId.startsWith('guest_')) {
+      // Гость с известным guest_id: дедупликация по guest_id
+      seen.add('g:' + s.playerId);
     } else {
+      // Анонимный сокет (до identify или без него): по socketId
       seen.add('s:' + s.socketId);
     }
   }
@@ -788,7 +796,7 @@ io.on('connection', (socket) => {
     socket.data.playerId = cleanPlayerId;
     upsertPlayer(cleanPlayerId, cleanPlayerName);
     // Обновляем онлайн-сессию
-    onlineSessions.set(socket.id, { socketId: socket.id, playerId: cleanPlayerId, name: cleanPlayerName, connectedAt: Date.now(), lastActive: Date.now() });
+    onlineSessions.set(socket.id, { socketId: socket.id, playerId: cleanPlayerId, name: cleanPlayerName, identified: true, connectedAt: Date.now(), lastActive: Date.now() });
 
     const info = { socketId: socket.id, playerId: cleanPlayerId, name: cleanPlayerName };
 
@@ -1104,6 +1112,7 @@ function validateNoTouch(field) {
       ...existing,
       socketId: socket.id,
       playerId: normId,
+      identified: true,
       lastActive: Date.now(),
     });
     broadcastOnlineCount();
