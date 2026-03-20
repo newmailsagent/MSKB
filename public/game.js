@@ -4379,16 +4379,30 @@ function getItemPreviewHtml(item, large = false) {
 /* ─── ИНВЕНТАРЬ В ПРОФИЛЕ ────────────────────────── */
 let _invFilter = 'all';
 
-function renderInventory() {
+async function renderInventory() {
   const grid     = document.getElementById('inventory-grid');
   const emptyEl  = document.getElementById('inventory-empty');
   if (!grid) return;
 
   // Тёмная тема всегда в инвентаре для авторизованных
   const darkTheme    = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
-  // Звание "По умолчанию" всегда в инвентаре
-  const defaultTitle = { id: 'title_default', type: 'title', name: 'По умолчанию', description: 'Звание соответствует вашему уровню', title_rank: null };
+  // Звание "По умолчанию" — показывает текущий rank игрока по уровню
+  const _curRank = calcRank(getXpProgress(App.user.xp || 0).level);
+  const defaultTitle = { id: 'title_default', type: 'title', name: _curRank, description: 'Звание соответствует вашему уровню', title_rank: null };
   const ownedIds  = new Set(Object.keys(_shopInventory));
+
+  // Наградные звания (is_active=0 в магазине) могут отсутствовать в _shopItems
+  // Перезагружаем данные магазина чтобы подтянуть их через loadShopData
+  const missingInShop = [...ownedIds].some(
+    id => !['title_default','theme_dark'].includes(id) && !_shopItems.find(s => s.id === id)
+  );
+  if (missingInShop) {
+    await loadShopData();
+    // После перезагрузки ownedIds может обновиться
+    ownedIds.clear();
+    Object.keys(_shopInventory).forEach(k => ownedIds.add(k));
+  }
+
   const owned     = [darkTheme, defaultTitle, ..._shopItems.filter(i => ownedIds.has(i.id))];
 
   // Кэшируем meta звания для _achievementCardHTML
@@ -4479,7 +4493,7 @@ function renderInventory() {
           _shopItems.unshift({ id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' });
         }
         if (id === 'title_default' && !_shopItems.find(i => i.id === 'title_default')) {
-          _shopItems.unshift({ id: 'title_default', type: 'title', name: 'По умолчанию', description: 'Звание соответствует вашему уровню', title_rank: null });
+          _shopItems.unshift({ id: 'title_default', type: 'title', name: calcRank(getXpProgress(App.user.xp || 0).level), description: 'Звание соответствует вашему уровню', title_rank: null });
         }
         _shopItemBackTarget = 'profile';
         showScreen('shop-item');
@@ -4495,7 +4509,7 @@ function renderInventory() {
     const item = itemId === 'theme_dark'
       ? { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' }
       : itemId === 'title_default'
-      ? { id: 'title_default', type: 'title', name: 'По умолчанию', description: 'Звание соответствует вашему уровню' }
+      ? { id: 'title_default', type: 'title', name: calcRank(getXpProgress(App.user.xp || 0).level), description: 'Звание соответствует вашему уровню' }
       : _shopItems.find(i => i.id === itemId);
     if (!item) return;
     const activeTheme = _shopEquipped['theme'] || null;
