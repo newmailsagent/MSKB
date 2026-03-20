@@ -4132,8 +4132,9 @@ let _shopItems     = [];   // весь каталог
 let _shopInventory = {};   // { itemId: true } — что куплено
 let _shopEquipped  = {};   // { slot: itemId } — что надето
 let _shopFilter    = 'all';
-let renderShopGrid = null;  // инициализируется ниже после всех зависимостей
-let openShopItem   = null;  // инициализируется ниже после всех зависимостей
+// Stub functions - will be replaced below after all dependencies are loaded
+function renderShopGrid() { /* replaced below */ }
+function openShopItem(itemId) { /* replaced below */ }
 let _currentShopItemId = null;
 let _shopItemBackTarget = 'shop'; // откуда открыли страницу товара
 
@@ -4155,7 +4156,9 @@ async function loadShopData() {
       (invRes.data.items || []).forEach(i => {
         _shopInventory[i.item_id] = true;
         // Если айтем есть в инвентаре но не в каталоге (напр. title_engineer) — добавляем
-        if (i.item_id && !_shopItems.find(s => s.id === i.item_id)) {
+        // Исключаем виртуальные предметы которые не должны быть в магазине
+        const virtualIds = ['title_default', 'theme_dark'];
+        if (i.item_id && !virtualIds.includes(i.item_id) && !_shopItems.find(s => s.id === i.item_id)) {
           _shopItems.push({
             id:          i.item_id,
             type:        i.type,

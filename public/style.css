@@ -647,9 +647,13 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
   width: 100%; aspect-ratio: 1;
   background: var(--bg); display: flex; align-items: center; justify-content: center;
   font-size: 32px; color: var(--hint);
+  flex-shrink: 0; /* prevent preview from expanding to fill all card height */
+}
+.shop-card-body {
+  padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px;
+  flex-shrink: 0;
 }
 .shop-card-preview img { width: 60%; height: 60%; object-fit: contain; }
-.shop-card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; }
 .shop-card-name { font-size: 13px; font-weight: 600; color: var(--text); }
 .shop-card-price {
   font-family: var(--font-hd); font-size: 12px; color: var(--hint);
