@@ -4391,17 +4391,10 @@ async function renderInventory() {
   const defaultTitle = { id: 'title_default', type: 'title', name: _curRank, description: 'Звание соответствует вашему уровню', title_rank: null };
   const ownedIds  = new Set(Object.keys(_shopInventory));
 
-  // Наградные звания (is_active=0 в магазине) могут отсутствовать в _shopItems
-  // Перезагружаем данные магазина чтобы подтянуть их через loadShopData
-  const missingInShop = [...ownedIds].some(
-    id => !['title_default','theme_dark'].includes(id) && !_shopItems.find(s => s.id === id)
-  );
-  if (missingInShop) {
-    await loadShopData();
-    // После перезагрузки ownedIds может обновиться
-    ownedIds.clear();
-    Object.keys(_shopInventory).forEach(k => ownedIds.add(k));
-  }
+  // Всегда перезагружаем данные инвентаря — сервер выдаёт награды при запросе
+  await loadShopData();
+  ownedIds.clear();
+  Object.keys(_shopInventory).forEach(k => ownedIds.add(k));
 
   const owned     = [darkTheme, defaultTitle, ..._shopItems.filter(i => ownedIds.has(i.id))];
 
@@ -4492,9 +4485,7 @@ async function renderInventory() {
         if (id === 'theme_dark' && !_shopItems.find(i => i.id === 'theme_dark')) {
           _shopItems.unshift({ id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' });
         }
-        if (id === 'title_default' && !_shopItems.find(i => i.id === 'title_default')) {
-          _shopItems.unshift({ id: 'title_default', type: 'title', name: calcRank(getXpProgress(App.user.xp || 0).level), description: 'Звание соответствует вашему уровню', title_rank: null });
-        }
+        // title_default — виртуальный предмет, не добавляем в _shopItems
         _shopItemBackTarget = 'profile';
         showScreen('shop-item');
         openShopItem(id);
@@ -4605,7 +4596,7 @@ renderShopGrid = function() {
     return;
   }
 
-  grid.innerHTML = items.map(item => {
+  grid.innerHTML = items.filter(i => i.id !== 'title_default').map(item => {
     const owned    = !!_shopInventory[item.id];
     const equipped = item.type === 'title'
       ? (_shopEquipped['title'] === item.id)

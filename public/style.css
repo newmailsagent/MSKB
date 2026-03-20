@@ -86,11 +86,6 @@ html, body {
   .screen.slide-back {
     transform: translateX(calc(-50% - 100vw)) !important;
   }
-  /* Магазин и инвентарь — 4 карточки в ряд на десктопе */
-  .shop-grid {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
-  }
 }
 
 /* ─── ЭКРАНЫ ─────────────────────────────────────── */
@@ -2587,3 +2582,11 @@ body.theme-light .referral-ach-title { color: rgba(0,0,0,.4); }
 
 /* Светлые темы */
 body.theme-light .achievements-title { color: rgba(0,0,0,.4); }
+
+/* ─── ДЕСКТОП: 4 карточки в ряд ─────────────────── */
+@media (min-width: 1281px) {
+  .shop-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+}

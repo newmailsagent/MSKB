@@ -1831,6 +1831,8 @@ app.get('/api/inventory/:userId', (req, res) => {
       return res.json({ ok: true, data: { items: fakeInv, equipped: getEquipped(userId) } });
     }
 
+    // Синхронизируем прогресс достижений и выдаём заработанные награды
+    _syncAchievementProgress(userId);
     // Обычный пользователь — отдаём инвентарь БЕЗ чувствительных полей
     const items = getInventory(userId).map(({ telegram_charge_id, ...safe }) => safe);
     res.json({ ok: true, data: { items, equipped: getEquipped(userId) } });
