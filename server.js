@@ -1554,7 +1554,7 @@ app.post('/api/history', (req, res) => {
     const cleanResult = ['win','loss','draw'].includes(result) ? result : null;
     if (!cleanResult) { res.json({ ok: false }); return; }
     const cleanMode     = ['online','bot-easy','bot-hard'].includes(mode) ? mode : 'online';
-    const cleanOpponent = sanitizeStr(opponent || '?', 64);
+    const cleanOpponent = (s => String(s||'').trim().slice(0,64))(opponent || '?');
     const cleanShots    = Math.max(0, parseInt(shots)  || 0);
     const cleanHits     = Math.max(0, parseInt(hits)   || 0);
     const gameMode = cleanMode;
