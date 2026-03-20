@@ -1561,6 +1561,7 @@ app.post('/api/history', (req, res) => {
     addBattleHistory(cleanId, cleanResult, cleanOpponent, cleanShots, cleanHits, gameMode);
     const newAchievements = [];
     if (!skipStats) {
+      console.log(`[History] ${cleanId} mode=${cleanMode} result=${cleanResult} skipStats=${skipStats}`);
       if (cleanResult === 'win') {
         db.prepare(`UPDATE players SET wins=wins+1, total_shots=total_shots+?, total_hits=total_hits+?, updated_at=strftime('%s','now') WHERE id=?`).run(cleanShots, cleanHits, cleanId);
         newAchievements.push(...updateAchievementProgress(cleanId, 'total_wins', 1));
@@ -1571,6 +1572,9 @@ app.post('/api/history', (req, res) => {
       } else if (cleanResult === 'loss') {
         db.prepare(`UPDATE players SET losses=losses+1, total_shots=total_shots+?, total_hits=total_hits+?, updated_at=strftime('%s','now') WHERE id=?`).run(cleanShots, cleanHits, cleanId);
         newAchievements.push(...updateAchievementProgress(cleanId, 'total_battles', 1));
+      }
+      if (newAchievements.length) {
+        console.log(`[History] newAchievements for ${cleanId}:`, newAchievements.map(a => a.id));
       }
     }
     res.json({ ok: true, newAchievements });
@@ -1727,16 +1731,22 @@ app.get('/api/duel/:myId/:theirId', (req, res) => {
 app.get('/api/status',     (req, res) => res.json({ ok: true, rooms: rooms.size, waiting: waitingPool.length, uptime: process.uptime() }));
 
 // DEBUG — смотрим реальное состояние БД для игрока (только с секретом)
+// Диагностика — доступна для админа без секрета
 app.get('/api/debug/player/:userId', (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'] || req.query.secret;
-    if (!SHOP_SECRET || secret !== SHOP_SECRET) return res.status(403).json({ ok: false });
     const userId = normalizeId(req.params.userId);
-    const player = db.prepare(`SELECT * FROM players WHERE id=?`).get(userId);
-    const progress = db.prepare(`SELECT * FROM achievements_progress WHERE user_id=?`).all(userId);
-    const inventory = db.prepare(`SELECT i.item_id, i.purchase_type, s.name, s.is_active FROM inventory i LEFT JOIN shop_items s ON s.id=i.item_id WHERE i.user_id=? AND i.is_active=1`).all(userId);
-    const history_count = db.prepare(`SELECT mode, COUNT(*) as n FROM battle_history WHERE player_id=? GROUP BY mode`).all(userId);
-    res.json({ ok: true, player, progress, inventory, history_count });
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    const ok = isAdmin(userId) || (SHOP_SECRET && secret === SHOP_SECRET);
+    if (!ok) return res.status(403).json({ ok: false });
+
+    const player       = db.prepare(`SELECT id, name, xp, wins, losses, total_shots, total_hits FROM players WHERE id=?`).get(userId);
+    const progress     = db.prepare(`SELECT achievement_id, progress, completed_at, times_done FROM achievements_progress WHERE user_id=? ORDER BY achievement_id`).all(userId);
+    const inventory    = db.prepare(`SELECT i.item_id, i.purchase_type, i.purchased_at, s.name FROM inventory i LEFT JOIN shop_items s ON s.id=i.item_id WHERE i.user_id=? AND i.is_active=1 ORDER BY i.purchased_at DESC`).all(userId);
+    const history      = db.prepare(`SELECT mode, result, COUNT(*) as n FROM battle_history WHERE player_id=? GROUP BY mode, result`).all(userId);
+    const totalHistory = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE player_id=?`).get(userId)?.n || 0;
+    const shopTitles   = db.prepare(`SELECT id, name, is_active, title_rank FROM shop_items WHERE type='title' ORDER BY id`).all();
+
+    res.json({ ok: true, player, progress, inventory, history, totalHistory, shopTitles });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

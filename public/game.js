@@ -481,11 +481,14 @@ function recordResult(result, shots, hits, oppName) {
     saveJSON('bs_history_bots', App.historyBots);
     // Сохраняем бот-результат на сервере для отслеживания достижений
     if (!App.user.isGuest) {
+      const botPayload = { id: App.user.id, result, opponent: oppName || 'Бот', shots, hits, skipStats: false, mode: Game.mode };
+      console.log('[Bot] sending /api/history:', botPayload);
       fetch('/api/history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: App.user.id, result, opponent: oppName || 'Бот', shots, hits, skipStats: false, mode: Game.mode }),
+        body: JSON.stringify(botPayload),
       }).then(r => r.json()).then(j => {
+        console.log('[Bot] /api/history response:', j);
         if (j.newAchievements?.length) {
           Game._pendingAchievements = (Game._pendingAchievements || []).concat(j.newAchievements);
           if (currentScreen === 'gameover') _showNewAchievementTag();
