@@ -1546,6 +1546,10 @@ app.post('/api/history', (req, res) => {
     const { id, result, opponent, shots, hits, skipStats, mode } = req.body;
     const cleanId = normalizeId(id);
     if (!cleanId || cleanId.startsWith('guest_')) { res.json({ ok: false }); return; }
+    // Убеждаемся что игрок существует в таблице players (только создаём если нет)
+    if (!db.prepare('SELECT 1 FROM players WHERE id=?').get(cleanId)) {
+      upsertPlayer(cleanId, 'Игрок');
+    }
     // Валидация enum-полей
     const cleanResult = ['win','loss','draw'].includes(result) ? result : null;
     if (!cleanResult) { res.json({ ok: false }); return; }
@@ -1721,6 +1725,38 @@ app.get('/api/duel/:myId/:theirId', (req, res) => {
   catch(e) { res.status(500).json({ ok: false }); }
 });
 app.get('/api/status',     (req, res) => res.json({ ok: true, rooms: rooms.size, waiting: waitingPool.length, uptime: process.uptime() }));
+
+// DEBUG — смотрим реальное состояние БД для игрока (только с секретом)
+app.get('/api/debug/player/:userId', (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    if (!SHOP_SECRET || secret !== SHOP_SECRET) return res.status(403).json({ ok: false });
+    const userId = normalizeId(req.params.userId);
+    const player = db.prepare(`SELECT * FROM players WHERE id=?`).get(userId);
+    const progress = db.prepare(`SELECT * FROM achievements_progress WHERE user_id=?`).all(userId);
+    const inventory = db.prepare(`SELECT i.item_id, i.purchase_type, s.name, s.is_active FROM inventory i LEFT JOIN shop_items s ON s.id=i.item_id WHERE i.user_id=? AND i.is_active=1`).all(userId);
+    const history_count = db.prepare(`SELECT mode, COUNT(*) as n FROM battle_history WHERE player_id=? GROUP BY mode`).all(userId);
+    res.json({ ok: true, player, progress, inventory, history_count });
+  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Принудительная синхронизация достижений для игрока
+app.post('/api/achievements/force-sync/:userId', (req, res) => {
+  try {
+    const userId = normalizeId(req.params.userId);
+    if (!userId || userId.startsWith('guest_')) return res.status(400).json({ ok: false });
+    // Верификация через initData или admin secret
+    const secret = req.headers['x-admin-secret'];
+    const initData = req.headers['x-telegram-init-data'];
+    const verifiedId = initData ? verifyTelegramInitData(initData) : null;
+    if (!secret && (!verifiedId || verifiedId !== userId) && !isAdmin(userId)) {
+      return res.status(403).json({ ok: false, error: 'forbidden' });
+    }
+    _syncAchievementProgress(userId);
+    const data = getAchievementsForUser(userId);
+    res.json({ ok: true, data });
+  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 
 
 // Уведомить пользователя через WebSocket если он онлайн
@@ -2056,19 +2092,19 @@ function _syncAchievementProgress(userId) {
     const p = db.prepare(`SELECT * FROM players WHERE id=?`).get(userId);
     if (!p) return;
 
-    // Считаем реальные данные
-    const totalBattles = (p.wins || 0) + (p.losses || 0);
-    const totalWins    = p.wins || 0;
-    const botHistory   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE player_id=? AND mode LIKE 'bot%' AND result='win'`).get(userId)?.n || 0;
+    // Считаем реальные данные из battle_history (точнее чем players.wins+losses)
+    const totalBattles = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE player_id=?`).get(userId)?.n || 0;
+    const totalWins    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE player_id=? AND result='win'`).get(userId)?.n || 0;
+    const botWins      = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE player_id=? AND mode LIKE 'bot%' AND result='win'`).get(userId)?.n || 0;
     const randomBattles= db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE player_id=? AND mode='online'`).get(userId)?.n || 0;
-    const friendBattles= db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE player_id=? AND mode='friend'`).get(userId)?.n || 0;
+    const friendBattles= db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE player_id=? AND (mode='friend' OR mode='friend_join')`).get(userId)?.n || 0;
     const themesBought = db.prepare(`SELECT COUNT(*) as n FROM inventory i JOIN shop_items s ON s.id=i.item_id WHERE i.user_id=? AND s.type='theme' AND i.is_active=1 AND i.purchase_type='stars'`).get(userId)?.n || 0;
     const refQualified = db.prepare(`SELECT COUNT(*) as n FROM referrals WHERE inviter_id=? AND qualified=1`).get(userId)?.n || 0;
 
     const syncMap = {
       total_battles:       totalBattles,
       total_wins:          totalWins,
-      bot_wins:            botHistory,
+      bot_wins:            botWins,
       random_battles:      randomBattles,
       friend_battles:      friendBattles,
       themes_bought:       themesBought,
@@ -2077,26 +2113,26 @@ function _syncAchievementProgress(userId) {
 
     for (const [countFn, realValue] of Object.entries(syncMap)) {
       if (realValue <= 0) continue;
-      // Находим все достижения с этим countFn
       const relevant = ACHIEVEMENTS.filter(a => a.countFn === countFn && a.type === 'limited');
       for (const ach of relevant) {
         const row = db.prepare(`SELECT * FROM achievements_progress WHERE user_id=? AND achievement_id=?`).get(userId, ach.id);
         if (row?.completed_at) continue; // уже выполнено — не трогаем
-        const currentProgress = row?.progress || 0;
-        if (realValue <= currentProgress) continue; // прогресс в БД актуален
 
-        // Обновляем прогресс до реального значения
         const newProg = Math.min(realValue, ach.goal);
+
+        // Обновляем прогресс (всегда до актуального значения)
         if (row) {
           db.prepare(`UPDATE achievements_progress SET progress=? WHERE user_id=? AND achievement_id=?`).run(newProg, userId, ach.id);
         } else {
           db.prepare(`INSERT INTO achievements_progress (user_id,achievement_id,progress) VALUES (?,?,?)`).run(userId, ach.id, newProg);
         }
+
         // Если достигли цели — отмечаем выполненным и выдаём награду
         if (newProg >= ach.goal) {
           db.prepare(`UPDATE achievements_progress SET completed_at=?,notified=0 WHERE user_id=? AND achievement_id=?`).run(Math.floor(Date.now()/1000), userId, ach.id);
-          if (ach.reward && !db.prepare(`SELECT 1 FROM inventory WHERE user_id=? AND item_id=?`).get(userId, ach.reward)) {
+          if (ach.reward && !db.prepare(`SELECT 1 FROM inventory WHERE user_id=? AND item_id=? AND is_active=1`).get(userId, ach.reward)) {
             grantItem(userId, ach.reward, 'reward');
+            console.log(`[AchSync] Granted: ${userId} → ${ach.reward} (${ach.id})`);
           }
         }
       }
