@@ -1863,16 +1863,23 @@ app.get('/api/inventory/:userId', (req, res) => {
       return res.status(403).json({ ok: false, error: 'forbidden' });
     }
 
-    // Админ — весь каталог ПОКУПНЫХ предметов как купленный (is_active=1 AND price_stars IS NOT NULL OR type != 'title')
+    // Админ — весь каталог ПОКУПНЫХ предметов + реальный инвентарь (наградные звания)
     if (isAdmin(userId)) {
+      // Синхронизируем достижения и для админа тоже
+      _syncAchievementProgress(userId);
       // Выдаём title_engineer если ещё нет
       grantItem(userId, 'title_engineer', 'admin');
       const allItems = db.prepare(`SELECT * FROM shop_items WHERE is_active=1 AND (type != 'title' OR price_stars IS NOT NULL) ORDER BY sort_order`).all();
+      // Реальный инвентарь — наградные звания (is_active=0 в shop_items)
+      const realInv = getInventory(userId);
+      const realIds = new Set(realInv.map(i => i.item_id));
       // Добавляем title_engineer отдельно (он is_active=0)
       const engineerItem = db.prepare(`SELECT * FROM shop_items WHERE id='title_engineer'`).get();
       const fakeInv = [
-        ...(engineerItem ? [{ ...engineerItem, item_id: 'title_engineer', purchase_type: 'admin', is_active: 1, is_equipped: 0 }] : []),
+        ...(engineerItem && !realIds.has('title_engineer') ? [{ ...engineerItem, item_id: 'title_engineer', purchase_type: 'admin', is_active: 1, is_equipped: 0 }] : []),
         ...allItems.map(i => ({ ...i, item_id: i.id, purchase_type: 'admin', is_active: 1, is_equipped: 0 })),
+        // Добавляем реальные наградные предметы которых нет в каталоге
+        ...realInv.filter(i => !allItems.find(s => s.id === i.item_id) && i.item_id !== 'title_engineer'),
       ];
       return res.json({ ok: true, data: { items: fakeInv, equipped: getEquipped(userId) } });
     }

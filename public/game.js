@@ -480,8 +480,9 @@ function recordResult(result, shots, hits, oppName) {
     if (App.historyBots.length > 50) App.historyBots.pop();
     saveJSON('bs_history_bots', App.historyBots);
     // Сохраняем бот-результат на сервере для отслеживания достижений
-    if (!App.user.isGuest) {
-      const botPayload = { id: App.user.id, result, opponent: oppName || 'Бот', shots, hits, skipStats: false, mode: Game.mode };
+    const botUserId = App.user?.id;
+    if (botUserId && !String(botUserId).startsWith('guest_')) {
+      const botPayload = { id: botUserId, result, opponent: oppName || 'Бот', shots, hits, skipStats: false, mode: Game.mode };
       console.log('[Bot] sending /api/history:', botPayload);
       fetch('/api/history', {
         method: 'POST',
@@ -494,7 +495,7 @@ function recordResult(result, shots, hits, oppName) {
           if (currentScreen === 'gameover') _showNewAchievementTag();
           _markAchievementsUnseen(j.newAchievements.map(a => a.id));
         }
-      }).catch(() => {});
+      }).catch(e => console.error('[Bot] history error:', e));
     }
   } else {
     // Онлайн-статистика — обновляем локально сразу
