@@ -746,7 +746,29 @@ async def refunded_payment_filter(update: Update, context: ContextTypes.DEFAULT_
 
 
 def build_app() -> Application:
-    app = Application.builder().token(BOT_TOKEN).build()
+    from telegram.request import HTTPXRequest
+
+    proxy = (
+        os.environ.get("HTTPS_PROXY") or
+        os.environ.get("https_proxy") or
+        os.environ.get("ALL_PROXY")
+    )
+
+    if proxy:
+        logger.info(f"[Bot] Используем прокси: {proxy.split('@')[-1]}")
+        req     = HTTPXRequest(proxy=proxy)
+        get_upd = HTTPXRequest(proxy=proxy)
+        builder = (
+            Application.builder()
+            .token(BOT_TOKEN)
+            .request(req)
+            .get_updates_request(get_upd)
+        )
+    else:
+        logger.info("[Bot] Прокси не задан, прямое подключение")
+        builder = Application.builder().token(BOT_TOKEN)
+
+    app = builder.build()
 
     # ── Публичные команды
     app.add_handler(CommandHandler("start", start))
