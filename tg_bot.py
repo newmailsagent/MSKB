@@ -780,11 +780,12 @@ def build_app() -> Application:
             Application.builder()
             .token(BOT_TOKEN)
             .request(req)
-            .get_updates_request(get_upd)
+            .get_updates_request(get_upd)  # нужен только для polling
+            .concurrent_updates(False)     # строго последовательная обработка — защита от дублей
         )
     else:
         logger.info("[Bot] Прокси не задан, прямое подключение")
-        builder = Application.builder().token(BOT_TOKEN)
+        builder = Application.builder().token(BOT_TOKEN).concurrent_updates(False)
 
     app = builder.build()
 
@@ -842,6 +843,20 @@ def build_app() -> Application:
 
 
 def main() -> None:
+    import fcntl, sys
+
+    # ── File lock: гарантируем что запущен только один экземпляр бота ──
+    lock_path = os.path.join(os.path.dirname(USERS_DB_PATH), "bot.lock")
+    try:
+        lock_file = open(lock_path, 'w')
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_file.write(str(os.getpid()))
+        lock_file.flush()
+        logger.info(f"[Bot] Lock acquired: {lock_path} (pid={os.getpid()})")
+    except BlockingIOError:
+        logger.error(f"[Bot] Another instance is already running (lock: {lock_path}). Exiting.")
+        sys.exit(1)
+
     # Синхронизируем игроков из game.db → bot_users при каждом старте
     seed_from_game_db()
 
