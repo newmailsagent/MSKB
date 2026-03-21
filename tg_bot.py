@@ -846,7 +846,9 @@ def main() -> None:
     import fcntl, sys
 
     # ── File lock: гарантируем что запущен только один экземпляр бота ──
-    lock_path = os.path.join(os.path.dirname(USERS_DB_PATH), "bot.lock")
+    # PM2 при рестарте может держать старый процесс живым — лок предотвращает дублирование
+    lock_path = os.path.join(os.path.dirname(os.path.abspath(USERS_DB_PATH)), "bot.lock")
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
     try:
         lock_file = open(lock_path, 'w')
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -854,8 +856,32 @@ def main() -> None:
         lock_file.flush()
         logger.info(f"[Bot] Lock acquired: {lock_path} (pid={os.getpid()})")
     except BlockingIOError:
-        logger.error(f"[Bot] Another instance is already running (lock: {lock_path}). Exiting.")
-        sys.exit(1)
+        # Проверяем жив ли процесс из lock-файла
+        try:
+            with open(lock_path, 'r') as f:
+                old_pid = int(f.read().strip())
+            os.kill(old_pid, 0)  # проверка что процесс существует
+            logger.error(f"[Bot] Another instance is running (pid={old_pid}). Exiting.")
+            sys.exit(1)
+        except (ProcessLookupError, ValueError):
+            # Старый процесс мёртв — снимаем лок и продолжаем
+            logger.warning(f"[Bot] Stale lock found (pid dead), taking over.")
+            lock_file = open(lock_path, 'w')
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            lock_file.write(str(os.getpid()))
+            lock_file.flush()
+
+    # Снимаем лок при завершении (SIGTERM от PM2)
+    import signal, atexit
+    def _release_lock():
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+            lock_file.close()
+            os.unlink(lock_path)
+        except Exception:
+            pass
+    atexit.register(_release_lock)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
     # Синхронизируем игроков из game.db → bot_users при каждом старте
     seed_from_game_db()
