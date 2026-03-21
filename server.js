@@ -1074,20 +1074,33 @@ io.on('connection', (socket) => {
     const info = { socketId: socket.id, playerId: cleanPlayerId, name: cleanPlayerName };
 
     if (mode === 'random') {
-      const selfIdx = waitingPool.findIndex(p => p.playerId === playerId);
+      // Убираем себя из пула если уже есть (повторный вход в поиск)
+      const selfIdx = waitingPool.findIndex(p => p.playerId === cleanPlayerId);
       if (selfIdx >= 0) waitingPool.splice(selfIdx, 1);
 
-      const oppIdx = waitingPool.findIndex(p => p.playerId !== playerId);
+      // Чистим мёртвые сокеты из пула — игроки которые давно ждут но уже отключились
+      for (let i = waitingPool.length - 1; i >= 0; i--) {
+        const sock = io.sockets.sockets.get(waitingPool[i].socketId);
+        if (!sock || !sock.connected) {
+          console.log(`[matchmake] removing stale socket from pool: ${waitingPool[i].playerId}`);
+          waitingPool.splice(i, 1);
+        }
+      }
+
+      // Ищем живого соперника
+      const oppIdx = waitingPool.findIndex(p => p.playerId !== cleanPlayerId);
       if (oppIdx >= 0) {
         const opp    = waitingPool.splice(oppIdx, 1)[0];
         const roomId = crypto.randomUUID();
-        const room   = { id: roomId, p1: makePlayer(info), p2: makePlayer(opp), turn: playerId, started: false, over: false, _turnTimer: null, _warnTimer: null };
+        const room   = { id: roomId, p1: makePlayer(info), p2: makePlayer(opp), turn: cleanPlayerId, started: false, over: false, _turnTimer: null, _warnTimer: null };
         rooms.set(roomId, room);
         socket.join(roomId);
         io.sockets.sockets.get(opp.socketId)?.join(roomId);
         notifyBothMatched(room);
+        console.log(`[matchmake] matched ${cleanPlayerId} ↔ ${opp.playerId}`);
       } else {
         waitingPool.push(info);
+        console.log(`[matchmake] ${cleanPlayerId} waiting (pool size: ${waitingPool.length})`);
       }
     }
     else if (mode === 'friend_create') {
@@ -1518,6 +1531,9 @@ function validateNoTouch(field) {
         // ── Игра шла — даём 60 секунд на переподключение ──────────────────
         leaver.disconnected = true;
         // НЕ останавливаем таймер хода — он продолжает тикать.
+
+        // Уведомляем оставшегося игрока что у соперника проблемы с соединением
+        io.to(stayer.socketId).emit('opponent_disconnected_wait', { seconds: 60 });
 
         console.log(`[disconnect] ${leaver.playerId} disconnected — waiting 60s`);
 
