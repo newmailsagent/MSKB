@@ -1811,6 +1811,8 @@ const WS = {
   roomId: null,
   _reconnecting: false,
   _reconnectDeadlineTimer: null,
+  _reconnectRoomId: null,
+  _reconnectPlayerId: null,
   _reconnecting: false,
 
 
@@ -1844,7 +1846,14 @@ const WS = {
     } else {
       // Создаём новый
       if (this.socket) { this.socket.off(); this.socket.disconnect(); this.socket = null; }
-      sock = io(serverUrl || window.location.origin, { transports: ['websocket','polling'] });
+      sock = io(serverUrl || window.location.origin, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 3000,
+        timeout: 10000,
+      });
       initOnlineCounter._sock = sock;
       sock.on('online_count', ({ count }) => {
         if (initOnlineCounter.update) initOnlineCounter.update(count);
@@ -1880,34 +1889,42 @@ const WS = {
   _registerHandlers() {
     const socket = this.socket;
 
-    // Потеря соединения — меняем заголовок хода и ждём переподключения
+    // ── Потеря соединения ──────────────────────────────────────────────────
     this.socket.on('disconnect', (reason) => {
       if (!Game.active) return;
-      WS._reconnecting = true;
-      // Меняем заголовок хода на "Попытка переподключения..."
+
+      // Меняем статус — игрок видит что проблема у него
       const statusEl = document.getElementById('game-status');
       if (statusEl) {
         statusEl.textContent = 'Попытка переподключения...';
         statusEl.style.color = 'var(--hint)';
       }
-      // Клиентский таймер 61 сек — если reconnect_ok не пришёл, показываем поражение
+
+      // Ставим флаг — обработчик 'connect' проверяет его
+      WS._reconnecting = true;
+      WS._reconnectRoomId   = WS.roomId;
+      WS._reconnectPlayerId = App.user?.id || null;
+
+      // Клиентский таймер 62 сек (чуть больше серверных 60)
+      // Если reconnect_ok так и не пришёл — показываем поражение
       if (WS._reconnectDeadlineTimer) clearTimeout(WS._reconnectDeadlineTimer);
       WS._reconnectDeadlineTimer = setTimeout(() => {
-        if (!WS._reconnecting) return;
+        if (!WS._reconnecting) return; // уже переподключились
         WS._reconnecting = false;
         showModal('Соединение прервано', 'Не удалось восстановить соединение. Засчитано поражение.', [
           { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); endGame('loss'); }},
         ]);
-      }, 61 * 1000);
+      }, 62 * 1000);
     });
 
-    // Успешное физическое переподключение socket.io
+    // ── Физическое переподключение сокета ──────────────────────────────────
+    // Этот обработчик вешается на сокет через off/on — гарантированно актуален
     this.socket.on('connect', () => {
-      if (WS._reconnecting && WS.roomId && App.user?.id) {
-        // Возвращаемся из разрыва — шлём reconnect_game
+      if (WS._reconnecting && WS._reconnectRoomId && WS._reconnectPlayerId) {
+        // Возвращаемся из разрыва — шлём reconnect_game серверу
         this.socket.emit('reconnect_game', {
-          roomId:   WS.roomId,
-          playerId: App.user.id,
+          roomId:   WS._reconnectRoomId,
+          playerId: WS._reconnectPlayerId,
         });
       } else {
         this.socket.emit('identify', { playerId: App.user?.id || null });
@@ -1916,12 +1933,18 @@ const WS = {
 
     // Сервер подтвердил переподключение
     this.socket.on('reconnect_ok', ({ roomId, started, isMyTurn, turnSecondsLeft }) => {
+      // Сбрасываем флаги реконнекта
       WS._reconnecting = false;
+      WS._reconnectRoomId   = null;
+      WS._reconnectPlayerId = null;
       if (WS._reconnectDeadlineTimer) { clearTimeout(WS._reconnectDeadlineTimer); WS._reconnectDeadlineTimer = null; }
+
       this.roomId = roomId;
       Game.roomId = roomId;
+
       if (started) {
         Game.isMyTurn = isMyTurn;
+        // Восстанавливаем нормальный заголовок хода
         updateGameStatus();
       }
     });
@@ -1929,6 +1952,8 @@ const WS = {
     // Сервер сказал — время переподключения истекло, засчитано поражение
     this.socket.on('reconnect_failed', ({ reason }) => {
       WS._reconnecting = false;
+      WS._reconnectRoomId   = null;
+      WS._reconnectPlayerId = null;
       if (WS._reconnectDeadlineTimer) { clearTimeout(WS._reconnectDeadlineTimer); WS._reconnectDeadlineTimer = null; }
       const msg = reason === 'room_gone'
         ? 'Из-за потери соединения вам засчитано поражение.'
