@@ -246,10 +246,15 @@ def fmt_analytics(data: dict, title: str = "Аналитика") -> str:
     br  = data.get("browser",        {})
     now_str = datetime.now(tz=timezone(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M МСК")
 
+    # Онлайн
+    online_total  = data.get("online_now", 0)
+    online_tg     = data.get("online_tg", 0)
+    online_guests = data.get("online_guests", 0)
+
     by_day_lines = ""
     for row in (b.get("by_day") or []):
-        online_cnt = row.get('online', row.get('battles', 0))
-        friend_cnt = row.get('friend', 0)
+        online_cnt = row.get("online", row.get("battles", 0))
+        friend_cnt = row.get("friend", 0)
         friend_str = f" | 👥 {friend_cnt}" if friend_cnt else ""
         by_day_lines += f"  {row['day']}: 🎮 {online_cnt}{friend_str}\n"
 
@@ -258,60 +263,61 @@ def fmt_analytics(data: dict, title: str = "Аналитика") -> str:
         top_items_lines += f"  {i}. {item.get('name', item['item_id'])} — {item['cnt']} шт.\n"
 
     avg_acc = acc.get("avg_pct") or 0
-    online  = data.get("online_now", 0)
+    bot_users = get_users_count()
 
     lines = [
         f"<b>{title}</b>",
         f"<i>{now_str}</i>",
         "",
-        f"<b>Онлайн прямо сейчас:</b> {online}",
-        "",
-        "<b>Игроки (всего)</b>",
-        f"  Зарегистрировано: {p.get('total', 0)}",
-        f"  Новых за 24 ч: {p.get('new_24h', 0)}",
-        f"  Активных за 7 дней: {p.get('active_7d', 0)}",
-        f"  Активных за 30 дней: {p.get('active_30d', 0)}",
+        f"<b>Онлайн прямо сейчас:</b> {online_total}",
+        f"  📱 В Telegram: {online_tg}",
+        f"  🌐 Гостей в браузере: {online_guests}",
         "",
         "📱 <b>Telegram</b>",
-        f"  Игроков: {tg.get('players', 0)}",
-        f"  Новых за 24 ч: {tg.get('new_24h', 0)}",
-        f"  Активных за 7 дней: {tg.get('active_7d', 0)}",
-        f"  Активных за 30 дней: {tg.get('active_30d', 0)}",
-        f"  Боёв сегодня: {tg.get('battles_today', 0)}",
+        f"  Зарегистрировано (ТГ-аккаунты): {tg.get('players', p.get('total', 0))}",
+        f"  Новых за 24 ч: {tg.get('new_24h', p.get('new_24h', 0))}",
+        f"  Активных за 7 дней: {tg.get('active_7d', p.get('active_7d', 0))}",
+        f"  Активных за 30 дней: {tg.get('active_30d', p.get('active_30d', 0))}",
+        f"  Боёв сегодня (случайный): {tg.get('battles_today', b.get('today', 0))}",
+        f"  Боёв сегодня (с другом): {tg.get('friend_battles_today', 0)}",
         "",
-        "🌐 <b>Браузер (morskoy-boy.ru)</b>",
-        f"  Зарегистрированных: {br.get('players', 0)}",
-        f"  Новых за 24 ч: {br.get('new_24h', 0)}",
-        f"  Активных за 7 дней: {br.get('active_7d', 0)}",
-        f"  Активных за 30 дней: {br.get('active_30d', 0)}",
-        f"  Боёв сегодня (рег.): {br.get('battles_today', 0)}",
-        f"  Боёв сегодня (гости): {br.get('guest_battles_today', 0)}",
+        "🌐 <b>Браузер — гостевой режим</b>",
+        f"  Боёв сегодня: {br.get('guest_battles_today', 0)}",
+        f"  Боёв за 7 дней: {br.get('guest_battles_week', 0)}",
+        f"  Боёв за 30 дней: {br.get('guest_battles_month', 0)}",
+        f"  Боёв всего: {br.get('guest_battles_total', 0)}",
+        f"  Боёв с другом сегодня: {br.get('friend_battles_today', 0)}",
+        f"  Боёв с другом всего: {br.get('friend_battles_total', 0)}",
         "",
-        "<b>Бои онлайн (случайный)</b>",
+        "<b>⚓ Бои случайный (только ТГ)</b>",
         f"  За сегодня: {b.get('today', 0)}",
         f"  За 7 дней: {b.get('week', 0)}",
         f"  За 30 дней: {b.get('month', 0)}",
         f"  Всего: {b.get('total', 0)}",
         "",
-        "<b>Бои с другом (по ссылке)</b>",
-        f"  За сегодня: {fb.get('today', 0)}",
-        f"  За 7 дней: {fb.get('week', 0)}",
-        f"  За 30 дней: {fb.get('month', 0)}",
-        f"  Всего: {fb.get('total', 0)}",
+        "<b>👥 Бои с другом по ссылке</b>",
+        f"  В ТГ сегодня: {fb.get('tg_today', fb.get('today', 0))}",
+        f"  В ТГ всего: {fb.get('tg_total', fb.get('total', 0))}",
+        f"  В браузере сегодня: {fb.get('guest_today', br.get('friend_battles_today', 0))}",
+        f"  В браузере всего: {fb.get('guest_total', br.get('friend_battles_total', 0))}",
+        f"  Итого за 7 дней: {fb.get('week', 0)}",
+        f"  Итого всего: {fb.get('total', 0)}",
     ]
 
     if by_day_lines:
-        lines += ["", "<b>По дням (7д) 🎮=онлайн 👥=друг:</b>", by_day_lines.rstrip()]
+        lines += ["", "<b>По дням (7д) 🎮=случ 👥=друг (ТГ):</b>", by_day_lines.rstrip()]
 
     lines += [
         "",
-        "<b>Точность игроков (средняя)</b>",
-        f"  {avg_acc}%  ({acc.get('total_hits', 0)} попаданий из {acc.get('total_shots', 0)} выстрелов)",
+        "<b>🎯 Точность игроков (средняя)</b>",
+        f"  {avg_acc}%  ({acc.get('total_hits', 0)} попаданий / {acc.get('total_shots', 0)} выстрелов)",
+        f"  <i>По всем боям (онлайн + с другом)</i>",
         "",
-        "<b>Общий винрейт</b>",
+        "<b>🏆 Общий винрейт</b>",
         f"  {wr.get('pct', 0)}%  ({wr.get('wins', 0)} побед / {wr.get('losses', 0)} поражений)",
+        f"  <i>По всем боям онлайн и с другом, не боты</i>",
         "",
-        "<b>Покупки (Telegram Stars)</b>",
+        "<b>⭐ Покупки (Telegram Stars)</b>",
         f"  За сегодня: {pu.get('today', 0)}",
         f"  За 7 дней: {pu.get('week', 0)}",
         f"  За 30 дней: {pu.get('month', 0)}",
@@ -324,7 +330,8 @@ def fmt_analytics(data: dict, title: str = "Аналитика") -> str:
 
     lines += [
         "",
-        f"<b>Пользователей бота:</b> {get_users_count()}",
+        f"<b>🤖 Пользователей бота (писали /start):</b> {bot_users}",
+        f"<i>* Зарегистрировано = запускали игру (не только бота)</i>",
     ]
 
     return "\n".join(lines)

@@ -1810,6 +1810,7 @@ const WS = {
   socket: null,
   roomId: null,
 
+
   connect(serverUrl) {
     return new Promise((resolve, reject) => {
       try {
@@ -1850,9 +1851,10 @@ const WS = {
     this.socket = sock;
 
     // Снимаем предыдущие игровые обработчики (чтобы не дублировались при реюзе)
-    const gameEvents = ['disconnect','room_created','matched','opponent_placed','shot_result',
+    const gameEvents = ['disconnect','connect','room_created','matched','opponent_placed','shot_result',
       'your_turn','game_over','opponent_surrendered','surrender_confirmed','rematch_requested',
       'rematch_accepted','rematch_declined','opponent_left','opponent_disconnected_win',
+      'opponent_disconnected_wait','opponent_reconnected','reconnect_ok','reconnect_failed',
       'xp_reward','reaction_received','turn_warning','purchase_complete','item_revoked'];
     gameEvents.forEach(ev => sock.off(ev));
 
@@ -1875,11 +1877,56 @@ const WS = {
   _registerHandlers() {
     const socket = this.socket;
 
-    // Потеря соединения
-    this.socket.on('disconnect', () => {
-      if (Game.active) showModal('Соединение потеряно', 'Игра прервана.', [
+    // Потеря соединения — тихо ждём переподключения (60 сек grace period на сервере)
+    // Таймер хода на сервере продолжает тикать — никаких доп. UI элементов не показываем
+    this.socket.on('disconnect', (reason) => {
+      // Ничего не делаем — socket.io сам будет пытаться переподключиться
+      // При успешном reconnect сработает обработчик 'connect' ниже
+    });
+
+    // Успешное физическое переподключение socket.io — сразу шлём reconnect_game
+    this.socket.on('connect', () => {
+      // Если висит баннер переподключения — значит мы вернулись из разрыва
+      if (WS._reconnectBannerInterval && WS.roomId && App.user?.id) {
+        this.socket.emit('reconnect_game', {
+          roomId:   WS.roomId,
+          playerId: App.user.id,
+        });
+      } else {
+        this.socket.emit('identify', { playerId: App.user?.id || null });
+      }
+    });
+
+    // Сервер подтвердил переподключение
+    this.socket.on('reconnect_ok', ({ roomId, started, isMyTurn, turnSecondsLeft, myField, oppField, myShots, myHits, opponent }) => {
+      // Восстанавливаем roomId и состояние
+      this.roomId = roomId;
+      Game.roomId = roomId;
+      if (started) {
+        Game.isMyTurn = isMyTurn;
+        // Если сейчас наш ход и осталось <= 20 сек — turn_warning придёт отдельным событием с сервера
+        // Если осталось > 20 сек — клиент просто продолжает игру как ни в чём не бывало
+      }
+    });
+
+    // Сервер сказал — не нашли комнату, время истекло
+    this.socket.on('reconnect_failed', ({ reason }) => {
+      const msg = reason === 'room_gone'
+        ? 'Время на переподключение истекло. Засчитано поражение.'
+        : 'Не удалось восстановить соединение.';
+      showModal('Соединение прервано', msg, [
         { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); goToMenu(); }},
       ]);
+    });
+
+    // Соперник переподключился
+    this.socket.on('opponent_reconnected', () => {
+      showToast('👋 Соперник вернулся в игру', 2000);
+    });
+
+    // Соперник отключился — ждём его 60 секунд, никакого доп. UI не показываем
+    this.socket.on('opponent_disconnected_wait', ({ seconds }) => {
+      // UI не меняем — игрок просто ждёт, таймер хода продолжает тикать на сервере
     });
 
     // ── Комната для друга создана (только создателю) ──
@@ -2118,9 +2165,14 @@ const WS = {
       Rematch.startOpponentTimer();
     });
 
-    this.socket.on('rematch_accepted', () => {
+    this.socket.on('rematch_accepted', ({ duelStats } = {}) => {
       // Оба согласились — стартуем расстановку с тем же соперником в той же комнате
       Rematch._clear();
+      // Обновляем счётчик дуэлей сразу при реванше
+      if (duelStats) {
+        Game.duelStats = duelStats;
+        updateDuelCounter(duelStats);
+      }
       // roomId остаётся тем же — просто инициируем расстановку
       startPlacement('online');
     });
@@ -2143,7 +2195,7 @@ const WS = {
       setTimeout(() => goToMenu(), 3000);
     });
 
-    // п.5: соперник закрыл вкладку/приложение — нам победа
+    // п.5: соперник не переподключился за 60 сек — нам победа
     this.socket.on('opponent_disconnected_win', () => {
       clearTurnWarningUI();
       showModal('Победа!', 'Соперник покинул игру. Тебе засчитана победа!', [
@@ -3515,6 +3567,20 @@ function updateGameFooter() {
   } else {
     if (duelBlock) duelBlock.style.display = 'none';
   }
+}
+
+// Обновляет счётчик дуэлей без перерисовки всего футера
+function updateDuelCounter(duel) {
+  if (!duel) return;
+  const duelBlock = document.getElementById('gf-duel-score');
+  const mineEl    = document.getElementById('gf-duel-mine');
+  const theirsEl  = document.getElementById('gf-duel-theirs');
+  if (!duelBlock) return;
+  duelBlock.style.display = 'flex';
+  if (mineEl)   { mineEl.textContent   = duel.myWins;    mineEl.style.color   = duel.myWins > duel.theirWins ? 'var(--green)' : 'var(--text)'; }
+  if (theirsEl) { theirsEl.textContent = duel.theirWins; theirsEl.style.color = duel.theirWins > duel.myWins ? 'var(--red)'   : 'var(--text)'; }
+  // Сохраняем в Game.opponent.duel чтобы renderGameFooter() тоже видел актуальные данные
+  if (Game.opponent) Game.opponent.duel = duel;
 }
 
 /* ─── УВЕДОМЛЕНИЯ ────────────────────────────────── */
