@@ -274,8 +274,8 @@ const ACHIEVEMENTS = [
   { id: 'first_time',        title: 'Время первых',        desc: 'Занять первую строчку рейтинга', goal: 1,    type: 'limited', reward: 'title_first_time',        countFn: 'rating_top1' },
   { id: 'determined',        title: 'Целеустремлённый',    desc: 'Достичь 30 уровня',              goal: 1,    type: 'limited', reward: 'title_determined',        countFn: 'level_30' },
   { id: 'collector',         title: 'Коллекционер',        desc: 'Купить три цветовые схемы',      goal: 3,    type: 'limited', reward: 'title_collector',         countFn: 'themes_bought' },
-  { id: 'recruiter',         title: 'Рекрутер',            desc: 'Пригласить 3 новых игроков',     goal: 3,    type: 'limited', reward: 'title_recruiter',         countFn: 'referrals_qualified', hasRefPage: true },
-  { id: 'space_navigator',   title: 'Космический навигатор',desc:'Пригласить 10 новых игроков',    goal: 10,   type: 'limited', reward: 'title_space_navigator',   countFn: 'referrals_qualified', hasRefPage: true },
+  { id: 'recruiter',         title: 'Рекрутер',            desc: 'Пригласить 3 игроков, каждый сыграет 3 боя в любом режиме', goal: 3, type: 'limited', reward: 'title_recruiter', countFn: 'referrals_qualified', hasRefPage: true },
+  { id: 'space_navigator',   title: 'Космический навигатор',desc:'Пригласить 10 игроков, каждый сыграет 3 боя в любом режиме', goal: 10, type: 'limited', reward: 'title_space_navigator', countFn: 'referrals_qualified', hasRefPage: true },
   // — Без награды, пополняемые —
   { id: 'first_exp',         title: 'Первый опыт',         desc: 'Одна победа (получается один раз)',goal:1,   type: 'once',    reward: null,                      countFn: 'total_wins' },
   { id: 'cold_calc',         title: 'Холодный расчёт',     desc: 'Обойти соперника по точности',   goal: null, type: 'infinite',reward: null,                      countFn: 'acc_win' },
@@ -1710,7 +1710,7 @@ app.post('/api/history', (req, res) => {
     // Валидация enum-полей
     const cleanResult = ['win','loss','draw'].includes(result) ? result : null;
     if (!cleanResult) { res.json({ ok: false }); return; }
-    const cleanMode     = ['online','bot-easy','bot-hard'].includes(mode) ? mode : 'online';
+    const cleanMode     = ['online','bot-easy','bot-hard','friend','friend_join'].includes(mode) ? mode : 'online';
     const cleanOpponent = (s => String(s||'').trim().slice(0,64))(opponent || '?');
     const cleanShots    = Math.max(0, parseInt(shots)  || 0);
     const cleanHits     = Math.max(0, parseInt(hits)   || 0);
@@ -1733,6 +1733,8 @@ app.post('/api/history', (req, res) => {
       if (newAchievements.length) {
         console.log(`[History] newAchievements for ${cleanId}:`, newAchievements.map(a => a.id));
       }
+      // Обновляем реферальный счётчик — считаются все режимы включая боты
+      _updateReferralBattles(cleanId);
     }
     res.json({ ok: true, newAchievements });
   } catch(e) { console.error('history post error:', e); res.status(500).json({ ok: false }); }
@@ -1841,11 +1843,13 @@ app.get('/api/admin/analytics', (req, res) => {
 
     // ── Бои случайный режим (онлайн) — только зарегистрированные ──
     // battle_history пишет по 2 записи на бой (победитель + проигравший) — делим на 2
-    // Считаем бои по result='win' — ровно одна запись на бой независимо от типа игроков
-    const battlesToday = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win'`).get(since24).n;
-    const battles7d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win'`).get(since7d).n;
-    const battles30d   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win'`).get(since30d).n;
-    const battlesTotal = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online' AND result='win'`).get().n;
+    // Случайные онлайн-бои: mode='online', result='win', НЕ боты
+    // mode='online' пишется сервером напрямую (socket) — это точно pvp
+    // Исключаем записи где opponent содержит 'бот' — на случай если клиент прислал mode='online' для бота
+    const battlesToday = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win' AND opponent NOT LIKE '%бот%' AND opponent NOT LIKE '%bot%'`).get(since24).n;
+    const battles7d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win' AND opponent NOT LIKE '%бот%' AND opponent NOT LIKE '%bot%'`).get(since7d).n;
+    const battles30d   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win' AND opponent NOT LIKE '%бот%' AND opponent NOT LIKE '%bot%'`).get(since30d).n;
+    const battlesTotal = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online' AND result='win' AND opponent NOT LIKE '%бот%' AND opponent NOT LIKE '%bot%'`).get().n;
 
     // ── Бои с другом по ссылке — ТГ и браузер раздельно ──
     // Бои с другом — тоже по result='win' (1 на бой)
@@ -2001,6 +2005,30 @@ app.get('/api/duel/:myId/:theirId', (req, res) => {
   catch(e) { res.status(500).json({ ok: false }); }
 });
 app.get('/api/status',     (req, res) => res.json({ ok: true, rooms: rooms.size, waiting: waitingPool.length, uptime: process.uptime() }));
+
+// Диагностика: разбивка battle_history по mode и result за сегодня (только с секретом)
+app.get('/api/debug/battles', (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    if (!SHOP_SECRET || secret !== SHOP_SECRET) return res.status(403).json({ ok: false });
+    const now = Math.floor(Date.now() / 1000);
+    const since24 = now - 86400;
+    const breakdown = db.prepare(`
+      SELECT mode, result, COUNT(*) as n
+      FROM battle_history
+      WHERE date >= ?
+      GROUP BY mode, result
+      ORDER BY mode, result
+    `).all(since24);
+    const sample = db.prepare(`
+      SELECT id, player_id, result, opponent, mode, datetime(date,'unixepoch','localtime') as dt
+      FROM battle_history
+      WHERE date >= ? AND mode='online' AND result='win'
+      ORDER BY date DESC LIMIT 20
+    `).all(since24);
+    res.json({ ok: true, breakdown, sample_online_wins: sample });
+  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 
 // DEBUG — смотрим реальное состояние БД для игрока (только с секретом)
 // Диагностика — доступна для админа без секрета
