@@ -855,10 +855,14 @@ def main() -> None:
             webhook_url=WEBHOOK_URL,
             secret_token=WEBHOOK_SECRET if WEBHOOK_SECRET else None,
             allowed_updates=["message", "pre_checkout_query"],
+            drop_pending_updates=True,   # сбрасываем накопленные апдейты при рестарте
         )
     else:
         logger.info("[Bot] Запуск в режиме polling")
-        app.run_polling(allowed_updates=["message", "pre_checkout_query"])
+        app.run_polling(
+            allowed_updates=["message", "pre_checkout_query"],
+            drop_pending_updates=True,   # сбрасываем накопленные апдейты при рестарте
+        )
 
 
 if __name__ == "__main__":

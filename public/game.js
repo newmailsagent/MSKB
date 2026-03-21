@@ -1740,17 +1740,30 @@ const Rematch = {
 };
 
 /* ─── КОНЕЦ ИГРЫ ─────────────────────────────────── */
-function endGame(result) {
+function endGame(result, reason) {
   Game.active = false;
   clearTurnWarningUI(); // сбрасываем таймер
   recordResult(result, Game.shots, Game.hits, Game.opponent?.name);
   updateMenuStats();
   const icons  = {win:'🏆', loss:'💀', draw:'🤝'};
   const titles = {win:'ПОБЕДА!', loss:'ПОРАЖЕНИЕ', draw:'НИЧЬЯ'};
-  const subs   = {win:'Все корабли потоплены!', loss:'Твои корабли уничтожены', draw:'Ничья!'};
+  // Подзаголовок зависит от причины окончания боя
+  let sub;
+  if (result === 'win') {
+    if (reason === 'surrender')     sub = 'Противник сдался';
+    else if (reason === 'disconnect') sub = 'У противника пропало соединение';
+    else                              sub = 'Все корабли потоплены!';
+  } else if (result === 'loss') {
+    if (reason === 'surrender')     sub = 'Вы сдались';
+    else if (reason === 'disconnect') sub = 'У вас пропало интернет-соединение';
+    else if (reason === 'timeout')    sub = 'Время на ход истекло';
+    else                              sub = 'Твои корабли уничтожены';
+  } else {
+    sub = 'Ничья!';
+  }
   setHTML('gameover-icon', icons[result]);
   setText('gameover-title', titles[result]);
-  setText('gameover-sub', subs[result]);
+  setText('gameover-sub', sub);
   setText('go-shots', String(Game.shots));
   setText('go-hits',  String(Game.hits));
   setText('go-acc',   Game.shots ? Math.round(Game.hits/Game.shots*100)+'%' : '0%');
@@ -1813,7 +1826,6 @@ const WS = {
   _reconnectDeadlineTimer: null,
   _reconnectRoomId: null,
   _reconnectPlayerId: null,
-  _reconnecting: false,
 
 
   connect(serverUrl) {
@@ -1911,9 +1923,7 @@ const WS = {
       WS._reconnectDeadlineTimer = setTimeout(() => {
         if (!WS._reconnecting) return; // уже переподключились
         WS._reconnecting = false;
-        showModal('Соединение прервано', 'Не удалось восстановить соединение. Засчитано поражение.', [
-          { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); endGame('loss'); }},
-        ]);
+        endGame('loss', 'disconnect');
       }, 62 * 1000);
     });
 
@@ -1955,22 +1965,22 @@ const WS = {
       WS._reconnectRoomId   = null;
       WS._reconnectPlayerId = null;
       if (WS._reconnectDeadlineTimer) { clearTimeout(WS._reconnectDeadlineTimer); WS._reconnectDeadlineTimer = null; }
-      const msg = reason === 'room_gone'
-        ? 'Из-за потери соединения вам засчитано поражение.'
-        : 'Не удалось восстановить соединение.';
-      showModal('Соединение прервано', msg, [
-        { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); endGame('loss'); }},
-      ]);
+      endGame('loss', 'disconnect');
     });
 
-    // Соперник переподключился
+    // Соперник переподключился — восстанавливаем нормальный статус
     this.socket.on('opponent_reconnected', () => {
+      updateGameStatus();
       showToast('👋 Соперник вернулся в игру', 2000);
     });
 
-    // Соперник отключился — ждём его 60 секунд, никакого доп. UI не показываем
+    // Соперник отключился — показываем статус вместо "Твой ход" / "Ход соперника"
     this.socket.on('opponent_disconnected_wait', ({ seconds }) => {
-      // UI не меняем — игрок просто ждёт, таймер хода продолжает тикать на сервере
+      const statusEl = document.getElementById('game-status');
+      if (statusEl) {
+        statusEl.textContent = 'У противника проблемы с соединением…';
+        statusEl.style.color = 'var(--hint)';
+      }
     });
 
     // ── Комната для друга создана (только создателю) ──
@@ -2117,7 +2127,7 @@ const WS = {
 
       updateGameStatus();
       renderGameBoard();
-      if (gameOver) endGame(winner === App.user.id ? 'win' : 'loss');
+      if (gameOver) endGame(winner === App.user.id ? 'win' : 'loss', 'shot');
     });
 
     // ── Соперник вышел ────────────────────────────────
@@ -2242,9 +2252,7 @@ const WS = {
     // п.5: соперник не переподключился за 60 сек — нам победа
     this.socket.on('opponent_disconnected_win', () => {
       clearTurnWarningUI();
-      showModal('Победа!', 'Соперник покинул игру. Тебе засчитана победа!', [
-        { label: 'Ок', cls: 'btn-primary', action: () => { closeModal(); endGame('win'); }},
-      ]);
+      endGame('win', 'disconnect');
     });
 
     // п.6: предупреждение — осталось 20 секунд
@@ -2273,7 +2281,7 @@ const WS = {
     // п.6: поражение из-за 2 просрочек
     this.socket.on('game_over_timeout', ({ winner, loser }) => {
       clearTurnWarningUI();
-      endGame(winner === App.user.id ? 'win' : 'loss');
+      endGame(winner === App.user.id ? 'win' : 'loss', 'timeout');
     });
 
     // п.6: ход передан (от сервера при тайм-ауте)
@@ -2287,13 +2295,13 @@ const WS = {
     // п.5: соперник сдался — нам победа немедленно
     this.socket.on('opponent_surrendered', () => {
       clearTurnWarningUI();
-      endGame('win');
+      endGame('win', 'surrender');
     });
 
     // п.5: сдача подтверждена — показываем поражение
     this.socket.on('surrender_confirmed', () => {
       clearTurnWarningUI();
-      endGame('loss');
+      endGame('loss', 'surrender');
     });
   },
 
