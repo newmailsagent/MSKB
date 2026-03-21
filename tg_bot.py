@@ -347,7 +347,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"<b>Морской бой</b> — классическая стратегия прямо в Telegram.\n\n"
         f"Играй против живых соперников, прокачивай уровень и соревнуйся в рейтинге.",
         parse_mode="HTML",
-        reply_markup=play_markup(),
+        reply_markup=main_markup(),
     )
 
 async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -373,8 +373,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 # ── АНАЛИТИКА (/stats) — только админ ─────────────────────────────────────────
 
+# Глобальный debounce для /stats — защита от двух инстансов бота
+_stats_last_ts: dict[int, float] = {}
+
 @admin_only
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    import time
+    uid = update.effective_user.id
+    now = time.time()
+    # Если от этого пользователя уже был запрос менее 5 сек назад — игнорируем
+    if now - _stats_last_ts.get(uid, 0) < 5:
+        return
+    _stats_last_ts[uid] = now
+
     msg  = await update.message.reply_text("Загружаю данные...")
     data = await fetch_analytics()
     if not data:

@@ -87,8 +87,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const io = new Server(server, {
   cors: { origin: CORS_ORIGIN, methods: ['GET', 'POST'] },
-  pingTimeout:  20000, // 20 сек — быстрее детектируем разрыв
-  pingInterval: 8000,  // ping каждые 8 сек
+  pingTimeout:  10000, // 10 сек — детектируем разрыв быстрее
+  pingInterval:  5000, // ping каждые 5 сек
   connectTimeout: 10000,
 });
 
@@ -1518,11 +1518,7 @@ function validateNoTouch(field) {
         // ── Игра шла — даём 60 секунд на переподключение ──────────────────
         leaver.disconnected = true;
         // НЕ останавливаем таймер хода — он продолжает тикать.
-        // Если ход истёк пока игрока нет — обработчик таймера сам передаст ход или
-        // засчитает поражение по просрочкам, независимо от таймера дисконнекта.
 
-        // Уведомляем оставшегося игрока — пусть видит обратный отсчёт
-        io.to(stayer.socketId).emit('opponent_disconnected_wait', { seconds: 60 });
         console.log(`[disconnect] ${leaver.playerId} disconnected — waiting 60s`);
 
         leaver._disconnectTimer = setTimeout(() => {
@@ -1531,6 +1527,8 @@ function validateNoTouch(field) {
 
           // 60 секунд истекли — поражение вышедшему
           room.over = true;
+          clearTurnTimer(room);
+
           io.to(stayer.socketId).emit('opponent_disconnected_win');
 
           const dSunkenStayer = leaver.field ? countSunkenShips(leaver.field) : 0;
@@ -1764,7 +1762,7 @@ app.get('/api/admin/analytics', (req, res) => {
 
     const now     = Math.floor(Date.now() / 1000);
     const day     = 86400;
-    const since24 = now - day;
+    const since24 = now - day;   // последние 24 часа
     const since7d = now - day * 7;
     const since30d= now - day * 30;
 
@@ -1794,44 +1792,54 @@ app.get('/api/admin/analytics', (req, res) => {
     // Бои в ТГ = все бои от зарегистрированных игроков (не гостей)
     const tgBattlesToday = db.prepare(`
       SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND player_id NOT LIKE 'guest_%' AND mode='online'
+      WHERE date >= ? AND mode='online' AND result='win' AND player_id NOT LIKE 'guest_%'
     `).get(since24).n;
     const tgFriendBattlesToday = db.prepare(`
       SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND player_id NOT LIKE 'guest_%' AND mode IN ('friend','friend_join')
+      WHERE date >= ? AND mode IN ('friend','friend_join') AND result='win'
     `).get(since24).n;
 
     // ── Браузерные гости ──
     // Уникальные гости за 24ч: нет таблицы, считаем через battle_history
+    // Гостевые бои — тоже по win (но гость может быть и победителем и проигравшим)
+    // Используем: бой есть если хотя бы один из участников гость
+    // Проще всего: все записи mode='online' где player_id=guest_ и result='win'
+    // ИЛИ там где оба гости (нет ТГ-победителя) — берём любую одну запись
+    // Упрощаем: count(win) по гостям + count(win) по НЕгостям в боях где победитель не гость (это 0)
+    // Итого: просто count где result='win' и mode='online' и НЕ считали выше
     const guestBattlesToday = db.prepare(`
       SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND player_id LIKE 'guest_%'
+      WHERE date >= ? AND mode='online' AND result='win' AND player_id LIKE 'guest_%'
     `).get(since24).n;
     const guestBattlesWeek = db.prepare(`
       SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND player_id LIKE 'guest_%'
+      WHERE date >= ? AND mode='online' AND result='win' AND player_id LIKE 'guest_%'
     `).get(since7d).n;
     const guestBattlesMonth = db.prepare(`
       SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND player_id LIKE 'guest_%'
+      WHERE date >= ? AND mode='online' AND result='win' AND player_id LIKE 'guest_%'
     `).get(since30d).n;
     const guestBattlesTotal = db.prepare(`
-      SELECT COUNT(*) as n FROM battle_history WHERE player_id LIKE 'guest_%'
+      SELECT COUNT(*) as n FROM battle_history WHERE mode='online' AND result='win' AND player_id LIKE 'guest_%'
     `).get().n;
 
     // ── Бои случайный режим (онлайн) — только зарегистрированные ──
-    const battlesToday = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND player_id NOT LIKE 'guest_%'`).get(since24).n;
-    const battles7d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND player_id NOT LIKE 'guest_%'`).get(since7d).n;
-    const battles30d   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND player_id NOT LIKE 'guest_%'`).get(since30d).n;
-    const battlesTotal = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online' AND player_id NOT LIKE 'guest_%'`).get().n;
+    // battle_history пишет по 2 записи на бой (победитель + проигравший) — делим на 2
+    // Считаем бои по result='win' — ровно одна запись на бой независимо от типа игроков
+    const battlesToday = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win'`).get(since24).n;
+    const battles7d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win'`).get(since7d).n;
+    const battles30d   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win'`).get(since30d).n;
+    const battlesTotal = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online' AND result='win'`).get().n;
 
     // ── Бои с другом по ссылке — ТГ и браузер раздельно ──
-    const friendTgToday   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND player_id NOT LIKE 'guest_%'`).get(since24).n;
-    const friendTg7d      = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND player_id NOT LIKE 'guest_%'`).get(since7d).n;
-    const friendTg30d     = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND player_id NOT LIKE 'guest_%'`).get(since30d).n;
-    const friendTgTotal   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode IN ('friend','friend_join') AND player_id NOT LIKE 'guest_%'`).get().n;
-    const friendGuestToday= db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND player_id LIKE 'guest_%'`).get(since24).n;
-    const friendGuestTotal= db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode IN ('friend','friend_join') AND player_id LIKE 'guest_%'`).get().n;
+    // Бои с другом — тоже по result='win' (1 на бой)
+    const friendTgToday   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND result='win'`).get(since24).n;
+    const friendTg7d      = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND result='win'`).get(since7d).n;
+    const friendTg30d     = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND result='win'`).get(since30d).n;
+    const friendTgTotal   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode IN ('friend','friend_join') AND result='win'`).get().n;
+    // Гостевые бои с другом — тут оба могут быть гостями, считаем по win
+    const friendGuestToday= db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND result='win' AND (player_id LIKE 'guest_%' OR (SELECT COUNT(*) FROM battle_history b2 WHERE b2.date=battle_history.date AND b2.mode=battle_history.mode AND b2.player_id LIKE 'guest_%')>0)`).get(since24).n;
+    const friendGuestTotal= db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode IN ('friend','friend_join') AND result='win' AND (player_id LIKE 'guest_%' OR (SELECT COUNT(*) FROM battle_history b2 WHERE b2.date=battle_history.date AND b2.mode=battle_history.mode AND b2.player_id LIKE 'guest_%')>0)`).get().n;
 
     // ── Бои по дням (последние 7) с разбивкой онлайн/друг ──
     const byDay = db.prepare(`
