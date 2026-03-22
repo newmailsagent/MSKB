@@ -989,13 +989,20 @@ function getOpponent(room, socketId) {
   if (room.p2?.socketId === socketId) return room.p1;
   return null;
 }
+function getActiveFrame(userId) {
+  const eq = db.prepare(`SELECT item_id FROM equipped WHERE user_id=? AND slot='frame'`).get(userId);
+  return eq?.item_id || null;
+}
+
 function notifyBothMatched(room) {
   const xp1 = getXpInfo(room.p1.playerId);
   const xp2 = getXpInfo(room.p2.playerId);
   const title1 = getActiveTitle(room.p1.playerId);
   const title2 = getActiveTitle(room.p2.playerId);
-  io.to(room.p1.socketId).emit('matched', { roomId: room.id, opponent: { playerId: room.p2.playerId, name: room.p2.name, level: xp2.level, rank: xp2.rank, titleId: title2?.id || null, titleName: title2?.name || null, titleColor: title2?.color || null } });
-  io.to(room.p2.socketId).emit('matched', { roomId: room.id, opponent: { playerId: room.p1.playerId, name: room.p1.name, level: xp1.level, rank: xp1.rank, titleId: title1?.id || null, titleName: title1?.name || null, titleColor: title1?.color || null } });
+  const frame1 = getActiveFrame(room.p1.playerId);
+  const frame2 = getActiveFrame(room.p2.playerId);
+  io.to(room.p1.socketId).emit('matched', { roomId: room.id, opponent: { playerId: room.p2.playerId, name: room.p2.name, level: xp2.level, rank: xp2.rank, titleId: title2?.id || null, titleName: title2?.name || null, titleColor: title2?.color || null, frameId: frame2 } });
+  io.to(room.p2.socketId).emit('matched', { roomId: room.id, opponent: { playerId: room.p1.playerId, name: room.p1.name, level: xp1.level, rank: xp1.rank, titleId: title1?.id || null, titleName: title1?.name || null, titleColor: title1?.color || null, frameId: frame1 } });
 }
 
 // п.6: запустить таймер хода для комнаты

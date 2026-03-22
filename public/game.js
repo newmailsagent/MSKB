@@ -1961,7 +1961,7 @@ const WS = {
       stopSearchUI();
       this.roomId  = roomId;
       Game.roomId  = roomId;
-      Game.opponent = { name: opponent.name, id: opponent.playerId, level: opponent.level || 1, rank: opponent.rank || '', titleId: opponent.titleId || null, titleName: opponent.titleName || null, titleColor: opponent.titleColor || null };
+      Game.opponent = { name: opponent.name, id: opponent.playerId, level: opponent.level || 1, rank: opponent.rank || '', titleId: opponent.titleId || null, titleName: opponent.titleName || null, titleColor: opponent.titleColor || null, frameId: opponent.frameId || null };
       setText('waiting-title', `Соперник: ${opponent.name}`);
       setText('waiting-sub',   'Расставляй корабли!');
       const block = document.getElementById('invite-block');
@@ -3644,20 +3644,31 @@ function updateGameFooter() {
     } else { meRankEl.textContent = myProg.rank; }
   }
 
-  // Аватар соперника
-  const oppAvatar = document.getElementById('gf-opp-avatar');
-  if (oppAvatar) {
-    oppAvatar.textContent = isBot ? 'Б' : (oppName[0]||'?').toUpperCase();
-    oppAvatar.className   = `gf-avatar gf-avatar-opp gf-frame-${oppLevel}`;
-  }
-  const oppLevelEl = document.getElementById('gf-opp-level');
-  if (oppLevelEl) {
-    if (isBot) {
-      oppLevelEl.style.display = 'none';
-    } else {
-      oppLevelEl.style.display = '';
-      oppLevelEl.textContent   = oppLevel;
-      oppLevelEl.className     = `gf-level level-bg-${oppLevel}`;
+  // Аватар соперника — кастомная рамка или стандартная
+  const oppFrameId   = !isBot ? (Game.opponent?.frameId || null) : null;
+  const oppAvatarWrap = document.getElementById('gf-opp-avatar-wrap');
+  if (oppFrameId && oppAvatarWrap) {
+    oppAvatarWrap.innerHTML = buildAvatarFrame({
+      photoSize: 40, photo: null,
+      letter: (oppName[0]||'?').toUpperCase(),
+      level: oppLevel, levelClass: 'level-bg-' + oppLevel,
+      frameId: oppFrameId,
+    });
+  } else {
+    const oppAvatar = document.getElementById('gf-opp-avatar');
+    if (oppAvatar) {
+      oppAvatar.textContent = isBot ? 'Б' : (oppName[0]||'?').toUpperCase();
+      oppAvatar.className   = `gf-avatar gf-avatar-opp gf-frame-${oppLevel}`;
+    }
+    const oppLevelEl = document.getElementById('gf-opp-level');
+    if (oppLevelEl) {
+      if (isBot) {
+        oppLevelEl.style.display = 'none';
+      } else {
+        oppLevelEl.style.display = '';
+        oppLevelEl.textContent   = oppLevel;
+        oppLevelEl.className     = `gf-level level-bg-${oppLevel}`;
+      }
     }
   }
   setText('gf-opp-name', oppName);
@@ -4169,6 +4180,12 @@ function showLoaderOverMenu(onDone) {
 
 // Применить/снять звание с лоадером и обновлением везде
 async function applyFrameAndRefresh(itemId, equip = true) {
+  // Запоминаем где находимся ДО лоадера — лоадер может менять currentScreen
+  const screenBefore = currentScreen;
+  const backBefore   = _shopItemBackTarget || 'menu';
+  const goToProfile  = screenBefore === 'profile' ||
+                       (screenBefore === 'shop-item' && backBefore === 'profile');
+
   if (equip && itemId) {
     await fetch('/api/equip', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4185,22 +4202,16 @@ async function applyFrameAndRefresh(itemId, equip = true) {
   showLoaderOverMenu(hide => {
     setTimeout(async () => {
       hide && hide();
-      // Перезагружаем данные магазина чтобы _shopEquipped был актуален
       await loadShopData();
       updateMenuLevel();
       renderInventory();
       renderShopGrid();
-      // currentScreen может быть 'shop-item' когда открыли из профиля/инвентаря
-      const backTarget = _shopItemBackTarget || 'menu';
-      if (currentScreen === 'profile' || (currentScreen === 'shop-item' && backTarget === 'profile')) {
+      if (goToProfile) {
         await renderProfileScreen();
         showScreen('profile');
-      } else if (currentScreen === 'leaderboard') {
+      } else if (screenBefore === 'leaderboard') {
         renderLeaderboard();
         showScreen('leaderboard');
-      } else if (currentScreen === 'shop-item') {
-        if (backTarget === 'profile') await renderProfileScreen();
-        showScreen(backTarget);
       } else {
         showScreen('menu');
       }
