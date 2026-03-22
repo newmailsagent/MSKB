@@ -698,17 +698,24 @@ function renderRatingList(data) {
     list.querySelectorAll('[data-lb-avatar-me="1"]').forEach(wrap => {
       const level = parseInt(wrap.dataset.lbLevel) || 1;
       const letter = (App.user.name[0]||'?').toUpperCase();
-      // Создаём temp div и берём firstChild чтобы заменить outerHTML
-      const tmp = document.createElement('div');
-      tmp.innerHTML = buildAvatarFrame({
+      const meta = FRAME_META[lbFrameId];
+      const pct = meta ? meta.pct : 0.72;
+      const wrapSize = Math.round(36 / pct); // реальный размер враппера
+      // Вставляем рамку внутрь lb-avatar-wrap, не заменяя сам wrap
+      // lb-avatar-wrap остаётся 36×36 через CSS, рамка выходит за края через overflow:visible
+      wrap.innerHTML = buildAvatarFrame({
         photoSize: 36, photo: App.user.photo || null,
         letter, level, levelClass: 'level-bg-' + level,
         frameId: lbFrameId,
       });
-      const newEl = tmp.firstChild;
-      // Сохраняем стиль lb-avatar-wrap для выравнивания
-      newEl.style.display = 'inline-flex';
-      wrap.replaceWith(newEl);
+      // Центрируем вложенный враппер внутри lb-avatar-wrap
+      const inner = wrap.firstChild;
+      if (inner) {
+        inner.style.position = 'absolute';
+        inner.style.top  = '50%';
+        inner.style.left = '50%';
+        inner.style.transform = 'translate(-50%, -50%)';
+      }
     });
   }
 }
@@ -4186,11 +4193,13 @@ async function applyFrameAndRefresh(itemId, equip = true) {
       // currentScreen может быть 'shop-item' когда открыли из профиля/инвентаря
       const backTarget = _shopItemBackTarget || 'menu';
       if (currentScreen === 'profile' || (currentScreen === 'shop-item' && backTarget === 'profile')) {
+        await renderProfileScreen();
         showScreen('profile');
       } else if (currentScreen === 'leaderboard') {
         renderLeaderboard();
         showScreen('leaderboard');
       } else if (currentScreen === 'shop-item') {
+        if (backTarget === 'profile') await renderProfileScreen();
         showScreen(backTarget);
       } else {
         showScreen('menu');

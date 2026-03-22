@@ -1032,8 +1032,9 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .lb-avatar-wrap {
   position: relative; display: inline-flex;
   align-items: center; justify-content: center;
-  width: 36px; height: 36px; /* фиксированная ячейка — рамка может выходить за счёт overflow:visible */
+  width: 36px; height: 36px;
   overflow: visible; flex-shrink: 0;
+  /* Рамка выходит за границы через overflow:visible, но не сдвигает flex-соседей */
 }
 .lb-level-dot {
   position: absolute; bottom: -3px; right: -5px;
