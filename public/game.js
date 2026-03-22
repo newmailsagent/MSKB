@@ -682,7 +682,7 @@ function renderRatingList(data) {
     div.className = 'lb-item' + (isMe ? ' lb-item-me' : '');
     div.innerHTML =
       '<div class="lb-rank ' + (medals[i]||'') + '">' + (i < 3 ? ['🥇','🥈','🥉'][i] : i+1) + '</div>' +
-      '<div class="lb-avatar-wrap" data-lb-avatar-me="' + (isMe?'1':'0') + '" data-lb-level="' + level + '">' +
+      '<div class="lb-avatar-wrap"' + (isMe ? ' data-lb-avatar-me="1" data-lb-level="' + level + '"' : '') + '>' +
       '<div class="lb-avatar lb-frame-' + level + '">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
       '<div class="lb-level-dot level-bg-' + level + '">' + level + '</div>' +
       '</div>' +
@@ -2559,13 +2559,24 @@ function updateMenuLevel() {
   setText('menu-level-badge', prog.level);
   const badge = document.getElementById('menu-level-badge');
   if (badge) badge.className = 'level-badge level-bg-' + prog.level;
-  // Синхронизируем цвет рамки аватара на главной с цветом в профиле
-  const avatar = document.getElementById('user-avatar');
-  if (avatar) {
-    const color = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
-    avatar.style.borderColor = color;
-    avatar.style.borderWidth = '2px';
-    avatar.style.borderStyle = 'solid';
+  // Рамка аватара на главной — кастомная SVG или цвет уровня
+  const menuAvatarWrap = document.getElementById('user-avatar')?.closest('.avatar-wrap');
+  const menuFrameId = getEquippedFrameId();
+  if (menuFrameId && menuAvatarWrap) {
+    menuAvatarWrap.innerHTML = buildAvatarFrame({
+      size: 42, photo: App.user.photo || null,
+      letter: (App.user.name[0]||'?').toUpperCase(),
+      level: prog.level, levelClass: 'level-bg-' + prog.level,
+      frameId: menuFrameId,
+    });
+  } else {
+    const avatar = document.getElementById('user-avatar');
+    if (avatar) {
+      const color = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
+      avatar.style.borderColor = color;
+      avatar.style.borderWidth = '2px';
+      avatar.style.borderStyle = 'solid';
+    }
   }
   // Показываем активное звание (кастомное или по умолчанию)
   const rankEl = document.getElementById('user-rank');
@@ -3131,16 +3142,15 @@ async function renderProfileScreen(tab) {
   const frameEl = document.getElementById('profile-avatar-frame');
   const profileFrameId = getEquippedFrameId();
   if (profileFrameId && frameEl) {
-    // Заменяем враппер на кастомную рамку
     const wrap = frameEl.closest('.profile-avatar-wrap') || frameEl.parentElement;
     if (wrap) {
+      // showBadge:true — бейдж рендерится внутри buildAvatarFrame по SVG-подложке
       wrap.innerHTML = buildAvatarFrame({
         size: 72, photo: App.user.photo || null,
         letter: (App.user.name[0]||'?').toUpperCase(),
         level: prog.level, levelClass: 'level-bg-' + prog.level,
-        frameId: profileFrameId, showBadge: false,
+        frameId: profileFrameId, showBadge: true,
       });
-      // Восстанавливаем бейдж уровня отдельно — он в profile-level-tag
     }
   } else {
     if (frameEl) frameEl.className = 'profile-avatar-frame level-frame-' + prog.level;
@@ -3493,8 +3503,8 @@ function buildAvatarFrame({ size = 72, photo = null, letter = '?', level = 1, le
 
   // Фото-слой
   const photoLayer = `<div class="avatar-frame-photo" style="
-    left:${size*0.1425}px;top:${size*0.1425}px;
-    width:${size*0.715}px;height:${size*0.715}px;
+    left:${size*0.10}px;top:${size*0.10}px;
+    width:${size*0.80}px;height:${size*0.80}px;
     border-radius:${size*0.134}px;
   ">${photoHTML}</div>`;
 
@@ -4115,6 +4125,33 @@ function showLoaderOverMenu(onDone) {
 }
 
 // Применить/снять звание с лоадером и обновлением везде
+async function applyFrameAndRefresh(itemId, equip = true) {
+  if (equip && itemId) {
+    await fetch('/api/equip', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: App.user?.id, itemId }),
+    });
+    _shopEquipped['frame'] = itemId;
+  } else {
+    await fetch('/api/unequip', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: App.user?.id, slot: 'frame' }),
+    });
+    delete _shopEquipped['frame'];
+  }
+  showLoaderOverMenu(hide => {
+    setTimeout(() => {
+      hide && hide();
+      updateMenuLevel();   // обновляет аватар на главной
+      renderInventory();
+      renderShopGrid();
+      if (currentScreen === 'profile') showScreen('profile');
+      else if (currentScreen === 'leaderboard') renderLeaderboard();
+      else showScreen('menu');
+    }, 400);
+  });
+}
+
 async function applyTitleAndRefresh(itemId, equip = true) {
   if (equip && itemId) {
     await fetch('/api/equip', {
@@ -4667,6 +4704,12 @@ async function renderInventory() {
             setTimeout(() => { hide && hide(); showScreen('menu'); renderInventory(); renderShopGrid(); }, 400);
           });
         }
+        return;
+      }
+      // Рамки — через applyFrameAndRefresh с лоадером
+      if (item.type === 'frame') {
+        const alreadyOn = _shopEquipped['frame'] === itemId;
+        await applyFrameAndRefresh(alreadyOn ? null : itemId, !alreadyOn);
         return;
       }
       // Все звания — через applyTitleAndRefresh с лоадером

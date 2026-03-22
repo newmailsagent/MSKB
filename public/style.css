@@ -2615,11 +2615,11 @@ body.theme-light .achievements-title { color: rgba(0,0,0,.4); }
 /* Размер фото = 71.5% от враппера, offset = 14.25% */
 .avatar-frame-photo {
   position: absolute;
-  left:   calc(var(--afw-size, 72px) * 0.1425);
-  top:    calc(var(--afw-size, 72px) * 0.1425);
-  width:  calc(var(--afw-size, 72px) * 0.715);
-  height: calc(var(--afw-size, 72px) * 0.715);
-  border-radius: calc(var(--afw-size, 72px) * 0.134); /* 25/186 ≈ 13.4% */
+  left:   calc(var(--afw-size, 72px) * 0.10);
+  top:    calc(var(--afw-size, 72px) * 0.10);
+  width:  calc(var(--afw-size, 72px) * 0.80);
+  height: calc(var(--afw-size, 72px) * 0.80);
+  border-radius: calc(var(--afw-size, 72px) * 0.134);
   overflow: hidden;
   background: var(--bg2);
   display: flex; align-items: center; justify-content: center;
