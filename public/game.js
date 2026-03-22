@@ -4259,6 +4259,7 @@ const ITEM_TYPE_LABELS = {
 
 let _shopItems     = [];   // весь каталог
 let _shopInventory = {};   // { itemId: true } — что куплено
+let _shopInvItems  = [];   // полный список предметов инвентаря (включая наградные) для рендера
 let _shopEquipped  = {};   // { slot: itemId } — что надето
 let _shopFilter    = 'all';
 // Stub functions - will be replaced below after all dependencies are loaded
@@ -4282,11 +4283,26 @@ async function loadShopData() {
     if (itemsRes.ok)  _shopItems = itemsRes.data || [];
     if (invRes.ok) {
       _shopInventory = {};
+      _shopInvItems  = [];
+      const virtualIds = ['title_default', 'theme_dark'];
       (invRes.data.items || []).forEach(i => {
         _shopInventory[i.item_id] = true;
-        // В магазин добавляем только купленные за звёзды предметы которых нет в каталоге
-        // Наградные (reward/admin) — НЕ добавляем в магазин, они видны только в инвентаре
-        const virtualIds = ['title_default', 'theme_dark'];
+        // Сохраняем все инвентарные предметы для рендера инвентаря
+        if (i.item_id && !virtualIds.includes(i.item_id)) {
+          _shopInvItems.push({
+            id:          i.item_id,
+            type:        i.type,
+            name:        i.name,
+            description: i.description || '',
+            preview_url: i.preview_url || null,
+            title_rank:  i.title_rank  || null,
+            price_stars: i.price_stars || null,
+            is_active:   1,
+            purchase_type: i.purchase_type,
+          });
+        }
+        // В _shopItems (каталог магазина) добавляем только купленные за звёзды
+        // которых нет в каталоге — наградные НЕ добавляем
         const isForSale = i.purchase_type === 'stars';
         if (isForSale && i.item_id && !virtualIds.includes(i.item_id) && !_shopItems.find(s => s.id === i.item_id)) {
           _shopItems.push({
@@ -4526,7 +4542,11 @@ async function renderInventory() {
   ownedIds.clear();
   Object.keys(_shopInventory).forEach(k => ownedIds.add(k));
 
-  const owned     = [darkTheme, defaultTitle, ..._shopItems.filter(i => ownedIds.has(i.id))];
+  // Инвентарь = виртуальные (тёмная тема + звание по умолчанию) + все предметы из _shopInvItems
+  // + купленные в магазине которые есть в _shopItems но не в _shopInvItems
+  const invItemIds = new Set(_shopInvItems.map(i => i.id));
+  const shopOwned  = _shopItems.filter(i => ownedIds.has(i.id) && !invItemIds.has(i.id));
+  const owned      = [darkTheme, defaultTitle, ..._shopInvItems, ...shopOwned];
 
   // Кэшируем meta звания для _achievementCardHTML
   _shopItems.filter(i => i.type === 'title').forEach(i => {

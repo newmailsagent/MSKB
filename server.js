@@ -24,6 +24,8 @@ const APP_NAME     = process.env.APP_NAME     || 'bteship';
 const BOT_TOKEN    = process.env.BOT_TOKEN    || '';
 const SHOP_SECRET  = process.env.SHOP_SECRET  || 'shop_secret_change_me'; // для внутренних наград
 const ADMIN_IDS    = new Set((process.env.ADMIN_IDS || '').replace(/["\']/g, '').split(',').map(s => s.trim()).filter(Boolean));
+console.log('[Config] ADMIN_IDS raw:', JSON.stringify(process.env.ADMIN_IDS));
+console.log('[Config] ADMIN_IDS parsed:', [...ADMIN_IDS]);
 
 function isAdmin(userId) { return ADMIN_IDS.has(String(userId)); }
 
