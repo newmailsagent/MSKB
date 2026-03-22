@@ -1740,30 +1740,17 @@ const Rematch = {
 };
 
 /* ─── КОНЕЦ ИГРЫ ─────────────────────────────────── */
-function endGame(result, reason) {
+function endGame(result) {
   Game.active = false;
   clearTurnWarningUI(); // сбрасываем таймер
   recordResult(result, Game.shots, Game.hits, Game.opponent?.name);
   updateMenuStats();
   const icons  = {win:'🏆', loss:'💀', draw:'🤝'};
   const titles = {win:'ПОБЕДА!', loss:'ПОРАЖЕНИЕ', draw:'НИЧЬЯ'};
-  // Подзаголовок зависит от причины окончания боя
-  let sub;
-  if (result === 'win') {
-    if (reason === 'surrender')     sub = 'Противник сдался';
-    else if (reason === 'disconnect') sub = 'У противника пропало соединение';
-    else                              sub = 'Все корабли потоплены!';
-  } else if (result === 'loss') {
-    if (reason === 'surrender')     sub = 'Вы сдались';
-    else if (reason === 'disconnect') sub = 'У вас пропало интернет-соединение';
-    else if (reason === 'timeout')    sub = 'Время на ход истекло';
-    else                              sub = 'Твои корабли уничтожены';
-  } else {
-    sub = 'Ничья!';
-  }
+  const subs   = {win:'Все корабли потоплены!', loss:'Твои корабли уничтожены', draw:'Ничья!'};
   setHTML('gameover-icon', icons[result]);
   setText('gameover-title', titles[result]);
-  setText('gameover-sub', sub);
+  setText('gameover-sub', subs[result]);
   setText('go-shots', String(Game.shots));
   setText('go-hits',  String(Game.hits));
   setText('go-acc',   Game.shots ? Math.round(Game.hits/Game.shots*100)+'%' : '0%');
@@ -1822,11 +1809,6 @@ function endGame(result, reason) {
 const WS = {
   socket: null,
   roomId: null,
-  _reconnecting: false,
-  _reconnectDeadlineTimer: null,
-  _reconnectRoomId: null,
-  _reconnectPlayerId: null,
-
 
   connect(serverUrl) {
     return new Promise((resolve, reject) => {
@@ -1858,14 +1840,7 @@ const WS = {
     } else {
       // Создаём новый
       if (this.socket) { this.socket.off(); this.socket.disconnect(); this.socket = null; }
-      sock = io(serverUrl || window.location.origin, {
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 3000,
-        timeout: 10000,
-      });
+      sock = io(serverUrl || window.location.origin, { transports: ['websocket','polling'] });
       initOnlineCounter._sock = sock;
       sock.on('online_count', ({ count }) => {
         if (initOnlineCounter.update) initOnlineCounter.update(count);
@@ -1875,10 +1850,9 @@ const WS = {
     this.socket = sock;
 
     // Снимаем предыдущие игровые обработчики (чтобы не дублировались при реюзе)
-    const gameEvents = ['disconnect','connect','room_created','matched','opponent_placed','shot_result',
+    const gameEvents = ['disconnect','room_created','matched','opponent_placed','shot_result',
       'your_turn','game_over','opponent_surrendered','surrender_confirmed','rematch_requested',
       'rematch_accepted','rematch_declined','opponent_left','opponent_disconnected_win',
-      'opponent_disconnected_wait','opponent_reconnected','reconnect_ok','reconnect_failed',
       'xp_reward','reaction_received','turn_warning','purchase_complete','item_revoked'];
     gameEvents.forEach(ev => sock.off(ev));
 
@@ -1901,93 +1875,11 @@ const WS = {
   _registerHandlers() {
     const socket = this.socket;
 
-    // ── Потеря соединения ──────────────────────────────────────────────────
-    this.socket.on('disconnect', (reason) => {
-      if (!Game.active) return;
-
-      // Меняем статус — игрок видит что проблема у него
-      const statusEl = document.getElementById('game-status');
-      if (statusEl) {
-        statusEl.textContent = 'Попытка переподключения...';
-        statusEl.style.color = 'var(--hint)';
-      }
-
-      // Ставим флаг — обработчик 'connect' проверяет его
-      WS._reconnecting = true;
-      WS._reconnectRoomId   = WS.roomId;
-      WS._reconnectPlayerId = App.user?.id || null;
-
-      // Клиентский таймер 62 сек (чуть больше серверных 60)
-      // Если reconnect_ok так и не пришёл — показываем поражение
-      if (WS._reconnectDeadlineTimer) clearTimeout(WS._reconnectDeadlineTimer);
-      WS._reconnectDeadlineTimer = setTimeout(() => {
-        if (!WS._reconnecting) return; // уже переподключились
-        WS._reconnecting = false;
-        endGame('loss', 'disconnect');
-      }, 62 * 1000);
-    });
-
-    // ── Физическое переподключение сокета ──────────────────────────────────
-    // Этот обработчик вешается на сокет через off/on — гарантированно актуален
-    this.socket.on('connect', () => {
-      if (WS._reconnecting && WS._reconnectRoomId && WS._reconnectPlayerId) {
-        // Возвращаемся из разрыва — шлём reconnect_game серверу
-        this.socket.emit('reconnect_game', {
-          roomId:   WS._reconnectRoomId,
-          playerId: WS._reconnectPlayerId,
-        });
-      } else {
-        this.socket.emit('identify', { playerId: App.user?.id || null });
-      }
-    });
-
-    // Сервер подтвердил переподключение
-    this.socket.on('reconnect_ok', ({ roomId, started, isMyTurn, turnSecondsLeft }) => {
-      // Сбрасываем флаги реконнекта
-      WS._reconnecting = false;
-      WS._reconnectRoomId   = null;
-      WS._reconnectPlayerId = null;
-      if (WS._reconnectDeadlineTimer) { clearTimeout(WS._reconnectDeadlineTimer); WS._reconnectDeadlineTimer = null; }
-
-      this.roomId = roomId;
-      Game.roomId = roomId;
-
-      if (started) {
-        // Восстанавливаем флаг активной игры — мог сброситься при зависании
-        Game.active   = true;
-        Game.isMyTurn = isMyTurn;
-
-        // Перерисовываем доску — без этого клетки остаются некликабельными
-        // потому что clickable=Game.isMyTurn проставляется именно здесь
-        renderGameBoard();
-
-        // Восстанавливаем заголовок хода
-        updateGameStatus();
-      }
-    });
-
-    // Сервер сказал — время переподключения истекло, засчитано поражение
-    this.socket.on('reconnect_failed', ({ reason }) => {
-      WS._reconnecting = false;
-      WS._reconnectRoomId   = null;
-      WS._reconnectPlayerId = null;
-      if (WS._reconnectDeadlineTimer) { clearTimeout(WS._reconnectDeadlineTimer); WS._reconnectDeadlineTimer = null; }
-      endGame('loss', 'disconnect');
-    });
-
-    // Соперник переподключился — восстанавливаем нормальный статус
-    this.socket.on('opponent_reconnected', () => {
-      updateGameStatus();
-      showToast('👋 Соперник вернулся в игру', 2000);
-    });
-
-    // Соперник отключился — показываем статус вместо "Твой ход" / "Ход соперника"
-    this.socket.on('opponent_disconnected_wait', ({ seconds }) => {
-      const statusEl = document.getElementById('game-status');
-      if (statusEl) {
-        statusEl.textContent = 'У противника проблемы с соединением…';
-        statusEl.style.color = 'var(--hint)';
-      }
+    // Потеря соединения
+    this.socket.on('disconnect', () => {
+      if (Game.active) showModal('Соединение потеряно', 'Игра прервана.', [
+        { label: 'В меню', cls: 'btn-primary', action: () => { closeModal(); goToMenu(); }},
+      ]);
     });
 
     // ── Комната для друга создана (только создателю) ──
@@ -2134,7 +2026,7 @@ const WS = {
 
       updateGameStatus();
       renderGameBoard();
-      if (gameOver) endGame(winner === App.user.id ? 'win' : 'loss', 'shot');
+      if (gameOver) endGame(winner === App.user.id ? 'win' : 'loss');
     });
 
     // ── Соперник вышел ────────────────────────────────
@@ -2226,14 +2118,9 @@ const WS = {
       Rematch.startOpponentTimer();
     });
 
-    this.socket.on('rematch_accepted', ({ duelStats } = {}) => {
+    this.socket.on('rematch_accepted', () => {
       // Оба согласились — стартуем расстановку с тем же соперником в той же комнате
       Rematch._clear();
-      // Обновляем счётчик дуэлей сразу при реванше
-      if (duelStats) {
-        Game.duelStats = duelStats;
-        updateDuelCounter(duelStats);
-      }
       // roomId остаётся тем же — просто инициируем расстановку
       startPlacement('online');
     });
@@ -2256,10 +2143,12 @@ const WS = {
       setTimeout(() => goToMenu(), 3000);
     });
 
-    // п.5: соперник не переподключился за 60 сек — нам победа
+    // п.5: соперник закрыл вкладку/приложение — нам победа
     this.socket.on('opponent_disconnected_win', () => {
       clearTurnWarningUI();
-      endGame('win', 'disconnect');
+      showModal('Победа!', 'Соперник покинул игру. Тебе засчитана победа!', [
+        { label: 'Ок', cls: 'btn-primary', action: () => { closeModal(); endGame('win'); }},
+      ]);
     });
 
     // п.6: предупреждение — осталось 20 секунд
@@ -2288,7 +2177,7 @@ const WS = {
     // п.6: поражение из-за 2 просрочек
     this.socket.on('game_over_timeout', ({ winner, loser }) => {
       clearTurnWarningUI();
-      endGame(winner === App.user.id ? 'win' : 'loss', 'timeout');
+      endGame(winner === App.user.id ? 'win' : 'loss');
     });
 
     // п.6: ход передан (от сервера при тайм-ауте)
@@ -2302,13 +2191,13 @@ const WS = {
     // п.5: соперник сдался — нам победа немедленно
     this.socket.on('opponent_surrendered', () => {
       clearTurnWarningUI();
-      endGame('win', 'surrender');
+      endGame('win');
     });
 
     // п.5: сдача подтверждена — показываем поражение
     this.socket.on('surrender_confirmed', () => {
       clearTurnWarningUI();
-      endGame('loss', 'surrender');
+      endGame('loss');
     });
   },
 
@@ -3628,20 +3517,6 @@ function updateGameFooter() {
   }
 }
 
-// Обновляет счётчик дуэлей без перерисовки всего футера
-function updateDuelCounter(duel) {
-  if (!duel) return;
-  const duelBlock = document.getElementById('gf-duel-score');
-  const mineEl    = document.getElementById('gf-duel-mine');
-  const theirsEl  = document.getElementById('gf-duel-theirs');
-  if (!duelBlock) return;
-  duelBlock.style.display = 'flex';
-  if (mineEl)   { mineEl.textContent   = duel.myWins;    mineEl.style.color   = duel.myWins > duel.theirWins ? 'var(--green)' : 'var(--text)'; }
-  if (theirsEl) { theirsEl.textContent = duel.theirWins; theirsEl.style.color = duel.theirWins > duel.myWins ? 'var(--red)'   : 'var(--text)'; }
-  // Сохраняем в Game.opponent.duel чтобы renderGameFooter() тоже видел актуальные данные
-  if (Game.opponent) Game.opponent.duel = duel;
-}
-
 /* ─── УВЕДОМЛЕНИЯ ────────────────────────────────── */
 const Notif = {
   _current: null,
@@ -4259,7 +4134,7 @@ const ITEM_TYPE_LABELS = {
 
 let _shopItems     = [];   // весь каталог
 let _shopInventory = {};   // { itemId: true } — что куплено
-let _shopInvItems  = [];   // полный список предметов инвентаря (включая наградные) для рендера
+let _shopInvData   = {};   // { itemId: объект } — данные предметов из инвентаря (включая наградные)
 let _shopEquipped  = {};   // { slot: itemId } — что надето
 let _shopFilter    = 'all';
 // Stub functions - will be replaced below after all dependencies are loaded
@@ -4283,29 +4158,13 @@ async function loadShopData() {
     if (itemsRes.ok)  _shopItems = itemsRes.data || [];
     if (invRes.ok) {
       _shopInventory = {};
-      _shopInvItems  = [];
-      const virtualIds = ['title_default', 'theme_dark'];
+      _shopInvData   = {};
       (invRes.data.items || []).forEach(i => {
         _shopInventory[i.item_id] = true;
-        // Сохраняем все инвентарные предметы для рендера инвентаря
+        // Сохраняем объект предмета для поиска (включая наградные is_active=0)
+        const virtualIds = ['title_default', 'theme_dark'];
         if (i.item_id && !virtualIds.includes(i.item_id)) {
-          _shopInvItems.push({
-            id:          i.item_id,
-            type:        i.type,
-            name:        i.name,
-            description: i.description || '',
-            preview_url: i.preview_url || null,
-            title_rank:  i.title_rank  || null,
-            price_stars: i.price_stars || null,
-            is_active:   1,
-            purchase_type: i.purchase_type,
-          });
-        }
-        // В _shopItems (каталог магазина) добавляем только купленные за звёзды
-        // которых нет в каталоге — наградные НЕ добавляем
-        const isForSale = i.purchase_type === 'stars';
-        if (isForSale && i.item_id && !virtualIds.includes(i.item_id) && !_shopItems.find(s => s.id === i.item_id)) {
-          _shopItems.push({
+          const obj = {
             id:          i.item_id,
             type:        i.type,
             name:        i.name,
@@ -4313,8 +4172,13 @@ async function loadShopData() {
             preview_url: i.preview_url || null,
             title_rank:  i.title_rank  || null,
             price_stars: null,
-            is_active:   1,
-          });
+            is_active:   0,
+          };
+          _shopInvData[i.item_id] = obj;
+          // В _shopItems добавляем только если ещё нет (для отображения в магазине)
+          if (!_shopItems.find(s => s.id === i.item_id)) {
+            _shopItems.push(obj);
+          }
         }
       });
       _shopEquipped  = invRes.data.equipped || {};
@@ -4333,7 +4197,7 @@ async function loadShopData() {
 async function handleShopItemBtn() {
   const itemId = _currentShopItemId;
   // theme_dark и title_default — виртуальные предметы
-  let item = _shopItems.find(i => i.id === itemId);
+  let item = _shopItems.find(i => i.id === itemId) || _shopInvData[itemId] || null;
   if (!item && itemId === 'theme_dark') {
     item = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
   }
@@ -4542,11 +4406,7 @@ async function renderInventory() {
   ownedIds.clear();
   Object.keys(_shopInventory).forEach(k => ownedIds.add(k));
 
-  // Инвентарь = виртуальные (тёмная тема + звание по умолчанию) + все предметы из _shopInvItems
-  // + купленные в магазине которые есть в _shopItems но не в _shopInvItems
-  const invItemIds = new Set(_shopInvItems.map(i => i.id));
-  const shopOwned  = _shopItems.filter(i => ownedIds.has(i.id) && !invItemIds.has(i.id));
-  const owned      = [darkTheme, defaultTitle, ..._shopInvItems, ...shopOwned];
+  const owned     = [darkTheme, defaultTitle, ..._shopItems.filter(i => ownedIds.has(i.id))];
 
   // Кэшируем meta звания для _achievementCardHTML
   _shopItems.filter(i => i.type === 'title').forEach(i => {
@@ -4793,7 +4653,7 @@ renderShopGrid = function() {
 
 // Переопределяем openShopItem — добавляем поддержку theme_dark, звания, слайдера и превью темы
 openShopItem = function(itemId) {
-  let item = _shopItems.find(i => i.id === itemId);
+  let item = _shopItems.find(i => i.id === itemId) || _shopInvData[itemId] || null;
   if (!item && itemId === 'theme_dark') {
     item = { id: 'theme_dark', type: 'theme', name: 'Тёмная тема (по умолчанию)', description: 'Стандартная тёмная цветовая схема', preview_url: '/shop/previews/theme/frame_theme_dark.png' };
   }
