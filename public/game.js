@@ -4284,10 +4284,11 @@ async function loadShopData() {
       _shopInventory = {};
       (invRes.data.items || []).forEach(i => {
         _shopInventory[i.item_id] = true;
-        // Если айтем есть в инвентаре но не в каталоге (напр. title_engineer) — добавляем
-        // Исключаем виртуальные предметы которые не должны быть в магазине
+        // В магазин добавляем только купленные за звёзды предметы которых нет в каталоге
+        // Наградные (reward/admin) — НЕ добавляем в магазин, они видны только в инвентаре
         const virtualIds = ['title_default', 'theme_dark'];
-        if (i.item_id && !virtualIds.includes(i.item_id) && !_shopItems.find(s => s.id === i.item_id)) {
+        const isForSale = i.purchase_type === 'stars';
+        if (isForSale && i.item_id && !virtualIds.includes(i.item_id) && !_shopItems.find(s => s.id === i.item_id)) {
           _shopItems.push({
             id:          i.item_id,
             type:        i.type,
@@ -4296,7 +4297,7 @@ async function loadShopData() {
             preview_url: i.preview_url || null,
             title_rank:  i.title_rank  || null,
             price_stars: null,
-            is_active:   0,
+            is_active:   1,
           });
         }
       });

@@ -23,7 +23,7 @@ const BOT_USERNAME = process.env.BOT_USERNAME || '';
 const APP_NAME     = process.env.APP_NAME     || 'bteship';
 const BOT_TOKEN    = process.env.BOT_TOKEN    || '';
 const SHOP_SECRET  = process.env.SHOP_SECRET  || 'shop_secret_change_me'; // для внутренних наград
-const ADMIN_IDS    = new Set((process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean));
+const ADMIN_IDS    = new Set((process.env.ADMIN_IDS || '').replace(/["\']/g, '').split(',').map(s => s.trim()).filter(Boolean));
 
 function isAdmin(userId) { return ADMIN_IDS.has(String(userId)); }
 
@@ -2150,16 +2150,19 @@ function requireTelegramAuth(req, res, next) {
 
 app.get('/api/inventory/:userId', (req, res) => {
   try {
-    const { userId } = req.params;
-    if (!userId || userId.startsWith('guest_')) return res.json({ ok: true, data: { items: [], equipped: {} } });
+    const rawUserId = req.params.userId;
+    if (!rawUserId || rawUserId.startsWith('guest_')) return res.json({ ok: true, data: { items: [], equipped: {} } });
+    // Нормализуем сразу — убираем .0 и лишние символы
+    const userId = normalizeId(rawUserId);
+    if (!userId) return res.json({ ok: true, data: { items: [], equipped: {} } });
 
     const initData   = req.headers['x-telegram-init-data'];
     const verifiedId = initData ? verifyTelegramInitData(initData) : null;
 
     console.log(`[Inventory] userId=${userId} initData=${!!initData} verifiedId=${verifiedId} isAdmin=${isAdmin(userId)}`);
 
-    if (verifiedId && verifiedId !== normalizeId(userId)) {
-      console.log(`[Inventory] BLOCKED: verifiedId=${verifiedId} !== userId=${normalizeId(userId)}`);
+    if (verifiedId && verifiedId !== userId) {
+      console.log(`[Inventory] BLOCKED: verifiedId=${verifiedId} !== userId=${userId}`);
       return res.status(403).json({ ok: false, error: 'forbidden' });
     }
 
