@@ -4597,9 +4597,12 @@ renderShopGrid = function() {
   const grid = document.getElementById('shop-grid');
   if (!grid) return;
 
+  // Показываем только продаваемые предметы (is_active=1, есть цена или это не звание)
+  // Наградные звания (is_active=0) — только в инвентаре, не в магазине
+  const saleItems = _shopItems.filter(i => i.is_active !== 0);
   const items = _shopFilter === 'all'
-    ? _shopItems
-    : _shopItems.filter(i => i.type === _shopFilter);
+    ? saleItems
+    : saleItems.filter(i => i.type === _shopFilter);
 
   if (!items.length) {
     grid.innerHTML = '<div class="shop-loading">Нет товаров</div>';
