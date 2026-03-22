@@ -23,9 +23,7 @@ const BOT_USERNAME = process.env.BOT_USERNAME || '';
 const APP_NAME     = process.env.APP_NAME     || 'bteship';
 const BOT_TOKEN    = process.env.BOT_TOKEN    || '';
 const SHOP_SECRET  = process.env.SHOP_SECRET  || 'shop_secret_change_me'; // для внутренних наград
-const ADMIN_IDS    = new Set((process.env.ADMIN_IDS || '').replace(/["\']/g, '').split(',').map(s => s.trim()).filter(Boolean));
-console.log('[Config] ADMIN_IDS raw:', JSON.stringify(process.env.ADMIN_IDS));
-console.log('[Config] ADMIN_IDS parsed:', [...ADMIN_IDS]);
+const ADMIN_IDS    = new Set((process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean));
 
 function isAdmin(userId) { return ADMIN_IDS.has(String(userId)); }
 
@@ -89,8 +87,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const io = new Server(server, {
   cors: { origin: CORS_ORIGIN, methods: ['GET', 'POST'] },
-  pingTimeout:  10000, // 10 сек — детектируем разрыв быстрее
-  pingInterval:  5000, // ping каждые 5 сек
+  pingTimeout:  20000, // 20 сек — быстрее детектируем разрыв
+  pingInterval: 8000,  // ping каждые 8 сек
   connectTimeout: 10000,
 });
 
@@ -276,8 +274,8 @@ const ACHIEVEMENTS = [
   { id: 'first_time',        title: 'Время первых',        desc: 'Занять первую строчку рейтинга', goal: 1,    type: 'limited', reward: 'title_first_time',        countFn: 'rating_top1' },
   { id: 'determined',        title: 'Целеустремлённый',    desc: 'Достичь 30 уровня',              goal: 1,    type: 'limited', reward: 'title_determined',        countFn: 'level_30' },
   { id: 'collector',         title: 'Коллекционер',        desc: 'Купить три цветовые схемы',      goal: 3,    type: 'limited', reward: 'title_collector',         countFn: 'themes_bought' },
-  { id: 'recruiter',         title: 'Рекрутер',            desc: 'Пригласить 3 игроков, каждый сыграет 3 боя в любом режиме', goal: 3, type: 'limited', reward: 'title_recruiter', countFn: 'referrals_qualified', hasRefPage: true },
-  { id: 'space_navigator',   title: 'Космический навигатор',desc:'Пригласить 10 игроков, каждый сыграет 3 боя в любом режиме', goal: 10, type: 'limited', reward: 'title_space_navigator', countFn: 'referrals_qualified', hasRefPage: true },
+  { id: 'recruiter',         title: 'Рекрутер',            desc: 'Пригласить 3 новых игроков',     goal: 3,    type: 'limited', reward: 'title_recruiter',         countFn: 'referrals_qualified', hasRefPage: true },
+  { id: 'space_navigator',   title: 'Космический навигатор',desc:'Пригласить 10 новых игроков',    goal: 10,   type: 'limited', reward: 'title_space_navigator',   countFn: 'referrals_qualified', hasRefPage: true },
   // — Без награды, пополняемые —
   { id: 'first_exp',         title: 'Первый опыт',         desc: 'Одна победа (получается один раз)',goal:1,   type: 'once',    reward: null,                      countFn: 'total_wins' },
   { id: 'cold_calc',         title: 'Холодный расчёт',     desc: 'Обойти соперника по точности',   goal: null, type: 'infinite',reward: null,                      countFn: 'acc_win' },
@@ -501,6 +499,28 @@ try {
     photo_url_tg='/shop/previews/theme/frame_theme_black.png'
     WHERE id='theme_black'`).run();
 } catch(e) {}
+
+// ── Миграция: рамки для аватарки ──────────────────────────────────────────────
+const FRAME_ITEMS = [
+  { id: 'frame_1', name: 'Морской волк',  price: 50, sort: 200 },
+  { id: 'frame_2', name: 'Охотник',       price: 50, sort: 201 },
+  { id: 'frame_3', name: 'Сонар',         price: 50, sort: 202 },
+  { id: 'frame_4', name: 'Невидимый',     price: 50, sort: 203 },
+];
+for (const f of FRAME_ITEMS) {
+  try {
+    db.prepare(`INSERT OR IGNORE INTO shop_items
+      (id, type, name, description, price_stars, preview_url, photo_url_tg, sort_order, is_active)
+      VALUES (?, 'frame', ?, 'Уникальная рамка для аватарки', ?, ?, ?, ?, 1)`
+    ).run(f.id, f.name, f.price,
+      `/frames/${f.id}.svg`,
+      `/frames/${f.id}.svg`,
+      f.sort);
+    // Обновляем если уже есть (цена/название могли измениться)
+    db.prepare(`UPDATE shop_items SET name=?, price_stars=?, sort_order=?, is_active=1
+      WHERE id=? AND type='frame'`).run(f.name, f.price, f.sort, f.id);
+  } catch(e) { console.error('[Frames] migration:', f.id, e.message); }
+}
 
 // Хелперы магазина
 function getInventory(userId) {
@@ -982,9 +1002,6 @@ function notifyBothMatched(room) {
 function startTurnTimer(room) {
   clearTurnTimer(room);
 
-  // Запоминаем момент старта хода — нужно для восстановления после реконнекта
-  room._turnStartedAt = Date.now();
-
   // Предупреждение на 40-й секунде (за 20 до конца)
   room._warnTimer = setTimeout(() => {
     const currentTurnPlayer = room.turn === room.p1.playerId ? room.p1 : room.p2;
@@ -1076,33 +1093,20 @@ io.on('connection', (socket) => {
     const info = { socketId: socket.id, playerId: cleanPlayerId, name: cleanPlayerName };
 
     if (mode === 'random') {
-      // Убираем себя из пула если уже есть (повторный вход в поиск)
-      const selfIdx = waitingPool.findIndex(p => p.playerId === cleanPlayerId);
+      const selfIdx = waitingPool.findIndex(p => p.playerId === playerId);
       if (selfIdx >= 0) waitingPool.splice(selfIdx, 1);
 
-      // Чистим мёртвые сокеты из пула — игроки которые давно ждут но уже отключились
-      for (let i = waitingPool.length - 1; i >= 0; i--) {
-        const sock = io.sockets.sockets.get(waitingPool[i].socketId);
-        if (!sock || !sock.connected) {
-          console.log(`[matchmake] removing stale socket from pool: ${waitingPool[i].playerId}`);
-          waitingPool.splice(i, 1);
-        }
-      }
-
-      // Ищем живого соперника
-      const oppIdx = waitingPool.findIndex(p => p.playerId !== cleanPlayerId);
+      const oppIdx = waitingPool.findIndex(p => p.playerId !== playerId);
       if (oppIdx >= 0) {
         const opp    = waitingPool.splice(oppIdx, 1)[0];
         const roomId = crypto.randomUUID();
-        const room   = { id: roomId, p1: makePlayer(info), p2: makePlayer(opp), turn: cleanPlayerId, started: false, over: false, _turnTimer: null, _warnTimer: null };
+        const room   = { id: roomId, p1: makePlayer(info), p2: makePlayer(opp), turn: playerId, started: false, over: false, _turnTimer: null, _warnTimer: null };
         rooms.set(roomId, room);
         socket.join(roomId);
         io.sockets.sockets.get(opp.socketId)?.join(roomId);
         notifyBothMatched(room);
-        console.log(`[matchmake] matched ${cleanPlayerId} ↔ ${opp.playerId}`);
       } else {
         waitingPool.push(info);
-        console.log(`[matchmake] ${cleanPlayerId} waiting (pool size: ${waitingPool.length})`);
       }
     }
     else if (mode === 'friend_create') {
@@ -1386,24 +1390,18 @@ function validateNoTouch(field) {
     const p2Ready = room.rematch[room.p2?.socketId];
 
     if (p1Ready && p2Ready) {
+      // Оба согласились — очищаем таймер и запускаем новую игру в той же комнате
       if (room._rematchTimer) { clearTimeout(room._rematchTimer); room._rematchTimer = null; }
       room.rematch = null;
 
-      // Отменяем таймер дисконнекта если был
-      if (room.p1?._disconnectTimer) { clearTimeout(room.p1._disconnectTimer); room.p1._disconnectTimer = null; }
-      if (room.p2?._disconnectTimer) { clearTimeout(room.p2._disconnectTimer); room.p2._disconnectTimer = null; }
-
       // Сбрасываем состояние комнаты для новой игры
-      room.over    = false;
-      room.started = false;
-      room.p1.field = null; room.p1.ready = false; room.p1.shots = 0; room.p1.hits = 0; room.p1.timeouts = 0; room.p1.disconnected = false;
-      room.p2.field = null; room.p2.ready = false; room.p2.shots = 0; room.p2.hits = 0; room.p2.timeouts = 0; room.p2.disconnected = false;
+      room.over      = false;
+      room.started   = false;
+      room.p1.ships  = null; room.p1.ready = false; room.p1.shots = 0; room.p1.hits = 0;
+      room.p2.ships  = null; room.p2.ready = false; room.p2.shots = 0; room.p2.hits = 0;
 
-      // Отправляем актуальный счёт дуэлей вместе с rematch_accepted
-      const duel1 = getDuelStats(room.p1.playerId, room.p2.playerId);
-      const duel2 = getDuelStats(room.p2.playerId, room.p1.playerId);
-      io.to(room.p1.socketId).emit("rematch_accepted", { duelStats: duel1 });
-      io.to(room.p2.socketId).emit("rematch_accepted", { duelStats: duel2 });
+      io.to(room.p1.socketId).emit('rematch_accepted');
+      io.to(room.p2.socketId).emit('rematch_accepted');
       console.log(`[rematch] room ${roomId} restarted`);
       return;
     }
@@ -1443,78 +1441,6 @@ function validateNoTouch(field) {
   // Heartbeat пока вкладка открыта
   socket.on('active', () => { touchSession(socket.id); });
 
-  // Переподключение: клиент шлёт reconnect с сохранёнными roomId + playerId
-  socket.on('reconnect_game', ({ roomId, playerId }) => {
-    const normId = normalizeId(playerId);
-    if (!normId || !roomId) return;
-
-    const room = rooms.get(roomId);
-    if (!room || room.over) {
-      socket.emit('reconnect_failed', { reason: 'room_gone' });
-      return;
-    }
-
-    // Ищем игрока в комнате по playerId
-    let player = null;
-    if (room.p1?.playerId === normId) player = room.p1;
-    else if (room.p2?.playerId === normId) player = room.p2;
-
-    if (!player) {
-      socket.emit('reconnect_failed', { reason: 'not_in_room' });
-      return;
-    }
-
-    // Отменяем таймер дисконнекта если был
-    if (player._disconnectTimer) {
-      clearTimeout(player._disconnectTimer);
-      player._disconnectTimer = null;
-      console.log(`[reconnect] ${normId} reconnected in time`);
-    }
-
-    const oldSocketId = player.socketId;
-    player.socketId   = socket.id;
-    player.disconnected = false;
-    socket.join(roomId);
-
-    // Обновляем онлайн-сессию
-    onlineSessions.set(socket.id, { socketId: socket.id, playerId: normId, identified: true, connectedAt: Date.now(), lastActive: Date.now() });
-    broadcastOnlineCount();
-
-    const opponent = player === room.p1 ? room.p2 : room.p1;
-
-    // Считаем сколько секунд осталось на текущий ход
-    let turnSecondsLeft = null;
-    if (room.started && room._turnStartedAt) {
-      const elapsed = Math.floor((Date.now() - room._turnStartedAt) / 1000);
-      turnSecondsLeft = Math.max(0, TURN_TIMEOUT_MS / 1000 - elapsed);
-    }
-
-    // Отправляем игроку текущее состояние
-    socket.emit('reconnect_ok', {
-      roomId,
-      started:        room.started,
-      isMyTurn:       room.started ? (room.turn === normId) : false,
-      turnSecondsLeft,                       // сколько секунд осталось на ход (null если игра не идёт)
-      myField:        player.field,
-      oppField:       opponent?.field ? opponent.field.map(row => row.map(c => c === 1 ? 0 : c)) : null,
-      myShots:        player.shots,
-      myHits:         player.hits,
-      opponent:       opponent ? { playerId: opponent.playerId, name: opponent.name } : null,
-    });
-
-    // Уведомляем соперника о возвращении
-    if (opponent?.socketId) {
-      io.to(opponent.socketId).emit('opponent_reconnected');
-    }
-
-    // Если сейчас ход переподключившегося и осталось <= 20 сек — сразу шлём предупреждение
-    if (room.started && room.turn === normId && turnSecondsLeft !== null && turnSecondsLeft <= 20) {
-      socket.emit('turn_warning', { secondsLeft: Math.ceil(turnSecondsLeft) });
-    }
-
-    console.log(`[reconnect] ${normId} restored in room ${roomId}, turnLeft=${turnSecondsLeft}s`);
-  });
-
   socket.on('disconnect', () => {
     console.log(`[-] ${socket.id}`);
     onlineSessions.delete(socket.id);
@@ -1526,47 +1452,28 @@ function validateNoTouch(field) {
       if (room.over) continue;
       if (room.p1?.socketId !== socket.id && room.p2?.socketId !== socket.id) continue;
 
+      clearTurnTimer(room);
+
       const leaver = room.p1?.socketId === socket.id ? room.p1 : room.p2;
       const stayer = room.p1?.socketId === socket.id ? room.p2 : room.p1;
 
       if (room.started && stayer?.socketId) {
-        // ── Игра шла — даём 60 секунд на переподключение ──────────────────
-        leaver.disconnected = true;
-        // НЕ останавливаем таймер хода — он продолжает тикать.
-
-        // Уведомляем оставшегося игрока что у соперника проблемы с соединением
-        io.to(stayer.socketId).emit('opponent_disconnected_wait', { seconds: 60 });
-
-        console.log(`[disconnect] ${leaver.playerId} disconnected — waiting 60s`);
-
-        leaver._disconnectTimer = setTimeout(() => {
-          if (room.over) return;
-          if (!leaver.disconnected) return; // уже переподключился
-
-          // 60 секунд истекли — поражение вышедшему
-          room.over = true;
-          clearTurnTimer(room);
-
-          io.to(stayer.socketId).emit('opponent_disconnected_win');
-
-          const dSunkenStayer = leaver.field ? countSunkenShips(leaver.field) : 0;
-          const dSunkenLeaver = stayer.field ? countSunkenShips(stayer.field) : 0;
-          const stayerShipsLeft = stayer.field ? countRemainingShips(stayer.field) : 0;
-          const dWinXp  = addWin( stayer.playerId, stayer.shots, stayer.hits, true, dSunkenStayer, null, !room.isFriend, room.isFriend, null, stayerShipsLeft);
-          const dLossXp = addLoss(leaver.playerId, leaver.shots, leaver.hits, true, dSunkenLeaver, !room.isFriend, room.isFriend);
-          addBattleHistory(stayer.playerId, 'win',  leaver.name || '?', stayer.shots, stayer.hits, 'online');
-          addBattleHistory(leaver.playerId, 'loss', stayer.name || '?', leaver.shots, leaver.hits, 'online');
-          if (dWinXp  && stayer.socketId) io.to(stayer.socketId).emit('xp_reward', dWinXp);
-          if (dWinXp?.newAchievements?.length && stayer.socketId) io.to(stayer.socketId).emit('new_achievement', dWinXp.newAchievements);
-          recordDuelResult(stayer.playerId, leaver.playerId);
-          rooms.delete(roomId);
-          console.log(`[disconnect] ${leaver.playerId} timed out — ${stayer.playerId} wins`);
-        }, 60 * 1000);
-
+        // Игра шла — победа оставшемуся
+        room.over = true;
+        io.to(stayer.socketId).emit('opponent_disconnected_win');
+        const dSunkenStayer = leaver.field ? countSunkenShips(leaver.field) : 0;
+        const dSunkenLeaver = stayer.field ? countSunkenShips(stayer.field) : 0;
+        const stayerShipsLeft = stayer.field ? countRemainingShips(stayer.field) : 0;
+        const dWinXp  = addWin( stayer.playerId, stayer.shots, stayer.hits, true, dSunkenStayer, null, !room.isFriend, room.isFriend, null, stayerShipsLeft);
+        const dLossXp = addLoss(leaver.playerId, leaver.shots, leaver.hits, true, dSunkenLeaver, !room.isFriend, room.isFriend);
+        if (dWinXp  && stayer.socketId) io.to(stayer.socketId).emit('xp_reward', dWinXp);
+        if (dWinXp?.newAchievements?.length && stayer.socketId) io.to(stayer.socketId).emit('new_achievement', dWinXp.newAchievements);
+        // leaver отключён — xp_reward не шлём
+        recordDuelResult(stayer.playerId, leaver.playerId);
+        rooms.delete(roomId);
       } else if (stayer?.socketId) {
         // Игра не началась, второй игрок есть — уведомляем и удаляем
         room.over = true;
-        clearTurnTimer(room);
         io.to(stayer.socketId).emit('opponent_left');
         rooms.delete(roomId);
       } else {
@@ -1653,50 +1560,6 @@ function countRemainingShips(field) {
   return count;
 }
 
-// ─── SEO ─────────────────────────────────────────────────────────────────────
-
-const SITE_URL = process.env.SITE_URL || 'https://morskoy-boy.ru';
-
-// robots.txt
-app.get('/robots.txt', (req, res) => {
-  res.type('text/plain');
-  res.send([
-    'User-agent: *',
-    'Allow: /',
-    'Disallow: /api/',
-    '',
-    `Sitemap: ${SITE_URL}/sitemap.xml`,
-    '',
-    '# Yandex',
-    'User-agent: Yandex',
-    'Allow: /',
-    'Disallow: /api/',
-    'Clean-param: roomId&playerId&mode',
-    `Sitemap: ${SITE_URL}/sitemap.xml`,
-  ].join('\n'));
-});
-
-// sitemap.xml
-app.get('/sitemap.xml', (req, res) => {
-  const now = new Date().toISOString().split('T')[0];
-  res.type('application/xml');
-  res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:xhtml="http://www.w3.org/1999/xhtml">
-  <url>
-    <loc>${SITE_URL}/</loc>
-    <lastmod>${now}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
-</urlset>`);
-});
-
-// Favicon — явный маршрут чтобы Яндекс точно находил
-app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, 'public', 'favicon.ico')));
-app.get('/favicon-32.png', (req, res) => res.sendFile(path.join(__dirname, 'public', 'favicon-32.png')));
-app.get('/favicon-16.png', (req, res) => res.sendFile(path.join(__dirname, 'public', 'favicon-16.png')));
-
 app.get('/api/config',     (req, res) => res.json({ botUsername: BOT_USERNAME, appName: APP_NAME }));
 app.get('/api/online',     (req, res) => res.json({ count: getOnlineCount() }));
 app.get('/api/history/:id',(req, res) => { try { const mode = req.query.mode || null; res.json({ ok: true, data: getBattleHistory(req.params.id, 30, mode) }); } catch(e) { res.status(500).json({ ok: false }); } });
@@ -1712,7 +1575,7 @@ app.post('/api/history', (req, res) => {
     // Валидация enum-полей
     const cleanResult = ['win','loss','draw'].includes(result) ? result : null;
     if (!cleanResult) { res.json({ ok: false }); return; }
-    const cleanMode     = ['online','bot-easy','bot-hard','friend','friend_join'].includes(mode) ? mode : 'online';
+    const cleanMode     = ['online','bot-easy','bot-hard'].includes(mode) ? mode : 'online';
     const cleanOpponent = (s => String(s||'').trim().slice(0,64))(opponent || '?');
     const cleanShots    = Math.max(0, parseInt(shots)  || 0);
     const cleanHits     = Math.max(0, parseInt(hits)   || 0);
@@ -1735,8 +1598,6 @@ app.post('/api/history', (req, res) => {
       if (newAchievements.length) {
         console.log(`[History] newAchievements for ${cleanId}:`, newAchievements.map(a => a.id));
       }
-      // Обновляем реферальный счётчик — считаются все режимы включая боты
-      _updateReferralBattles(cleanId);
     }
     res.json({ ok: true, newAchievements });
   } catch(e) { console.error('history post error:', e); res.status(500).json({ ok: false }); }
@@ -1756,23 +1617,6 @@ app.post('/api/rating/join',  (req, res) => { try { res.json(joinRating(req.body
 app.post('/api/rating/leave', (req, res) => { try { res.json(leaveRating(req.body.id)); } catch(e) { res.status(500).json({ ok: false }); } });
 
 // ─── ADMIN ANALYTICS ─────────────────────────────────────────────────────────
-// Вспомогательная функция: разбиваем онлайн на ТГ и гостей
-function getOnlineSplit() {
-  const now = Date.now();
-  let tg = 0, guests = 0;
-  const seenTg = new Set(), seenGuest = new Set();
-  for (const [, s] of onlineSessions) {
-    if (now - s.lastActive > IDLE_TIMEOUT_MS) continue;
-    if (s.playerId && !s.playerId.startsWith('guest_')) {
-      if (!seenTg.has(s.playerId)) { seenTg.add(s.playerId); tg++; }
-    } else {
-      const key = s.playerId || s.socketId;
-      if (!seenGuest.has(key)) { seenGuest.add(key); guests++; }
-    }
-  }
-  return { tg, guests, total: tg + guests };
-}
-
 app.get('/api/admin/analytics', (req, res) => {
   try {
     const secret = req.headers['x-admin-secret'] || req.query.secret;
@@ -1782,180 +1626,80 @@ app.get('/api/admin/analytics', (req, res) => {
 
     const now     = Math.floor(Date.now() / 1000);
     const day     = 86400;
-    const since24 = now - day;   // последние 24 часа
+    const since24 = now - day;
     const since7d = now - day * 7;
     const since30d= now - day * 30;
 
-    // ── Общие игроки (только ТГ — реальные аккаунты, не гости) ──
-    // Регистрация = первый запуск бота и игры (запись в players)
-    const totalPlayers = db.prepare(`SELECT COUNT(*) as n FROM players WHERE id NOT LIKE 'guest_%'`).get().n;
-    // Новые за 24ч = появились в players за последние 24 часа (первый раз запустили)
-    const newToday     = db.prepare(`
-      SELECT COUNT(*) as n FROM players
-      WHERE id NOT LIKE 'guest_%'
-        AND rowid IN (SELECT MIN(rowid) FROM players GROUP BY id)
-        AND updated_at >= ?
-    `).get(since24).n;
-    // Активные = сыграли хотя бы 1 бой (онлайн или с другом, не боты)
-    const activeWeek  = db.prepare(`
-      SELECT COUNT(DISTINCT player_id) as n FROM battle_history
-      WHERE date >= ? AND player_id NOT LIKE 'guest_%'
-        AND mode IN ('online','friend','friend_join')
-    `).get(since7d).n;
-    const activeMonth = db.prepare(`
-      SELECT COUNT(DISTINCT player_id) as n FROM battle_history
-      WHERE date >= ? AND player_id NOT LIKE 'guest_%'
-        AND mode IN ('online','friend','friend_join')
-    `).get(since30d).n;
+    // ── Игроки ──
+    const totalPlayers  = db.prepare(`SELECT COUNT(*) as n FROM players WHERE id NOT LIKE 'guest_%'`).get().n;
+    const newToday      = db.prepare(`SELECT COUNT(*) as n FROM players WHERE updated_at >= ? AND id NOT LIKE 'guest_%'`).get(since24).n;
+    const activeWeek    = db.prepare(`SELECT COUNT(DISTINCT player_id) as n FROM battle_history WHERE date >= ?`).get(since7d).n;
+    const activeMonth   = db.prepare(`SELECT COUNT(DISTINCT player_id) as n FROM battle_history WHERE date >= ?`).get(since30d).n;
 
-    // ── ТГ-специфичные метрики ──
-    // Бои в ТГ = все бои от зарегистрированных игроков (не гостей)
-    const tgBattlesToday = db.prepare(`
-      SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND mode='online' AND result='win' AND player_id NOT LIKE 'guest_%'
-    `).get(since24).n;
-    const tgFriendBattlesToday = db.prepare(`
-      SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND mode IN ('friend','friend_join') AND result='win'
-    `).get(since24).n;
+    // ── Бои ──
+    const battlesToday  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since24).n;
+    const battles7d     = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since7d).n;
+    const battles30d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online'`).get(since30d).n;
+    const battlesTotal  = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online'`).get().n;
 
-    // ── Браузерные гости ──
-    // Уникальные гости за 24ч: нет таблицы, считаем через battle_history
-    // Гостевые бои — тоже по win (но гость может быть и победителем и проигравшим)
-    // Используем: бой есть если хотя бы один из участников гость
-    // Проще всего: все записи mode='online' где player_id=guest_ и result='win'
-    // ИЛИ там где оба гости (нет ТГ-победителя) — берём любую одну запись
-    // Упрощаем: count(win) по гостям + count(win) по НЕгостям в боях где победитель не гость (это 0)
-    // Итого: просто count где result='win' и mode='online' и НЕ считали выше
-    const guestBattlesToday = db.prepare(`
-      SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND mode='online' AND result='win' AND player_id LIKE 'guest_%'
-    `).get(since24).n;
-    const guestBattlesWeek = db.prepare(`
-      SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND mode='online' AND result='win' AND player_id LIKE 'guest_%'
-    `).get(since7d).n;
-    const guestBattlesMonth = db.prepare(`
-      SELECT COUNT(*) as n FROM battle_history
-      WHERE date >= ? AND mode='online' AND result='win' AND player_id LIKE 'guest_%'
-    `).get(since30d).n;
-    const guestBattlesTotal = db.prepare(`
-      SELECT COUNT(*) as n FROM battle_history WHERE mode='online' AND result='win' AND player_id LIKE 'guest_%'
-    `).get().n;
-
-    // ── Бои случайный режим (онлайн) — только зарегистрированные ──
-    // battle_history пишет по 2 записи на бой (победитель + проигравший) — делим на 2
-    // Случайные онлайн-бои: mode='online', result='win', НЕ боты
-    // mode='online' пишется сервером напрямую (socket) — это точно pvp
-    // Исключаем записи где opponent содержит 'бот' — на случай если клиент прислал mode='online' для бота
-    const battlesToday = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win' AND opponent NOT LIKE '%бот%' AND opponent NOT LIKE '%bot%'`).get(since24).n;
-    const battles7d    = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win' AND opponent NOT LIKE '%бот%' AND opponent NOT LIKE '%bot%'`).get(since7d).n;
-    const battles30d   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode='online' AND result='win' AND opponent NOT LIKE '%бот%' AND opponent NOT LIKE '%bot%'`).get(since30d).n;
-    const battlesTotal = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode='online' AND result='win' AND opponent NOT LIKE '%бот%' AND opponent NOT LIKE '%bot%'`).get().n;
-
-    // ── Бои с другом по ссылке — ТГ и браузер раздельно ──
-    // Бои с другом — тоже по result='win' (1 на бой)
-    const friendTgToday   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND result='win'`).get(since24).n;
-    const friendTg7d      = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND result='win'`).get(since7d).n;
-    const friendTg30d     = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND result='win'`).get(since30d).n;
-    const friendTgTotal   = db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode IN ('friend','friend_join') AND result='win'`).get().n;
-    // Гостевые бои с другом — тут оба могут быть гостями, считаем по win
-    const friendGuestToday= db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE date >= ? AND mode IN ('friend','friend_join') AND result='win' AND (player_id LIKE 'guest_%' OR (SELECT COUNT(*) FROM battle_history b2 WHERE b2.date=battle_history.date AND b2.mode=battle_history.mode AND b2.player_id LIKE 'guest_%')>0)`).get(since24).n;
-    const friendGuestTotal= db.prepare(`SELECT COUNT(*) as n FROM battle_history WHERE mode IN ('friend','friend_join') AND result='win' AND (player_id LIKE 'guest_%' OR (SELECT COUNT(*) FROM battle_history b2 WHERE b2.date=battle_history.date AND b2.mode=battle_history.mode AND b2.player_id LIKE 'guest_%')>0)`).get().n;
-
-    // ── Бои по дням (последние 7) с разбивкой онлайн/друг ──
-    const byDay = db.prepare(`
-      SELECT
-        date(date, 'unixepoch', 'localtime') as day,
-        SUM(CASE WHEN mode='online' THEN 1 ELSE 0 END) as online,
-        SUM(CASE WHEN mode IN ('friend','friend_join') THEN 1 ELSE 0 END) as friend
-      FROM battle_history
-      WHERE date >= ? AND player_id NOT LIKE 'guest_%'
-      GROUP BY day ORDER BY day ASC
-    `).all(since7d);
-
-    // ── Точность (по всем боям: онлайн + с другом, все игроки) ──
+    // ── Точность (средняя по всем онлайн-игрокам) ──
     const accRow = db.prepare(`
       SELECT
-        ROUND(100.0 * SUM(total_hits) / NULLIF(SUM(total_shots), 0), 1) as avg_acc,
-        SUM(total_shots) as total_shots,
-        SUM(total_hits)  as total_hits
+        ROUND(100.0 * SUM(online_hits) / NULLIF(SUM(online_shots), 0), 1) as avg_acc,
+        SUM(online_shots) as total_shots,
+        SUM(online_hits)  as total_hits
       FROM players WHERE id NOT LIKE 'guest_%'
     `).get();
 
-    // ── Винрейт (из battle_history — все режимы онлайн + друг) ──
+    // ── Винрейт (из battle_history онлайн) ──
     const vrRow = db.prepare(`
       SELECT
         SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
         SUM(CASE WHEN result='loss' THEN 1 ELSE 0 END) as losses
-      FROM battle_history
-      WHERE mode IN ('online','friend','friend_join')
-        AND player_id NOT LIKE 'guest_%'
+      FROM battle_history WHERE mode='online'
     `).get();
     const totalBattleRows = (vrRow.wins || 0) + (vrRow.losses || 0);
-    const winrate = totalBattleRows > 0 ? Math.round(100 * vrRow.wins / totalBattleRows) : 0;
+    const winrate = totalBattleRows > 0
+      ? Math.round(100 * vrRow.wins / totalBattleRows)
+      : 0;
 
     // ── Покупки ──
-    const purchasesToday = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchased_at >= ? AND purchase_type='stars' AND is_active=1`).get(since24).n;
-    const purchases7d    = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchased_at >= ? AND purchase_type='stars' AND is_active=1`).get(since7d).n;
-    const purchases30d   = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchased_at >= ? AND purchase_type='stars' AND is_active=1`).get(since30d).n;
-    const purchasesTotal = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchase_type='stars' AND is_active=1`).get().n;
-    const refundsTotal   = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchase_type='stars' AND is_active=0`).get().n;
+    const purchasesToday= db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchased_at >= ? AND purchase_type='stars' AND is_active=1`).get(since24).n;
+    const purchases7d   = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchased_at >= ? AND purchase_type='stars' AND is_active=1`).get(since7d).n;
+    const purchases30d  = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchased_at >= ? AND purchase_type='stars' AND is_active=1`).get(since30d).n;
+    const purchasesTotal= db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchase_type='stars' AND is_active=1`).get().n;
+    const refundsTotal  = db.prepare(`SELECT COUNT(*) as n FROM inventory WHERE purchase_type='stars' AND is_active=0`).get().n;
 
     // ── Топ-5 товаров ──
     const topItems = db.prepare(`
       SELECT i.item_id, s.name, COUNT(*) as cnt
-      FROM inventory i LEFT JOIN shop_items s ON s.id = i.item_id
+      FROM inventory i
+      LEFT JOIN shop_items s ON s.id = i.item_id
       WHERE i.purchase_type='stars' AND i.is_active=1
       GROUP BY i.item_id ORDER BY cnt DESC LIMIT 5
     `).all();
 
-    // ── Онлайн прямо сейчас с разбивкой ──
-    const onlineSplit = getOnlineSplit();
+    // ── Бои по дням (последние 7) ──
+    const byDay = db.prepare(`
+      SELECT
+        date(date, 'unixepoch', 'localtime') as day,
+        COUNT(*) as battles
+      FROM battle_history
+      WHERE mode='online' AND date >= ?
+      GROUP BY day ORDER BY day ASC
+    `).all(since7d);
+
+    // ── Онлайн прямо сейчас ──
+    const onlineNow = getOnlineCount();
 
     res.json({ ok: true, data: {
       ts: now,
-      online_now:     onlineSplit.total,
-      online_tg:      onlineSplit.tg,
-      online_guests:  onlineSplit.guests,
-      players: {
-        total:     totalPlayers,
-        new_24h:   newToday,
-        active_7d: activeWeek,
-        active_30d: activeMonth,
-      },
-      tg: {
-        players:       totalPlayers,
-        new_24h:       newToday,
-        active_7d:     activeWeek,
-        active_30d:    activeMonth,
-        battles_today: tgBattlesToday,
-        friend_battles_today: tgFriendBattlesToday,
-      },
-      browser: {
-        // Гостей не регистрируем, считаем уникальных через бои
-        guest_battles_today: guestBattlesToday,
-        guest_battles_week:  guestBattlesWeek,
-        guest_battles_month: guestBattlesMonth,
-        guest_battles_total: guestBattlesTotal,
-        friend_battles_today:  friendGuestToday,
-        friend_battles_total:  friendGuestTotal,
-      },
-      battles: {
-        today: battlesToday, week: battles7d, month: battles30d, total: battlesTotal,
-        by_day: byDay,
-      },
-      friend_battles: {
-        tg_today:    friendTgToday,   tg_week:  friendTg7d,  tg_month: friendTg30d,  tg_total: friendTgTotal,
-        guest_today: friendGuestToday, guest_total: friendGuestTotal,
-        today: friendTgToday + friendGuestToday,
-        week:  friendTg7d,
-        month: friendTg30d,
-        total: friendTgTotal + friendGuestTotal,
-      },
+      players:   { total: totalPlayers, new_24h: newToday, active_7d: activeWeek, active_30d: activeMonth },
+      battles:   { today: battlesToday, week: battles7d, month: battles30d, total: battlesTotal, by_day: byDay },
       accuracy:  { avg_pct: accRow.avg_acc, total_shots: accRow.total_shots, total_hits: accRow.total_hits },
       winrate:   { pct: winrate, wins: vrRow.wins, losses: vrRow.losses },
       purchases: { today: purchasesToday, week: purchases7d, month: purchases30d, total: purchasesTotal, refunds: refundsTotal, top_items: topItems },
+      online_now: onlineNow,
     }});
   } catch(e) { console.error('[analytics]', e); res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -2007,30 +1751,6 @@ app.get('/api/duel/:myId/:theirId', (req, res) => {
   catch(e) { res.status(500).json({ ok: false }); }
 });
 app.get('/api/status',     (req, res) => res.json({ ok: true, rooms: rooms.size, waiting: waitingPool.length, uptime: process.uptime() }));
-
-// Диагностика: разбивка battle_history по mode и result за сегодня (только с секретом)
-app.get('/api/debug/battles', (req, res) => {
-  try {
-    const secret = req.headers['x-admin-secret'] || req.query.secret;
-    if (!SHOP_SECRET || secret !== SHOP_SECRET) return res.status(403).json({ ok: false });
-    const now = Math.floor(Date.now() / 1000);
-    const since24 = now - 86400;
-    const breakdown = db.prepare(`
-      SELECT mode, result, COUNT(*) as n
-      FROM battle_history
-      WHERE date >= ?
-      GROUP BY mode, result
-      ORDER BY mode, result
-    `).all(since24);
-    const sample = db.prepare(`
-      SELECT id, player_id, result, opponent, mode, datetime(date,'unixepoch','localtime') as dt
-      FROM battle_history
-      WHERE date >= ? AND mode='online' AND result='win'
-      ORDER BY date DESC LIMIT 20
-    `).all(since24);
-    res.json({ ok: true, breakdown, sample_online_wins: sample });
-  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
-});
 
 // DEBUG — смотрим реальное состояние БД для игрока (только с секретом)
 // Диагностика — доступна для админа без секрета
@@ -2152,19 +1872,16 @@ function requireTelegramAuth(req, res, next) {
 
 app.get('/api/inventory/:userId', (req, res) => {
   try {
-    const rawUserId = req.params.userId;
-    if (!rawUserId || rawUserId.startsWith('guest_')) return res.json({ ok: true, data: { items: [], equipped: {} } });
-    // Нормализуем сразу — убираем .0 и лишние символы
-    const userId = normalizeId(rawUserId);
-    if (!userId) return res.json({ ok: true, data: { items: [], equipped: {} } });
+    const { userId } = req.params;
+    if (!userId || userId.startsWith('guest_')) return res.json({ ok: true, data: { items: [], equipped: {} } });
 
     const initData   = req.headers['x-telegram-init-data'];
     const verifiedId = initData ? verifyTelegramInitData(initData) : null;
 
     console.log(`[Inventory] userId=${userId} initData=${!!initData} verifiedId=${verifiedId} isAdmin=${isAdmin(userId)}`);
 
-    if (verifiedId && verifiedId !== userId) {
-      console.log(`[Inventory] BLOCKED: verifiedId=${verifiedId} !== userId=${userId}`);
+    if (verifiedId && verifiedId !== normalizeId(userId)) {
+      console.log(`[Inventory] BLOCKED: verifiedId=${verifiedId} !== userId=${normalizeId(userId)}`);
       return res.status(403).json({ ok: false, error: 'forbidden' });
     }
 

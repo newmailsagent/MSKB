@@ -682,13 +682,29 @@ function renderRatingList(data) {
     div.className = 'lb-item' + (isMe ? ' lb-item-me' : '');
     div.innerHTML =
       '<div class="lb-rank ' + (medals[i]||'') + '">' + (i < 3 ? ['🥇','🥈','🥉'][i] : i+1) + '</div>' +
-      '<div class="lb-avatar-wrap"><div class="lb-avatar lb-frame-' + level + '">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
-      '<div class="lb-level-dot level-bg-' + level + '">' + level + '</div></div>' +
+      '<div class="lb-avatar-wrap" data-lb-avatar-me="' + (isMe?'1':'0') + '" data-lb-level="' + level + '">' +
+      '<div class="lb-avatar lb-frame-' + level + '">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
+      '<div class="lb-level-dot level-bg-' + level + '">' + level + '</div>' +
+      '</div>' +
       '<div class="lb-info"><strong>' + (entry.name||'Игрок') + (isMe ? ' <small>(вы)</small>' : '') + '</strong>' +
       '<small class="lb-rank-name">' + rankDisplay + ' · ' + rw + 'W · ' + wr + '% WR</small></div>' +
       '<div class="lb-wins">' + rw + '</div>';
     list.appendChild(div);
   });
+
+  // Применяем кастомную рамку к своей аватарке в рейтинге
+  const lbFrameId = getEquippedFrameId();
+  if (lbFrameId) {
+    list.querySelectorAll('[data-lb-avatar-me="1"]').forEach(wrap => {
+      const level = parseInt(wrap.dataset.lbLevel) || 1;
+      const letter = (App.user.name[0]||'?').toUpperCase();
+      wrap.outerHTML = buildAvatarFrame({
+        size: 36, photo: App.user.photo || null,
+        letter, level, levelClass: 'level-bg-' + level,
+        frameId: lbFrameId,
+      });
+    });
+  }
 }
 
 async function renderStatsScreen(mode) {
@@ -3111,15 +3127,29 @@ async function renderProfileScreen(tab) {
   const bar = document.getElementById('profile-progress-bar');
   if (bar) bar.style.width = prog.pct + '%';
 
-  // Рамка аватара с уровнем
+  // Рамка аватара — кастомная SVG или стандартная по уровню
   const frameEl = document.getElementById('profile-avatar-frame');
-  if (frameEl) frameEl.className = 'profile-avatar-frame level-frame-' + prog.level;
-
-  const avEl = document.getElementById('profile-avatar');
-  if (avEl) {
-    avEl.innerHTML = App.user.photo
-      ? `<img src="${App.user.photo}" alt="">`
-      : (App.user.name[0]||'?').toUpperCase();
+  const profileFrameId = getEquippedFrameId();
+  if (profileFrameId && frameEl) {
+    // Заменяем враппер на кастомную рамку
+    const wrap = frameEl.closest('.profile-avatar-wrap') || frameEl.parentElement;
+    if (wrap) {
+      wrap.innerHTML = buildAvatarFrame({
+        size: 72, photo: App.user.photo || null,
+        letter: (App.user.name[0]||'?').toUpperCase(),
+        level: prog.level, levelClass: 'level-bg-' + prog.level,
+        frameId: profileFrameId, showBadge: false,
+      });
+      // Восстанавливаем бейдж уровня отдельно — он в profile-level-tag
+    }
+  } else {
+    if (frameEl) frameEl.className = 'profile-avatar-frame level-frame-' + prog.level;
+    const avEl = document.getElementById('profile-avatar');
+    if (avEl) {
+      avEl.innerHTML = App.user.photo
+        ? `<img src="${App.user.photo}" alt="">`
+        : (App.user.name[0]||'?').toUpperCase();
+    }
   }
 
   // Уровень-бейдж
@@ -3430,6 +3460,87 @@ function handleSwipeBack() {
 }
 
 /* ─── АВАТАР В БОЕВОМ ЭКРАНЕ ─────────────────────── */
+
+// ── КАСТОМНЫЕ РАМКИ АВАТАРОК ─────────────────────────────────────────────────
+
+// Метаданные рамок: позиция подложки уровня (доля от размера враппера)
+const FRAME_META = {
+  frame_1: { badgeRight: 0.084, badgeBottom: 0.116, badgeW: 0.242, badgeH: 0.237 },
+  frame_2: { badgeRight: 0.062, badgeBottom: 0.138, badgeW: 0.254, badgeH: 0.229 },
+  frame_3: { badgeRight: 0.101, badgeBottom: 0.096, badgeW: 0.233, badgeH: 0.249 },
+  frame_4: { badgeRight: 0.062, badgeBottom: 0.096, badgeW: 0.254, badgeH: 0.249 },
+};
+
+/**
+ * Строит HTML враппера с кастомной SVG рамкой.
+ * @param {object} opts
+ *   size       — число пикселей (72, 51, 42, 40, 36, 28)
+ *   photo      — URL фото или null
+ *   letter     — буква-заглушка если нет фото
+ *   level      — номер уровня (для бейджа)
+ *   levelClass — CSS-класс цвета бейджа (level-bg-N)
+ *   frameId    — id рамки ('frame_1' ... 'frame_4') или null
+ *   showBadge  — показывать ли бейдж уровня (default true)
+ * @returns HTML-строка
+ */
+function buildAvatarFrame({ size = 72, photo = null, letter = '?', level = 1, levelClass = '', frameId = null, showBadge = true } = {}) {
+  const meta = frameId ? FRAME_META[frameId] : null;
+
+  // Фото или буква
+  const photoHTML = photo
+    ? `<img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">`
+    : `<span style="font-size:${Math.round(size*0.35)}px;font-weight:700;line-height:1">${letter}</span>`;
+
+  // Фото-слой
+  const photoLayer = `<div class="avatar-frame-photo" style="
+    left:${size*0.1425}px;top:${size*0.1425}px;
+    width:${size*0.715}px;height:${size*0.715}px;
+    border-radius:${size*0.134}px;
+  ">${photoHTML}</div>`;
+
+  // SVG рамка
+  const svgLayer = frameId
+    ? `<img class="avatar-frame-svg" src="/frames/${frameId}.svg" alt="">`
+    : '';
+
+  // Бейдж уровня
+  let badgeLayer = '';
+  if (showBadge && level) {
+    if (meta) {
+      // Позиционируем точно по подложке из SVG
+      const bw = size * meta.badgeW;
+      const bh = size * meta.badgeH;
+      const br = size * meta.badgeRight;
+      const bb = size * meta.badgeBottom;
+      const fs = Math.max(8, Math.round(bh * 0.52));
+      badgeLayer = `<div class="avatar-frame-level ${levelClass}" style="
+        position:absolute;
+        right:${br}px;bottom:${bb}px;
+        width:${bw}px;height:${bh}px;
+        min-width:0;padding:0;
+        border-radius:${bw*0.22}px;
+        font-size:${fs}px;
+        background:transparent;
+        color:#fff;
+        display:flex;align-items:center;justify-content:center;
+        z-index:2;pointer-events:none;
+      ">${level}</div>`;
+    } else {
+      // Без рамки — стандартный бейдж
+      badgeLayer = `<div class="level-badge ${levelClass}" style="font-size:${Math.max(8,Math.round(size*0.155))}px">${level}</div>`;
+    }
+  }
+
+  return `<div class="avatar-frame-wrap size-${size}" style="width:${size}px;height:${size}px">${photoLayer}${svgLayer}${badgeLayer}</div>`;
+}
+
+/**
+ * Получить текущий frameId из экипировки (или null)
+ */
+function getEquippedFrameId() {
+  return _shopEquipped?.['frame'] || null;
+}
+
 function renderOpponentAvatar(name, isBot) {
   // Совместимость — обновляем и старый блок (hidden) и новый футер
   updateGameFooter();
@@ -3443,9 +3554,18 @@ function updateGameFooter() {
   const oppRank  = Game.opponent?.rank  || '';
   const oppName  = Game.opponent?.name  || (isBot ? 'Бот' : 'Соперник');
 
-  // Мой аватар — квадратный со скруглёнными углами, рамка по уровню
+  // Мой аватар — кастомная рамка или стандартная по уровню
+  const meAvatarWrap = document.getElementById('gf-me-avatar-wrap');
   const meAvatar = document.getElementById('gf-me-avatar');
-  if (meAvatar) {
+  const gfFrameId = getEquippedFrameId();
+  if (gfFrameId && meAvatarWrap) {
+    meAvatarWrap.innerHTML = buildAvatarFrame({
+      size: 40, photo: App.user.photo || null,
+      letter: (App.user.name[0]||'?').toUpperCase(),
+      level: myProg.level, levelClass: 'level-bg-' + myProg.level,
+      frameId: gfFrameId,
+    });
+  } else if (meAvatar) {
     if (App.user.photo) {
       meAvatar.innerHTML = `<img src="${App.user.photo}" />`;
     } else {
@@ -3453,9 +3573,8 @@ function updateGameFooter() {
     }
     meAvatar.className = `gf-avatar gf-frame-${myProg.level}`;
   }
-  // Уровень: level-bg-N = правильный цвет фона (как в рейтинге, профиле и т.д.)
   const meLevel = document.getElementById('gf-me-level');
-  if (meLevel) {
+  if (!gfFrameId && meLevel) {
     meLevel.textContent = myProg.level;
     meLevel.className   = `gf-level level-bg-${myProg.level}`;
   }

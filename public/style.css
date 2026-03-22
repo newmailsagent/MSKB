@@ -2590,3 +2590,84 @@ body.theme-light .achievements-title { color: rgba(0,0,0,.4); }
     gap: 10px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   КАСТОМНЫЕ SVG РАМКИ ДЛЯ АВАТАРОК
+   Структура:
+     .avatar-frame-wrap  — враппер нужного размера
+       .avatar-frame-photo — фото с clip (border-radius)
+       .avatar-frame-svg   — SVG рамка поверх (position:absolute, 100%×100%)
+       .avatar-frame-level — бейдж уровня (position:absolute)
+   ═══════════════════════════════════════════════════════════ */
+
+/* Базовый враппер — размер задаётся через --afw-size */
+.avatar-frame-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width:  var(--afw-size, 72px);
+  height: var(--afw-size, 72px);
+}
+
+/* Фото внутри — кропается в скруглённый квадрат */
+/* Размер фото = 71.5% от враппера, offset = 14.25% */
+.avatar-frame-photo {
+  position: absolute;
+  left:   calc(var(--afw-size, 72px) * 0.1425);
+  top:    calc(var(--afw-size, 72px) * 0.1425);
+  width:  calc(var(--afw-size, 72px) * 0.715);
+  height: calc(var(--afw-size, 72px) * 0.715);
+  border-radius: calc(var(--afw-size, 72px) * 0.134); /* 25/186 ≈ 13.4% */
+  overflow: hidden;
+  background: var(--bg2);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+}
+.avatar-frame-photo img,
+.avatar-frame-photo .avatar-inner-img {
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+
+/* SVG рамка — поверх фото, на весь враппер */
+.avatar-frame-svg {
+  position: absolute;
+  top: 0; left: 0;
+  width:  100%;
+  height: 100%;
+  pointer-events: none;
+  display: block;
+}
+
+/* Бейдж уровня — позиционируется в правый нижний угол подложки из SVG */
+/* Подложка в SVG: правый нижний угол ~67.5% от левого края, ~64.8% от верха */
+/* (x=125.5/186=67.5%, y=120.5/186=64.8%, центр подложки: x=79.6%, y=76.6%) */
+.avatar-frame-level {
+  position: absolute;
+  /* Центр подложки уровня из SVG */
+  right:  calc(var(--afw-size, 72px) * 0.09);
+  bottom: calc(var(--afw-size, 72px) * 0.06);
+  min-width: calc(var(--afw-size, 72px) * 0.28);
+  height:    calc(var(--afw-size, 72px) * 0.28);
+  padding: 0 3px;
+  border-radius: calc(var(--afw-size, 72px) * 0.07);
+  font-size: calc(var(--afw-size, 72px) * 0.145);
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+  /* Без внешней рамки — фон уже дан SVG подложкой */
+  background: transparent;
+  color: #fff;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Размеры для каждого контекста */
+.avatar-frame-wrap.size-72  { --afw-size: 72px; }
+.avatar-frame-wrap.size-51  { --afw-size: 51px; }
+.avatar-frame-wrap.size-42  { --afw-size: 42px; }
+.avatar-frame-wrap.size-40  { --afw-size: 40px; }
+.avatar-frame-wrap.size-36  { --afw-size: 36px; }
+.avatar-frame-wrap.size-28  { --afw-size: 28px; }
