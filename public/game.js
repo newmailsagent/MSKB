@@ -698,11 +698,17 @@ function renderRatingList(data) {
     list.querySelectorAll('[data-lb-avatar-me="1"]').forEach(wrap => {
       const level = parseInt(wrap.dataset.lbLevel) || 1;
       const letter = (App.user.name[0]||'?').toUpperCase();
-      wrap.outerHTML = buildAvatarFrame({
+      // Создаём temp div и берём firstChild чтобы заменить outerHTML
+      const tmp = document.createElement('div');
+      tmp.innerHTML = buildAvatarFrame({
         size: 36, photo: App.user.photo || null,
         letter, level, levelClass: 'level-bg-' + level,
         frameId: lbFrameId,
       });
+      const newEl = tmp.firstChild;
+      // Сохраняем стиль lb-avatar-wrap для выравнивания
+      newEl.style.display = 'inline-flex';
+      wrap.replaceWith(newEl);
     });
   }
 }
@@ -2560,8 +2566,11 @@ function updateMenuLevel() {
   const badge = document.getElementById('menu-level-badge');
   if (badge) badge.className = 'level-badge level-bg-' + prog.level;
   // Рамка аватара на главной — кастомная SVG или цвет уровня
-  const menuAvatarWrap = document.getElementById('user-avatar')?.closest('.avatar-wrap');
   const menuFrameId = getEquippedFrameId();
+  // Ищем враппер — он может содержать либо стандартный #user-avatar,
+  // либо уже buildAvatarFrame (после применения рамки)
+  const menuAvatarWrap = document.getElementById('user-avatar')?.closest('.avatar-wrap')
+    || document.querySelector('.menu-header .avatar-wrap');
   if (menuFrameId && menuAvatarWrap) {
     menuAvatarWrap.innerHTML = buildAvatarFrame({
       size: 42, photo: App.user.photo || null,
@@ -2569,9 +2578,14 @@ function updateMenuLevel() {
       level: prog.level, levelClass: 'level-bg-' + prog.level,
       frameId: menuFrameId,
     });
-  } else {
+  } else if (menuAvatarWrap) {
+    // Восстанавливаем стандартный аватар если рамка снята
+    if (!document.getElementById('user-avatar')) {
+      menuAvatarWrap.innerHTML = `<div class="avatar" id="user-avatar"></div><div class="level-badge" id="menu-level-badge">${prog.level}</div>`;
+    }
     const avatar = document.getElementById('user-avatar');
     if (avatar) {
+      avatar.innerHTML = App.user.photo ? `<img src="${App.user.photo}" alt="" />` : (App.user.name[0]||'?').toUpperCase();
       const color = LEVEL_FRAME_COLORS[prog.level] || '#607d8b';
       avatar.style.borderColor = color;
       avatar.style.borderWidth = '2px';
@@ -3475,10 +3489,16 @@ function handleSwipeBack() {
 
 // Метаданные рамок: позиция подложки уровня (доля от размера враппера)
 const FRAME_META = {
-  frame_1: { badgeRight: 0.084, badgeBottom: 0.116, badgeW: 0.242, badgeH: 0.237 },
-  frame_2: { badgeRight: 0.062, badgeBottom: 0.138, badgeW: 0.254, badgeH: 0.229 },
-  frame_3: { badgeRight: 0.101, badgeBottom: 0.096, badgeW: 0.233, badgeH: 0.249 },
-  frame_4: { badgeRight: 0.062, badgeBottom: 0.096, badgeW: 0.254, badgeH: 0.249 },
+  // pct=размер фото (доля), ox/oy=отступ сверху/слева, radius=скругление
+  // badgeRight/Bottom=отступ бейджа от правого/нижнего края, badgeW/H=размер бейджа
+  frame_1: { pct:0.731, ox:0.134, oy:0.113, radius:0.134,
+             badgeRight:0.084, badgeBottom:0.116, badgeW:0.242, badgeH:0.237 },
+  frame_2: { pct:0.661, ox:0.130, oy:0.109, radius:0.134,
+             badgeRight:0.062, badgeBottom:0.138, badgeW:0.254, badgeH:0.229 },
+  frame_3: { pct:0.663, ox:0.166, oy:0.109, radius:0.134,
+             badgeRight:0.101, badgeBottom:0.096, badgeW:0.233, badgeH:0.249 },
+  frame_4: { pct:0.684, ox:0.175, oy:0.119, radius:0.134,
+             badgeRight:0.062, badgeBottom:0.096, badgeW:0.254, badgeH:0.249 },
 };
 
 /**
@@ -3501,11 +3521,15 @@ function buildAvatarFrame({ size = 72, photo = null, letter = '?', level = 1, le
     ? `<img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">`
     : `<span style="font-size:${Math.round(size*0.35)}px;font-weight:700;line-height:1">${letter}</span>`;
 
-  // Фото-слой
+  // Фото-слой — размер берётся из FRAME_META для каждой рамки
+  const pct    = meta ? meta.pct    : 0.72;
+  const ox     = meta ? meta.ox     : 0.14;
+  const oy     = meta ? meta.oy     : 0.14;
+  const radius = meta ? meta.radius : 0.134;
   const photoLayer = `<div class="avatar-frame-photo" style="
-    left:${size*0.10}px;top:${size*0.10}px;
-    width:${size*0.80}px;height:${size*0.80}px;
-    border-radius:${size*0.134}px;
+    left:${(size*ox).toFixed(1)}px;top:${(size*oy).toFixed(1)}px;
+    width:${(size*pct).toFixed(1)}px;height:${(size*pct).toFixed(1)}px;
+    border-radius:${(size*radius).toFixed(1)}px;
   ">${photoHTML}</div>`;
 
   // SVG рамка
@@ -4140,14 +4164,20 @@ async function applyFrameAndRefresh(itemId, equip = true) {
     delete _shopEquipped['frame'];
   }
   showLoaderOverMenu(hide => {
-    setTimeout(() => {
+    setTimeout(async () => {
       hide && hide();
-      updateMenuLevel();   // обновляет аватар на главной
+      // Перезагружаем данные магазина чтобы _shopEquipped был актуален
+      await loadShopData();
+      updateMenuLevel();
       renderInventory();
       renderShopGrid();
-      if (currentScreen === 'profile') showScreen('profile');
-      else if (currentScreen === 'leaderboard') renderLeaderboard();
-      else showScreen('menu');
+      if (currentScreen === 'profile') {
+        showScreen('profile');
+      } else if (currentScreen === 'leaderboard') {
+        renderLeaderboard();
+      } else {
+        showScreen('menu');
+      }
     }, 400);
   });
 }
