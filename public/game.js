@@ -3160,27 +3160,24 @@ async function renderProfileScreen(tab) {
   if (bar) bar.style.width = prog.pct + '%';
 
   // Рамка аватара — кастомная SVG или стандартная по уровню
-  const frameEl = document.getElementById('profile-avatar-frame');
+  // Ищем .profile-avatar-wrap напрямую — #profile-avatar-frame может быть заменён предыдущим вызовом
+  const profileAvatarWrap = document.querySelector('.profile-avatar-wrap');
   const profileFrameId = getEquippedFrameId();
-  if (profileFrameId && frameEl) {
-    const wrap = frameEl.closest('.profile-avatar-wrap') || frameEl.parentElement;
-    if (wrap) {
-      // showBadge:true — бейдж рендерится внутри buildAvatarFrame по SVG-подложке
-      wrap.innerHTML = buildAvatarFrame({
-        photoSize: 72, photo: App.user.photo || null,
-        letter: (App.user.name[0]||'?').toUpperCase(),
-        level: prog.level, levelClass: 'level-bg-' + prog.level,
-        frameId: profileFrameId, showBadge: true,
-      });
-    }
-  } else {
-    if (frameEl) frameEl.className = 'profile-avatar-frame level-frame-' + prog.level;
-    const avEl = document.getElementById('profile-avatar');
-    if (avEl) {
-      avEl.innerHTML = App.user.photo
-        ? `<img src="${App.user.photo}" alt="">`
-        : (App.user.name[0]||'?').toUpperCase();
-    }
+  if (profileFrameId && profileAvatarWrap) {
+    profileAvatarWrap.innerHTML = buildAvatarFrame({
+      photoSize: 72, photo: App.user.photo || null,
+      letter: (App.user.name[0]||'?').toUpperCase(),
+      level: prog.level, levelClass: 'level-bg-' + prog.level,
+      frameId: profileFrameId, showBadge: true,
+    });
+  } else if (profileAvatarWrap) {
+    // Восстанавливаем стандартный аватар если рамка снята или не надета
+    profileAvatarWrap.innerHTML = `
+      <div class="profile-avatar-frame level-frame-${prog.level}" id="profile-avatar-frame">
+        <div class="profile-avatar" id="profile-avatar">
+          ${App.user.photo ? `<img src="${App.user.photo}" alt="">` : (App.user.name[0]||'?').toUpperCase()}
+        </div>
+      </div>`;
   }
 
   // Уровень-бейдж
