@@ -3489,15 +3489,16 @@ function handleSwipeBack() {
 
 // Метаданные рамок: позиция подложки уровня (доля от размера враппера)
 const FRAME_META = {
-  // pct=размер фото (доля), ox/oy=отступ сверху/слева, radius=скругление
-  // badgeRight/Bottom=отступ бейджа от правого/нижнего края, badgeW/H=размер бейджа
-  frame_1: { pct:0.731, ox:0.134, oy:0.113, radius:0.134,
+  // pct=размер фото (доля от wrapSize), ox/oy=отступ слева/сверху (доля от wrapSize)
+  // aspect=соотношение сторон SVG (w/h), radius=скругление фото
+  // badgeRight/Bottom=отступ бейджа от края, badgeW/H=размер бейджа
+  frame_1: { pct:0.731, ox:0.134, oy:0.113, aspect:1.000, radius:0.134,
              badgeRight:0.084, badgeBottom:0.116, badgeW:0.242, badgeH:0.237 },
-  frame_2: { pct:0.661, ox:0.130, oy:0.109, radius:0.134,
+  frame_2: { pct:0.661, ox:0.169, oy:0.109, aspect:0.922, radius:0.134,
              badgeRight:0.062, badgeBottom:0.138, badgeW:0.254, badgeH:0.229 },
-  frame_3: { pct:0.663, ox:0.166, oy:0.109, radius:0.134,
+  frame_3: { pct:0.658, ox:0.166, oy:0.150, aspect:1.090, radius:0.134,
              badgeRight:0.101, badgeBottom:0.096, badgeW:0.233, badgeH:0.249 },
-  frame_4: { pct:0.684, ox:0.175, oy:0.119, radius:0.134,
+  frame_4: { pct:0.650, ox:0.175, oy:0.153, aspect:1.000, radius:0.134,
              badgeRight:0.062, badgeBottom:0.096, badgeW:0.254, badgeH:0.249 },
 };
 
@@ -3524,19 +3525,17 @@ function buildAvatarFrame({ photoSize = 72, photo = null, letter = '?', level = 
   const radius = meta ? meta.radius : 0.134;
   const size   = meta ? Math.round(photoSize / pct) : photoSize;
 
-  // Для несимметричных рамок (frame_2: 177x192, frame_3: 193x177)
-  // SVG img нужно позиционировать по центру
-  const frameAspect = { frame_2: 177/192, frame_3: 193/177 };
-  const aspect = frameId ? (frameAspect[frameId] || 1) : 1;
-  let svgStyle = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:block;';
-  if (aspect !== 1 && frameId) {
-    if (aspect < 1) {
-      // Высота > ширины (frame_2): подгоняем по высоте, центрируем по X
-      svgStyle = `position:absolute;top:0;height:100%;width:auto;left:50%;transform:translateX(-50%);pointer-events:none;display:block;`;
-    } else {
-      // Ширина > высоты (frame_3): подгоняем по ширине, центрируем по Y
-      svgStyle = `position:absolute;left:0;width:100%;height:auto;top:50%;transform:translateY(-50%);pointer-events:none;display:block;`;
-    }
+  // SVG позиционирование: для несимметричных рамок центрируем по меньшей стороне
+  const aspect = meta ? (meta.aspect || 1) : 1;
+  let svgStyle;
+  if (aspect < 1) {
+    // Высота > ширины (frame_2 0.922): по высоте 100%, ширина auto, центр по X
+    svgStyle = 'position:absolute;top:0;height:100%;width:auto;left:50%;transform:translateX(-50%);pointer-events:none;display:block;';
+  } else if (aspect > 1) {
+    // Ширина > высоты (frame_3 1.090): по ширине 100%, высота auto, центр по Y
+    svgStyle = 'position:absolute;left:0;width:100%;height:auto;top:50%;transform:translateY(-50%);pointer-events:none;display:block;';
+  } else {
+    svgStyle = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:block;';
   }
 
   // Фото или буква

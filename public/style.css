@@ -1029,7 +1029,12 @@ body.theme-light .tg-promo-banner { border-color: rgba(0,0,0,.1); }
 .opp-rank-small { font-size: 10px; color: var(--hint); margin-top: 1px; }
 
 /* ─── Уровень в рейтинге ─── */
-.lb-avatar-wrap { position: relative; display: inline-block; }
+.lb-avatar-wrap {
+  position: relative; display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 36px; height: 36px; /* фиксированная ячейка — рамка может выходить за счёт overflow:visible */
+  overflow: visible; flex-shrink: 0;
+}
 .lb-level-dot {
   position: absolute; bottom: -3px; right: -5px;
   min-width: 16px; height: 16px; padding: 0 3px;
