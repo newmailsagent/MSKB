@@ -701,7 +701,7 @@ function renderRatingList(data) {
       // Создаём temp div и берём firstChild чтобы заменить outerHTML
       const tmp = document.createElement('div');
       tmp.innerHTML = buildAvatarFrame({
-        size: 36, photo: App.user.photo || null,
+        photoSize: 36, photo: App.user.photo || null,
         letter, level, levelClass: 'level-bg-' + level,
         frameId: lbFrameId,
       });
@@ -2573,7 +2573,7 @@ function updateMenuLevel() {
     || document.querySelector('.menu-header .avatar-wrap');
   if (menuFrameId && menuAvatarWrap) {
     menuAvatarWrap.innerHTML = buildAvatarFrame({
-      size: 42, photo: App.user.photo || null,
+      photoSize: 42, photo: App.user.photo || null,
       letter: (App.user.name[0]||'?').toUpperCase(),
       level: prog.level, levelClass: 'level-bg-' + prog.level,
       frameId: menuFrameId,
@@ -3160,7 +3160,7 @@ async function renderProfileScreen(tab) {
     if (wrap) {
       // showBadge:true — бейдж рендерится внутри buildAvatarFrame по SVG-подложке
       wrap.innerHTML = buildAvatarFrame({
-        size: 72, photo: App.user.photo || null,
+        photoSize: 72, photo: App.user.photo || null,
         letter: (App.user.name[0]||'?').toUpperCase(),
         level: prog.level, levelClass: 'level-bg-' + prog.level,
         frameId: profileFrameId, showBadge: true,
@@ -3504,7 +3504,7 @@ const FRAME_META = {
 /**
  * Строит HTML враппера с кастомной SVG рамкой.
  * @param {object} opts
- *   size       — число пикселей (72, 51, 42, 40, 36, 28)
+ *   photoSize  — размер фото (равен стандартному аватару, например 36, 42, 72)
  *   photo      — URL фото или null
  *   letter     — буква-заглушка если нет фото
  *   level      — номер уровня (для бейджа)
@@ -3513,59 +3513,72 @@ const FRAME_META = {
  *   showBadge  — показывать ли бейдж уровня (default true)
  * @returns HTML-строка
  */
-function buildAvatarFrame({ size = 72, photo = null, letter = '?', level = 1, levelClass = '', frameId = null, showBadge = true } = {}) {
+function buildAvatarFrame({ photoSize = 72, photo = null, letter = '?', level = 1, levelClass = '', frameId = null, showBadge = true } = {}) {
   const meta = frameId ? FRAME_META[frameId] : null;
 
-  // Фото или буква
-  const photoHTML = photo
-    ? `<img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">`
-    : `<span style="font-size:${Math.round(size*0.35)}px;font-weight:700;line-height:1">${letter}</span>`;
-
-  // Фото-слой — размер берётся из FRAME_META для каждой рамки
+  // Враппер рассчитывается так чтобы фото внутри = photoSize
+  // size = photoSize / pct, тогда size * pct = photoSize
   const pct    = meta ? meta.pct    : 0.72;
   const ox     = meta ? meta.ox     : 0.14;
   const oy     = meta ? meta.oy     : 0.14;
   const radius = meta ? meta.radius : 0.134;
+  const size   = meta ? Math.round(photoSize / pct) : photoSize;
+
+  // Для несимметричных рамок (frame_2: 177x192, frame_3: 193x177)
+  // SVG img нужно позиционировать по центру
+  const frameAspect = { frame_2: 177/192, frame_3: 193/177 };
+  const aspect = frameId ? (frameAspect[frameId] || 1) : 1;
+  let svgStyle = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:block;';
+  if (aspect !== 1 && frameId) {
+    if (aspect < 1) {
+      // Высота > ширины (frame_2): подгоняем по высоте, центрируем по X
+      svgStyle = `position:absolute;top:0;height:100%;width:auto;left:50%;transform:translateX(-50%);pointer-events:none;display:block;`;
+    } else {
+      // Ширина > высоты (frame_3): подгоняем по ширине, центрируем по Y
+      svgStyle = `position:absolute;left:0;width:100%;height:auto;top:50%;transform:translateY(-50%);pointer-events:none;display:block;`;
+    }
+  }
+
+  // Фото или буква
+  const photoHTML = photo
+    ? `<img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">`
+    : `<span style="font-size:${Math.round(photoSize*0.40)}px;font-weight:700;line-height:1">${letter}</span>`;
+
+  // Фото-слой — размер = photoSize, позиционируется по ox/oy
   const photoLayer = `<div class="avatar-frame-photo" style="
     left:${(size*ox).toFixed(1)}px;top:${(size*oy).toFixed(1)}px;
-    width:${(size*pct).toFixed(1)}px;height:${(size*pct).toFixed(1)}px;
-    border-radius:${(size*radius).toFixed(1)}px;
+    width:${photoSize}px;height:${photoSize}px;
+    border-radius:${(photoSize*radius/pct).toFixed(1)}px;
   ">${photoHTML}</div>`;
 
   // SVG рамка
   const svgLayer = frameId
-    ? `<img class="avatar-frame-svg" src="/frames/${frameId}.svg" alt="">`
+    ? `<img class="avatar-frame-svg" src="/frames/${frameId}.svg" alt="" style="${svgStyle}">`
     : '';
 
   // Бейдж уровня
   let badgeLayer = '';
   if (showBadge && level) {
     if (meta) {
-      // Позиционируем точно по подложке из SVG
       const bw = size * meta.badgeW;
       const bh = size * meta.badgeH;
       const br = size * meta.badgeRight;
       const bb = size * meta.badgeBottom;
       const fs = Math.max(8, Math.round(bh * 0.52));
       badgeLayer = `<div class="avatar-frame-level ${levelClass}" style="
-        position:absolute;
-        right:${br}px;bottom:${bb}px;
-        width:${bw}px;height:${bh}px;
-        min-width:0;padding:0;
-        border-radius:${bw*0.22}px;
-        font-size:${fs}px;
-        background:transparent;
-        color:#fff;
+        position:absolute;right:${br.toFixed(1)}px;bottom:${bb.toFixed(1)}px;
+        width:${bw.toFixed(1)}px;height:${bh.toFixed(1)}px;
+        min-width:0;padding:0;border-radius:${(bw*0.22).toFixed(1)}px;
+        font-size:${fs}px;background:transparent;color:#fff;
         display:flex;align-items:center;justify-content:center;
         z-index:2;pointer-events:none;
       ">${level}</div>`;
     } else {
-      // Без рамки — стандартный бейдж
-      badgeLayer = `<div class="level-badge ${levelClass}" style="font-size:${Math.max(8,Math.round(size*0.155))}px">${level}</div>`;
+      badgeLayer = `<div class="level-badge ${levelClass}" style="font-size:${Math.max(8,Math.round(photoSize*0.155))}px">${level}</div>`;
     }
   }
 
-  return `<div class="avatar-frame-wrap size-${size}" style="width:${size}px;height:${size}px">${photoLayer}${svgLayer}${badgeLayer}</div>`;
+  return `<div class="avatar-frame-wrap" style="position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:${size}px;height:${size}px;">${photoLayer}${svgLayer}${badgeLayer}</div>`;
 }
 
 /**
@@ -3594,7 +3607,7 @@ function updateGameFooter() {
   const gfFrameId = getEquippedFrameId();
   if (gfFrameId && meAvatarWrap) {
     meAvatarWrap.innerHTML = buildAvatarFrame({
-      size: 40, photo: App.user.photo || null,
+      photoSize: 40, photo: App.user.photo || null,
       letter: (App.user.name[0]||'?').toUpperCase(),
       level: myProg.level, levelClass: 'level-bg-' + myProg.level,
       frameId: gfFrameId,
@@ -4171,10 +4184,15 @@ async function applyFrameAndRefresh(itemId, equip = true) {
       updateMenuLevel();
       renderInventory();
       renderShopGrid();
-      if (currentScreen === 'profile') {
+      // currentScreen может быть 'shop-item' когда открыли из профиля/инвентаря
+      const backTarget = _shopItemBackTarget || 'menu';
+      if (currentScreen === 'profile' || (currentScreen === 'shop-item' && backTarget === 'profile')) {
         showScreen('profile');
       } else if (currentScreen === 'leaderboard') {
         renderLeaderboard();
+        showScreen('leaderboard');
+      } else if (currentScreen === 'shop-item') {
+        showScreen(backTarget);
       } else {
         showScreen('menu');
       }
