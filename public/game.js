@@ -3845,6 +3845,21 @@ let _sliderStartX          = 0;
 let _sliderWasDrag         = false;
 let _sliderBusy            = false;
 let _sliderPlayerReactions = [];
+const RECENT_REACTIONS_KEY = 'bteship_recent_reactions';
+const RECENT_REACTIONS_MAX = 3;
+
+function getRecentReactions() {
+  try { return JSON.parse(localStorage.getItem(RECENT_REACTIONS_KEY) || '[]'); } catch { return []; }
+}
+function saveRecentReaction(item) {
+  try {
+    const key = item.type === 'custom' ? ('c:' + item.id) : ('e:' + item.value);
+    let recent = getRecentReactions().filter(k => k !== key);
+    recent.unshift(key);
+    recent = recent.slice(0, RECENT_REACTIONS_MAX);
+    localStorage.setItem(RECENT_REACTIONS_KEY, JSON.stringify(recent));
+  } catch {}
+}
 
 const ITEM_W    = 64;   // px на ячейку (совпадает с CSS .rslider-cell width)
 const SHOW_CNT  = 5;    // видимых ячеек (нечётное — центр выделен)
@@ -3892,7 +3907,26 @@ function _rebuildSliderItems() {
   const custom = _sliderPlayerReactions.map(r => ({
     type: 'custom', id: r.item_id, filename: r.filename, name: r.reaction_name,
   }));
-  _sliderItems = [...DEFAULT_REACTIONS, ...custom];
+  const all = [...DEFAULT_REACTIONS, ...custom];
+
+  // Ставим последние использованные первыми
+  const recentKeys = getRecentReactions();
+  if (recentKeys.length) {
+    const recentItems = [];
+    const rest = [];
+    for (const item of all) {
+      const key = item.type === 'custom' ? ('c:' + item.id) : ('e:' + item.value);
+      if (recentKeys.includes(key)) {
+        recentItems[recentKeys.indexOf(key)] = item;
+      } else {
+        rest.push(item);
+      }
+    }
+    _sliderItems = [...recentItems.filter(Boolean), ...rest];
+  } else {
+    _sliderItems = all;
+  }
+
   _sliderIdx   = 0;
   _sliderDragX = 0;
   _sliderRender();
@@ -3974,7 +4008,12 @@ function _sliderSelect() {
 
   if (Game.mode === 'online') {
     WS.sendReaction(item.type === 'emoji' ? item.value : 'custom:' + item.id);
-  } else if (item.type === 'emoji' && Math.random() < 0.5) {
+  }
+  // Сохраняем как последнюю использованную
+  saveRecentReaction(item);
+  _rebuildSliderItems(); // сразу пересортировываем пикер
+
+  if (Game.mode !== 'online' && item.type === 'emoji' && Math.random() < 0.5) {
     const b = DEFAULT_REACTIONS[Math.floor(Math.random() * DEFAULT_REACTIONS.length)];
     setTimeout(() => showReactionDisplay('opp', b), 900 + Math.random() * 1400);
   }

@@ -500,6 +500,26 @@ try {
     WHERE id='theme_black'`).run();
 } catch(e) {}
 
+// ── Миграция: кастомные реакции (webm) ───────────────────────────────────────
+const REACTION_ITEMS = [
+  { id: 'reaction_bomb_1',  name: 'Бомба',           file: 'bomb_1.webm',  price: 50, sort: 300 },
+  { id: 'reaction_dance_1', name: 'На стиле',         file: 'dance_1.webm', price: 50, sort: 301 },
+  { id: 'reaction_haha_1',  name: 'Хвхвхвх',         file: 'haha_1.webm',  price: 50, sort: 302 },
+  { id: 'reaction_no_2',    name: 'Ну-не',            file: 'no_2.webm',    price: 50, sort: 303 },
+  { id: 'reaction_yeah_1',  name: 'Ю-ху',             file: 'yeah_1.webm',  price: 50, sort: 304 },
+  { id: 'reaction_heart_1', name: 'Холодное сердце',  file: 'heart_1.webm', price: 50, sort: 305 },
+];
+for (const r of REACTION_ITEMS) {
+  try {
+    db.prepare(`INSERT OR IGNORE INTO shop_items
+      (id, type, name, description, price_stars, preview_url, photo_url_tg, sort_order, is_active)
+      VALUES (?, 'reaction', ?, 'Кастомная реакция в бою', ?, ?, ?, ?, 1)`
+    ).run(r.id, r.name, r.price, `/reactions/${r.file}`, `/reactions/${r.file}`, r.sort);
+    db.prepare(`UPDATE shop_items SET name=?, price_stars=?, sort_order=?, is_active=1
+      WHERE id=? AND type='reaction'`).run(r.name, r.price, r.sort, r.id);
+  } catch(e) { console.error('[Reactions] migration:', r.id, e.message); }
+}
+
 // ── Миграция: рамки для аватарки ──────────────────────────────────────────────
 const FRAME_ITEMS = [
   { id: 'frame_1', name: 'Морской волк',  price: 50, sort: 200 },
@@ -1471,7 +1491,7 @@ function validateNoTouch(field) {
         const dSunkenStayer = leaver.field ? countSunkenShips(leaver.field) : 0;
         const dSunkenLeaver = stayer.field ? countSunkenShips(stayer.field) : 0;
         const stayerShipsLeft = stayer.field ? countRemainingShips(stayer.field) : 0;
-        const dWinXp  = addWin( stayer.playerId, stayer.shots, stayer.hits, true, dSunkenStayer, null, !room.isFriend, room.isFriend, null, stayerShipsLeft);
+        const dWinXp  = addWin( stayer.playerId, stayer.shots, stayer.hits, true, dSunkenStayer, leaver.shots, !room.isFriend, room.isFriend, null, stayerShipsLeft);
         const dLossXp = addLoss(leaver.playerId, leaver.shots, leaver.hits, true, dSunkenLeaver, !room.isFriend, room.isFriend);
         if (dWinXp  && stayer.socketId) io.to(stayer.socketId).emit('xp_reward', dWinXp);
         if (dWinXp?.newAchievements?.length && stayer.socketId) io.to(stayer.socketId).emit('new_achievement', dWinXp.newAchievements);
