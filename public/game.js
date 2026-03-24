@@ -680,44 +680,50 @@ function renderRatingList(data) {
       : rank;
     const div  = document.createElement('div');
     div.className = 'lb-item' + (isMe ? ' lb-item-me' : '');
+
+    // Аватарка — кастомная рамка если есть, иначе стандартная
+    const entryFrameId = isMe ? getEquippedFrameId() : (entry.frameId || null);
+    const entryPhoto   = isMe ? (App.user.photo || null) : null;
+    let avatarHTML;
+    if (entryFrameId) {
+      avatarHTML = '<div class="lb-avatar-wrap">' +
+        buildAvatarFrame({ photoSize: 36, photo: entryPhoto,
+          letter: (entry.name||'?')[0].toUpperCase(),
+          level, levelClass: 'level-bg-' + level, frameId: entryFrameId }) +
+        '</div>';
+      // Центрируем вложенный враппер
+      avatarHTML = avatarHTML.replace(
+        '<div class="lb-avatar-wrap">',
+        '<div class="lb-avatar-wrap" style="position:relative">'
+      );
+    } else {
+      avatarHTML =
+        '<div class="lb-avatar-wrap">' +
+        '<div class="lb-avatar lb-frame-' + level + '">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
+        '<div class="lb-level-dot level-bg-' + level + '">' + level + '</div>' +
+        '</div>';
+    }
+
     div.innerHTML =
       '<div class="lb-rank ' + (medals[i]||'') + '">' + (i < 3 ? ['🥇','🥈','🥉'][i] : i+1) + '</div>' +
-      '<div class="lb-avatar-wrap"' + (isMe ? ' data-lb-avatar-me="1" data-lb-level="' + level + '"' : '') + '>' +
-      '<div class="lb-avatar lb-frame-' + level + '">' + (entry.name||'?')[0].toUpperCase() + '</div>' +
-      '<div class="lb-level-dot level-bg-' + level + '">' + level + '</div>' +
-      '</div>' +
+      avatarHTML +
       '<div class="lb-info"><strong>' + (entry.name||'Игрок') + (isMe ? ' <small>(вы)</small>' : '') + '</strong>' +
       '<small class="lb-rank-name">' + rankDisplay + ' · ' + rw + 'W · ' + wr + '% WR</small></div>' +
       '<div class="lb-wins">' + rw + '</div>';
     list.appendChild(div);
-  });
 
-  // Применяем кастомную рамку к своей аватарке в рейтинге
-  const lbFrameId = getEquippedFrameId();
-  if (lbFrameId) {
-    list.querySelectorAll('[data-lb-avatar-me="1"]').forEach(wrap => {
-      const level = parseInt(wrap.dataset.lbLevel) || 1;
-      const letter = (App.user.name[0]||'?').toUpperCase();
-      const meta = FRAME_META[lbFrameId];
-      const pct = meta ? meta.pct : 0.72;
-      const wrapSize = Math.round(36 / pct); // реальный размер враппера
-      // Вставляем рамку внутрь lb-avatar-wrap, не заменяя сам wrap
-      // lb-avatar-wrap остаётся 36×36 через CSS, рамка выходит за края через overflow:visible
-      wrap.innerHTML = buildAvatarFrame({
-        photoSize: 36, photo: App.user.photo || null,
-        letter, level, levelClass: 'level-bg-' + level,
-        frameId: lbFrameId,
-      });
-      // Центрируем вложенный враппер внутри lb-avatar-wrap
-      const inner = wrap.firstChild;
+    // Центрируем вложенный buildAvatarFrame внутри lb-avatar-wrap
+    if (entryFrameId) {
+      const wrap = div.querySelector('.lb-avatar-wrap');
+      const inner = wrap?.firstChild;
       if (inner) {
-        inner.style.position = 'absolute';
-        inner.style.top  = '50%';
-        inner.style.left = '50%';
+        inner.style.position  = 'absolute';
+        inner.style.top       = '50%';
+        inner.style.left      = '50%';
         inner.style.transform = 'translate(-50%, -50%)';
       }
-    });
-  }
+    }
+  });
 }
 
 async function renderStatsScreen(mode) {
