@@ -1789,10 +1789,10 @@ body.theme_modern {
   --hint:        #555555;
   --link:        #0034AB;
 
-  /* cell-empty = фон пустой клетки, cell-miss = D9D9FF */
+  /* cell-empty = фон пустой клетки, cell-miss = EDEDFF */
   --cell-empty:   #f4f4ff;
   --cell-ship:    #b0b0c8;
-  --cell-miss:    #D9D9FF;   /* промах */
+  --cell-miss:    #EDEDFF;   /* промах */
   --cell-hover:   rgba(0,52,171,.12);
   --cell-preview: rgba(0,52,171,.18);
   --cell-invalid: rgba(220,60,60,.25);
@@ -1928,7 +1928,7 @@ body.theme_modern .cell.ship {
   border-left: 1px solid #9090c8 !important;
 }
 
-/* ─── Промах — фон D9D9FF осветлённый, точка ─── */
+/* ─── Промах — фон EDEDFF, точка ─── */
 body.theme_modern .cell.miss {
   background: #EDEDFF !important;
 }
@@ -2260,7 +2260,7 @@ body.theme_modern .enemy-board .cell.ship {
 }
 /* Промах на поле врага */
 body.theme_modern .enemy-board .cell.miss {
-  background: #D9D9FF !important;
+  background: #EDEDFF !important;
 }
 
 /* ─── 2. Тоньше обводка раненых и убитых ─── */
