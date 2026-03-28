@@ -2229,7 +2229,134 @@ body.theme_modern #game-board:not(.enemy-board) .cell.hit::after {
       transparent calc(50% + 1.2px)) !important;
 }
 
-/* ─── 4. Рейтинг — мой рекорд: цифры и текст видны ─── */
+/* ─── 1. Пустые клетки поля врага в цвет фона (#ffffff) когда твой ход ─── */
+/* enemy-board — поле куда МЫ бьём. Пустые клетки = фон страницы */
+body.theme_modern .enemy-board .cell {
+  background: #ffffff !important;
+}
+body.theme_modern .enemy-board .cell.ship {
+  background: #ffffff !important; /* корабли врага скрыты */
+}
+/* Промах на поле врага */
+body.theme_modern .enemy-board .cell.miss {
+  background: #ffffff !important;
+}
+
+/* ─── 2. Тоньше обводка раненых и убитых ─── */
+/* Раненый hit — крест стал тоньше */
+body.theme_modern .cell.hit::after,
+body.theme_modern .enemy-board .cell.hit::after {
+  background-image:
+    linear-gradient(to bottom right,
+      transparent calc(50% - 0.8px),
+      #cc0000 calc(50% - 0.8px),
+      #cc0000 calc(50% + 0.8px),
+      transparent calc(50% + 0.8px)),
+    linear-gradient(to bottom left,
+      transparent calc(50% - 0.8px),
+      #cc0000 calc(50% - 0.8px),
+      #cc0000 calc(50% + 0.8px),
+      transparent calc(50% + 0.8px)) !important;
+}
+body.theme_modern #my-board .cell.hit::after,
+body.theme_modern #game-board:not(.enemy-board) .cell.hit::after {
+  background-image:
+    linear-gradient(to bottom right,
+      transparent calc(50% - 0.8px),
+      rgba(204,0,0,.42) calc(50% - 0.8px),
+      rgba(204,0,0,.42) calc(50% + 0.8px),
+      transparent calc(50% + 0.8px)),
+    linear-gradient(to bottom left,
+      transparent calc(50% - 0.8px),
+      rgba(204,0,0,.42) calc(50% - 0.8px),
+      rgba(204,0,0,.42) calc(50% + 0.8px),
+      transparent calc(50% + 0.8px)) !important;
+}
+/* Убитый sunk — тоньше внешняя обводка */
+body.theme_modern .enemy-board .cell.sunk {
+  outline-width: 1.5px !important;
+}
+body.theme_modern #my-board .cell.sunk,
+body.theme_modern #game-board:not(.enemy-board) .cell.sunk {
+  outline-width: 1.5px !important;
+}
+/* Кресты внутри убитого тоже тоньше */
+body.theme_modern .enemy-board .cell.sunk::after {
+  background-image:
+    linear-gradient(to bottom right,
+      transparent calc(50% - 0.8px),
+      #cc0000 calc(50% - 0.8px),
+      #cc0000 calc(50% + 0.8px),
+      transparent calc(50% + 0.8px)),
+    linear-gradient(to bottom left,
+      transparent calc(50% - 0.8px),
+      #cc0000 calc(50% - 0.8px),
+      #cc0000 calc(50% + 0.8px),
+      transparent calc(50% + 0.8px)) !important;
+}
+body.theme_modern #my-board .cell.sunk::after,
+body.theme_modern #game-board:not(.enemy-board) .cell.sunk::after {
+  background-image:
+    linear-gradient(to bottom right,
+      transparent calc(50% - 0.8px),
+      rgba(204,0,0,.3) calc(50% - 0.8px),
+      rgba(204,0,0,.3) calc(50% + 0.8px),
+      transparent calc(50% + 0.8px)),
+    linear-gradient(to bottom left,
+      transparent calc(50% - 0.8px),
+      rgba(204,0,0,.3) calc(50% - 0.8px),
+      rgba(204,0,0,.3) calc(50% + 0.8px),
+      transparent calc(50% + 0.8px)) !important;
+}
+
+/* ─── 3. Флот внизу — стилистика как на игровом поле ─── */
+/* Живые корабли — синеватые как клетки корабля */
+body.theme_modern .fleet-cell {
+  background: #c8c8e0 !important;
+  border-radius: 0 !important;
+  border: 1px solid #9090c8 !important;
+}
+/* Убитые корабли — заливка #F2F2FF + красная обводка + X-крест через ::after */
+body.theme_modern .fleet-ship.sunk .fleet-cell {
+  background: #F2F2FF !important;
+  border: 1px solid #cc0000 !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+body.theme_modern .fleet-ship.sunk { opacity: 1 !important; }
+body.theme_modern .fleet-ship.sunk .fleet-cell::after {
+  content: '' !important;
+  position: absolute !important;
+  inset: 0 !important;
+  background-image:
+    linear-gradient(to bottom right,
+      transparent calc(50% - 0.7px),
+      #cc0000 calc(50% - 0.7px),
+      #cc0000 calc(50% + 0.7px),
+      transparent calc(50% + 0.7px)),
+    linear-gradient(to bottom left,
+      transparent calc(50% - 0.7px),
+      #cc0000 calc(50% - 0.7px),
+      #cc0000 calc(50% + 0.7px),
+      transparent calc(50% + 0.7px)) !important;
+  pointer-events: none !important;
+}
+
+/* ─── 4. Кнопки расстановки — Очистить стала акцентной, Случайно — ghost ─── */
+/* В теме_modern: btn-place-random теперь на кнопке "Очистить" */
+body.theme_modern #btn-clear-place {
+  background: #DAF3DA !important;
+  color: #000000 !important;
+  border: 1.5px solid #b5dbb5 !important;
+}
+body.theme_modern #btn-clear-place:active { background: #c6ecc6 !important; }
+/* Случайно — ghost синий */
+body.theme_modern #btn-random-place {
+  background: transparent !important;
+  color: #0034AB !important;
+  border: 1.5px solid #0034AB !important;
+}
+body.theme_modern #btn-random-place:active { background: rgba(0,52,171,.07) !important; }
 body.theme_modern .my-record-card {
   background: #DAF3DA !important;
   border: 1.5px solid #b5dbb5 !important;
