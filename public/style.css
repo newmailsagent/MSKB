@@ -1906,31 +1906,34 @@ body.theme_modern .toggle-btn.active { background: #DAF3DA; color: #000000; }
 /* gap:0 на самой доске — линии сетки через border клеток */
 body.theme_modern .board {
   gap: 0 !important;
-  border: 1px solid #B4B4FF;
+  /* Внешняя рамка: только правый и нижний край (левый/верхний — от первых клеток) */
+  border: none !important;
+  border-right:  1px solid #B4B4FF !important;
+  border-bottom: 1px solid #B4B4FF !important;
 }
 
-/* Базовая клетка — правый и нижний border = линии сетки */
+/* Каждая клетка — левый и верхний border → равномерная сетка без двойных линий */
 body.theme_modern .cell {
   background: #f4f4ff;
   border: none !important;
-  border-right: 1px solid #B4B4FF !important;
-  border-bottom: 1px solid #B4B4FF !important;
+  border-top:  1px solid #B4B4FF !important;
+  border-left: 1px solid #B4B4FF !important;
   border-radius: 0 !important;
 }
 
 /* Корабль при расстановке */
 body.theme_modern .cell.ship {
   background: #c8c8e0;
-  border-right: 1px solid #9090c8 !important;
-  border-bottom: 1px solid #9090c8 !important;
+  border-top:  1px solid #9090c8 !important;
+  border-left: 1px solid #9090c8 !important;
 }
 
-/* ─── Промах — фон как у пустой клетки + маленькая точка ─── */
+/* ─── Промах — фон D9D9FF осветлённый, точка ─── */
 body.theme_modern .cell.miss {
-  background: #D9D9FF !important;
+  background: #ECE9FF !important;   /* D9D9FF осветлён вдвое */
 }
 body.theme_modern .cell.miss::before {
-  background: #c8cfe8;
+  background: #b8bedd;
   width: 5px;
   height: 5px;
 }
@@ -1938,6 +1941,21 @@ body.theme_modern .cell.miss::before {
 /* Лоадер "МОРСКОЙ БОЙ" — чёрный текст */
 body.theme_modern .loading-text    { color: #000000 !important; }
 body.theme_modern .loading-progress { color: #555555 !important; }
+
+/* ─── Активная вкладка профиля — чёрный шрифт ─── */
+body.theme_modern .profile-tab.active {
+  color: #000000 !important;
+  border-bottom: 2px solid #0034AB;
+}
+
+/* ─── Тумблеры в настройках включены — чёрные ─── */
+body.theme_modern .toggle-switch input:checked + .toggle-track {
+  background: #000000 !important;
+  border-color: #000000 !important;
+}
+body.theme_modern .toggle-switch input:checked + .toggle-track::before {
+  background: #ffffff !important;
+}
 
 /* ─── Подбитый (hit) — фон пустой клетки + красный крест из диагоналей ─── */
 body.theme_modern .cell.hit {
@@ -2126,7 +2144,6 @@ body.theme_modern .burger-menu { background: #ffffff; border-right: 1.5px solid 
 
 /* ─── Профиль / вкладки ─── */
 body.theme_modern .profile-tabs { background: #f0f0f0; border-bottom: 2px solid #B4B4FF; }
-body.theme_modern .profile-tab.active { border-bottom: 2px solid #0034AB; color: #0034AB; }
 
 /* ─── Уведомления ─── */
 body.theme_modern .notif-panel { background: #ffffff; border: 1.5px solid #e0e0e0; }
