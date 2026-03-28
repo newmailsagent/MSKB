@@ -500,6 +500,25 @@ try {
     WHERE id='theme_black'`).run();
 } catch(e) {}
 
+// Добавить theme_modern если нет
+try {
+  db.prepare(`INSERT OR IGNORE INTO shop_items (id,type,name,description,price_stars,preview_url,photo_url_tg,sort_order,is_active)
+    VALUES ('theme_modern','theme','Современная','Минималистичная светлая тема с синей сеткой и акцентами',250,'/shop/previews/theme/frame_theme_modern.png','/shop/previews/theme/frame_theme_modern.png',30,1)`).run();
+} catch(e) { console.error('[Shop] migration theme_modern:', e.message); }
+
+// Обновить цену и название современной темы при повторном запуске
+try {
+  db.prepare(`UPDATE shop_items SET
+    name='Современная',
+    description='Минималистичная светлая тема с синей сеткой и акцентами',
+    price_stars=250,
+    preview_url='/shop/previews/theme/frame_theme_modern.png',
+    photo_url_tg='/shop/previews/theme/frame_theme_modern.png',
+    sort_order=30,
+    is_active=1
+    WHERE id='theme_modern'`).run();
+} catch(e) {}
+
 // ── Миграция: кастомные реакции (webm) ───────────────────────────────────────
 const REACTION_ITEMS = [
   { id: 'reaction_bomb_1',  name: 'Бомба',           file: 'bomb_1.webm',  price: 50, sort: 300 },
@@ -2305,6 +2324,48 @@ function checkRatingTop1(userId) {
 // (патчим существующий обработчик через middleware-like логику)
 
 // Фронтенд — обязательно В САМОМ КОНЦЕ, после всех API
+
+// ── SEO: sitemap.xml ─────────────────────────────────────────────────────────
+app.get('/sitemap.xml', (req, res) => {
+  // Проверяем сначала файл в public/, если нет — генерируем динамически
+  const sitemapFile = path.join(__dirname, 'public', 'sitemap.xml');
+  if (fs.existsSync(sitemapFile)) return res.sendFile(sitemapFile);
+  const now = new Date().toISOString().split('T')[0];
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://morskoy-boy.ru/</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>`;
+  res.header('Content-Type', 'application/xml');
+  res.send(xml);
+});
+
+// ── SEO: robots.txt ───────────────────────────────────────────────────────────
+app.get('/robots.txt', (req, res) => {
+  const robotsFile = path.join(__dirname, 'public', 'robots.txt');
+  if (fs.existsSync(robotsFile)) return res.sendFile(robotsFile);
+  res.header('Content-Type', 'text/plain');
+  res.send(`User-agent: *\nAllow: /\nSitemap: https://morskoy-boy.ru/sitemap.xml\n`);
+});
+
+// ── SEO: favicon.svg (120×120, Яндекс требует SVG или PNG 120px) ──────────────
+app.get('/favicon.svg', (req, res) => {
+  const svgFile = path.join(__dirname, 'public', 'favicon.svg');
+  if (fs.existsSync(svgFile)) return res.sendFile(svgFile);
+  // Запасной SVG-фавикон (корабль)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <rect width="120" height="120" rx="24" fill="#111111"/>
+  <text x="60" y="82" font-size="72" text-anchor="middle" font-family="serif">⚓</text>
+</svg>`;
+  res.header('Content-Type', 'image/svg+xml');
+  res.header('Cache-Control', 'public, max-age=86400');
+  res.send(svg);
+});
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 server.listen(PORT, () => console.log(`\n🚢 http://localhost:${PORT}\n`));

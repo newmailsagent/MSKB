@@ -1773,6 +1773,292 @@ body.theme_black .profile-tabs     { background-color: #000000; }
 /* game.js applyEquippedTheme(): document.body.classList.add('theme_black') */
 
 /* ═══════════════════════════════════════════════════
+   ТЕМА: theme_modern — «Современная»
+   Акцент: #DAF3DA | Фон: #FFFFFF | Сетка: #B4B4FF
+   Убитый: обводка #0000FF, заливка #F2F2FF
+   Шрифт: Wix Madefor Display (Google Fonts)
+   Без скруглений (кроме аватарок)
+════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Wix+Madefor+Display:wght@400;500;600;700;800&display=swap');
+
+body.theme_modern {
+  --bg:          #ffffff;
+  --bg2:         #f0f0f0;
+  --accent:      #DAF3DA;
+  --accent-text: #000000;
+  --text:        #000000;
+  --hint:        #555555;
+  --link:        #0034AB;
+
+  --cell-empty:   #f4f4ff;
+  --cell-ship:    #b0b0c8;
+  --cell-miss:    #e8e8e8;
+  --cell-hover:   rgba(0,52,171,.1);
+  --cell-preview: rgba(0,52,171,.15);
+  --cell-invalid: rgba(220,60,60,.25);
+  --cell-hit-bg:  #f2f2ff;
+
+  --green:  #1a7a1a;
+  --red:    #cc0000;
+  --yellow: #b8860b;
+  --blue:   #0034AB;
+
+  /* Убираем скругления */
+  --radius: 0px;
+
+  --font-ui: 'Wix Madefor Display', sans-serif;
+  --font-hd: 'Wix Madefor Display', sans-serif;
+}
+
+/* ─── Нет скруглений почти везде ─── */
+body.theme_modern .btn,
+body.theme_modern .btn-primary,
+body.theme_modern .btn-secondary,
+body.theme_modern .btn-ghost,
+body.theme_modern .btn-danger,
+body.theme_modern .btn-sound,
+body.theme_modern .btn-burger-menu,
+body.theme_modern .btn-place-random,
+body.theme_modern .mode-card,
+body.theme_modern .shop-card,
+body.theme_modern .shop-card-preview,
+body.theme_modern .modal,
+body.theme_modern .burger-menu,
+body.theme_modern .tg-promo-banner,
+body.theme_modern .invite-link-display,
+body.theme_modern .xp-reward-block,
+body.theme_modern .lb-item,
+body.theme_modern .consent-inner,
+body.theme_modern .my-record-card,
+body.theme_modern .profile-tabs,
+body.theme_modern .notif-panel,
+body.theme_modern .game-toggle,
+body.theme_modern .toggle-btn,
+body.theme_modern .cell,
+body.theme_modern .hero-grid-cell,
+body.theme_modern .ship-cell,
+body.theme_modern .fleet-cell,
+body.theme_modern .search-cell,
+body.theme_modern .referral-ach-item,
+body.theme_modern .stat-item {
+  border-radius: 0 !important;
+}
+
+/* ─── Общий фон и текст ─── */
+body.theme_modern { background: #ffffff; color: #000000; }
+
+/* ─── Кнопки ─── */
+body.theme_modern .btn-primary {
+  background: #DAF3DA;
+  color: #000000;
+  border: 1.5px solid #b0d4b0;
+}
+body.theme_modern .btn-primary.btn-large {
+  background: #DAF3DA !important;
+  color: #000000 !important;
+  border: 1.5px solid #b0d4b0 !important;
+}
+body.theme_modern .btn-secondary {
+  background: #f0f0f0;
+  color: #000000;
+  border: 1.5px solid #cccccc;
+}
+body.theme_modern .btn-ghost {
+  background: transparent;
+  color: #0034AB;
+  border: 1.5px solid #0034AB;
+}
+body.theme_modern .btn-danger {
+  background: #ffe0e0;
+  color: #cc0000;
+  border: 1.5px solid #cc0000;
+}
+
+body.theme_modern .btn-sound,
+body.theme_modern .btn-burger-menu {
+  background: #f0f0f0;
+  border: 1.5px solid #cccccc;
+  color: #000000;
+}
+
+/* ─── Переключатель (Моё / Враг) ─── */
+body.theme_modern .game-toggle { background: #eeeeee; border: 1.5px solid #cccccc; }
+body.theme_modern .toggle-btn.active { background: #DAF3DA; color: #000000; }
+
+/* ─── Игровое поле — сетка синяя ─── */
+body.theme_modern .cell {
+  border: 1px solid #B4B4FF;
+  background: #f8f8ff;
+}
+body.theme_modern .cell.ship {
+  background: #d0d0e8;
+  border-color: #9090c8;
+}
+
+/* ─── Промах — точка, серый фон ─── */
+body.theme_modern .cell.miss {
+  background: #ececec;
+  border-color: #B4B4FF;
+}
+body.theme_modern .cell.miss::before {
+  background: #aaaaaa;
+}
+
+/* ─── Подбитый (hit) — красный крест из диагоналей ─── */
+body.theme_modern .cell.hit {
+  background: #f2f2ff;
+  border-color: #D9D9FF;
+}
+body.theme_modern .cell.hit::after {
+  background: none !important;
+  opacity: 1 !important;
+  /* SVG красный крест — две диагонали квадрата */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to bottom right, transparent calc(50% - 1px), #cc0000 calc(50% - 1px), #cc0000 calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom left,  transparent calc(50% - 1px), #cc0000 calc(50% - 1px), #cc0000 calc(50% + 1px), transparent calc(50% + 1px));
+  pointer-events: none;
+}
+
+/* ─── Убитый (sunk) на поле врага — обводка #0000FF, заливка #F2F2FF ─── */
+body.theme_modern .enemy-board .cell.sunk {
+  background: #F2F2FF !important;
+  border: 2px solid #0000FF !important;
+  outline: none;
+}
+body.theme_modern .enemy-board .cell.sunk::after { display: none !important; }
+
+/* Сетка внутри убитого корабля — линии #D9D9FF (через box-shadow или border) */
+body.theme_modern .enemy-board .cell.sunk {
+  box-shadow: inset 0 0 0 1px #D9D9FF;
+}
+
+/* ─── Убитый на своём поле — чуть прозрачнее ─── */
+body.theme_modern #my-board .cell.sunk,
+body.theme_modern #game-board:not(.enemy-board) .cell.sunk {
+  background: rgba(242,242,255,.65) !important;
+  border: 2px solid rgba(0,0,255,.4) !important;
+}
+body.theme_modern #my-board .cell.sunk::after,
+body.theme_modern #game-board:not(.enemy-board) .cell.sunk::after { display: none !important; }
+
+/* Подбитый на своём поле */
+body.theme_modern #my-board .cell.hit::after,
+body.theme_modern #game-board:not(.enemy-board) .cell.hit::after {
+  background-image:
+    linear-gradient(to bottom right, transparent calc(50% - 1px), rgba(204,0,0,.5) calc(50% - 1px), rgba(204,0,0,.5) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom left,  transparent calc(50% - 1px), rgba(204,0,0,.5) calc(50% - 1px), rgba(204,0,0,.5) calc(50% + 1px), transparent calc(50% + 1px)) !important;
+  opacity: 1 !important;
+  background: none !important;
+}
+
+/* ─── Флот внизу ─── */
+body.theme_modern .fleet-cell { background: #b0b0c8; }
+body.theme_modern .fleet-ship.sunk .fleet-cell { background: #cc0000; }
+
+/* ─── Hero-grid анимация — синяя палитра ─── */
+body.theme_modern .hero-grid-cell {
+  background: #B4B4FF;
+}
+body.theme_modern .hero-grid-cell.active::after {
+  background: #0034AB;
+}
+/* Убитые корабли в хиро: обводка + заливка как на поле */
+body.theme_modern .hero-grid-cell.hit::after {
+  background-image:
+    linear-gradient(to bottom right, transparent calc(50% - 1px), #cc0000 calc(50% - 1px), #cc0000 calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom left,  transparent calc(50% - 1px), #cc0000 calc(50% - 1px), #cc0000 calc(50% + 1px), transparent calc(50% + 1px));
+  background-color: transparent;
+  opacity: 1;
+}
+
+/* Промахи в хиро — точка */
+body.theme_modern .hero-grid-cell.active::after {
+  background: #0034AB;
+  border-radius: 50%;
+}
+
+/* ─── SVG заголовок — перекрашиваем в синий ─── */
+body.theme_modern .hero-title-svg svg path[fill="white"],
+body.theme_modern .hero-title-svg svg path[fill="#ffffff"] { fill: #0034AB !important; }
+body.theme_modern .hero-title-svg svg path[fill="#ED2822"] { fill: #0034AB !important; }
+body.theme_modern .hero-title-svg svg path[stroke="#ED2822"] { stroke: #0034AB !important; }
+
+/* ─── Анимация загрузки ─── */
+body.theme_modern .search-cell { background: #cc0000; }
+body.theme_modern .search-cell.state-miss { background: #eeeeee; }
+body.theme_modern .search-cell.state-hit { background: #f2f2ff; }
+body.theme_modern .search-cell.state-hit::after {
+  background-image:
+    linear-gradient(to bottom right, transparent calc(50% - 1px), #cc0000 calc(50% - 1px), #cc0000 calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom left,  transparent calc(50% - 1px), #cc0000 calc(50% - 1px), #cc0000 calc(50% + 1px), transparent calc(50% + 1px));
+  background-color: transparent;
+}
+
+/* ─── Карточки режима, магазин ─── */
+body.theme_modern .mode-card {
+  background: #f8f8f8;
+  border: 1.5px solid #cccccc;
+}
+body.theme_modern .shop-card {
+  background: #f8f8f8;
+  border: 1.5px solid #e0e0e0;
+}
+
+/* ─── Баннер Telegram ─── */
+body.theme_modern .tg-promo-banner {
+  background: #DAF3DA;
+  color: #000000;
+  border-bottom: 2px solid #b0d4b0;
+}
+body.theme_modern .tg-promo-banner a { color: #0034AB; }
+
+/* ─── Лидерборд ─── */
+body.theme_modern .lb-item { background: #f8f8f8; border: 1px solid #e0e0e0; }
+body.theme_modern .my-record-card { background: #DAF3DA; border: 1px solid #b0d4b0; }
+
+/* ─── Модальное окно ─── */
+body.theme_modern .modal { background: #ffffff; border: 1.5px solid #e0e0e0; }
+
+/* ─── Бургер-меню ─── */
+body.theme_modern .burger-menu { background: #ffffff; border-right: 1.5px solid #e0e0e0; }
+
+/* ─── Профиль / вкладки ─── */
+body.theme_modern .profile-tabs { background: #f0f0f0; border-bottom: 2px solid #B4B4FF; }
+body.theme_modern .profile-tab.active { border-bottom: 2px solid #0034AB; color: #0034AB; }
+
+/* ─── Уведомления ─── */
+body.theme_modern .notif-panel { background: #ffffff; border: 1.5px solid #e0e0e0; }
+
+/* ─── Consent banner ─── */
+body.theme_modern .consent-inner { background: #ffffff; border: 1.5px solid #cccccc; }
+
+/* ─── XP блок ─── */
+body.theme_modern .xp-reward-block { background: #f8f8f8; border: 1px solid #e0e0e0; }
+
+/* ─── Реферальные достижения ─── */
+body.theme_modern .referral-ach-item { background: #f8f8f8; border: 1.5px solid #e0e0e0; }
+body.theme_modern .referral-ach-req,
+body.theme_modern .referral-ach-title,
+body.theme_modern .referral-prog-nums { color: rgba(0,0,0,.4); }
+body.theme_modern .referral-desc { color: rgba(0,0,0,.55); }
+body.theme_modern .referral-stat small { color: rgba(0,0,0,.4); }
+body.theme_modern .referral-link-input { background: rgba(0,0,0,.04); border-color: rgba(0,0,0,.12); color: #000; }
+body.theme_modern .btn-copy-ref { background: rgba(0,0,0,.04); border-color: rgba(0,0,0,.12); color: #000; }
+
+/* ─── Countdown (таймер хода) ─── */
+body.theme_modern .turn-countdown { color: #0034AB; background: rgba(0,52,171,.06); border-color: rgba(0,52,171,.2); }
+body.theme_modern .turn-countdown.urgent { color: #cc0000; background: rgba(204,0,0,.07); }
+
+/* ─── Achievements / title badges ─── */
+body.theme_modern .title-rank-badge { background: rgba(0,0,0,.07); color: #000; }
+
+/* game.js applyEquippedTheme(): document.body.classList.add('theme_modern') */
+
+/* ═══════════════════════════════════════════════════
    НОВЫЙ ФУТЕР БОЕВОГО ЭКРАНА v2
 ════════════════════════════════════════════════════ */
 

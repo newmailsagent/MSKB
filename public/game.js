@@ -4619,6 +4619,27 @@ const FAKE_PREVIEWS = {
     <rect x="20" y="62" width="52" height="8" rx="4" fill="#333"/>
     <circle cx="75" cy="30" r="10" fill="#e0e0e0" opacity=".15"/>
   </svg>`,
+  theme_modern: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#ffffff"/>
+    <rect x="4" y="4" width="92" height="92" fill="#f8f8ff" stroke="#B4B4FF" stroke-width="1"/>
+    <!-- grid lines -->
+    <line x1="4" y1="25" x2="96" y2="25" stroke="#B4B4FF" stroke-width=".7"/>
+    <line x1="4" y1="46" x2="96" y2="46" stroke="#B4B4FF" stroke-width=".7"/>
+    <line x1="4" y1="67" x2="96" y2="67" stroke="#B4B4FF" stroke-width=".7"/>
+    <line x1="25" y1="4" x2="25" y2="96" stroke="#B4B4FF" stroke-width=".7"/>
+    <line x1="46" y1="4" x2="46" y2="96" stroke="#B4B4FF" stroke-width=".7"/>
+    <line x1="67" y1="4" x2="67" y2="96" stroke="#B4B4FF" stroke-width=".7"/>
+    <!-- убитый корабль -->
+    <rect x="25" y="25" width="21" height="21" fill="#F2F2FF" stroke="#0000FF" stroke-width="1.5"/>
+    <rect x="46" y="25" width="21" height="21" fill="#F2F2FF" stroke="#0000FF" stroke-width="1.5"/>
+    <!-- подбитый — красный крест -->
+    <line x1="68" y1="46" x2="88" y2="66" stroke="#cc0000" stroke-width="1.5"/>
+    <line x1="88" y1="46" x2="68" y2="66" stroke="#cc0000" stroke-width="1.5"/>
+    <!-- кнопка -->
+    <rect x="20" y="78" width="60" height="14" fill="#DAF3DA"/>
+    <rect x="20" y="78" width="60" height="14" fill="none" stroke="#b0d4b0" stroke-width="1"/>
+    <rect x="30" y="83" width="40" height="4" fill="#1a7a1a" opacity=".5"/>
+  </svg>`,
 };
 
 // Патчим getPreviewHtml — SVG для страницы товара (large=true), PNG для карточки
@@ -5053,6 +5074,11 @@ const ITEM_SCREENSHOTS = {
     '/shop/previews/theme/preview_black_2.png',
     '/shop/previews/theme/preview_black_3.png',
   ],
+  theme_modern: [
+    '/shop/previews/theme/preview_modern_1.png',
+    '/shop/previews/theme/preview_modern_2.png',
+    '/shop/previews/theme/preview_modern_3.png',
+  ],
 };
 
 function renderShopItemSlider(item) {
@@ -5193,6 +5219,8 @@ function applyEquippedTheme(itemId) {
     document.body.classList.add('theme-light');
   } else if (itemId === 'theme_black') {
     document.body.classList.add('theme_black');
+  } else if (itemId === 'theme_modern') {
+    document.body.classList.add('theme_modern');
   }
   // Сюда добавлять новые темы по мере появления:
   // else if (itemId === 'theme_ocean') { ... }
@@ -5200,7 +5228,7 @@ function applyEquippedTheme(itemId) {
 
 // Снимает все темы (возврат к тёмной по умолчанию)
 function resetTheme() {
-  document.body.classList.remove('theme-light', 'theme_black');
+  document.body.classList.remove('theme-light', 'theme_black', 'theme_modern');
 }
 
 // Применяет тему из текущей экипировки игрока
