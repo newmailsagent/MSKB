@@ -1977,31 +1977,71 @@ body.theme_modern #game-board:not(.enemy-board) .cell.hit::after {
   opacity: 1 !important;
 }
 
-/* ─── Убитый (sunk) на поле ВРАГА — обводка #0000FF, заливка #F2F2FF ─── */
+/* ─── Убитый (sunk) на поле ВРАГА — синяя внешняя обводка #0000FF + красные X + заливка #F2F2FF ─── */
 body.theme_modern .enemy-board .cell.sunk {
   background: #F2F2FF !important;
-  /* толстая синяя обводка через outline чтобы не сдвигать соседей */
   border-right:  1px solid #D9D9FF !important;
   border-bottom: 1px solid #D9D9FF !important;
   outline: 2px solid #0000FF !important;
   outline-offset: -1px !important;
-  z-index: 1 !important;
+  z-index: 2 !important;
   position: relative !important;
 }
-body.theme_modern .enemy-board .cell.sunk::after  { display: none !important; }
+/* Красный крест X в каждой клетке убитого корабля (через ::after) */
+body.theme_modern .enemy-board .cell.sunk::after {
+  display: block !important;
+  content: '' !important;
+  position: absolute !important;
+  inset: 0 !important;
+  background: none !important;
+  background-image:
+    linear-gradient(to bottom right,
+      transparent calc(50% - 1.2px),
+      #cc0000 calc(50% - 1.2px),
+      #cc0000 calc(50% + 1.2px),
+      transparent calc(50% + 1.2px)),
+    linear-gradient(to bottom left,
+      transparent calc(50% - 1.2px),
+      #cc0000 calc(50% - 1.2px),
+      #cc0000 calc(50% + 1.2px),
+      transparent calc(50% + 1.2px)) !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+}
 body.theme_modern .enemy-board .cell.sunk::before { display: none !important; }
 
-/* ─── Убитый на СВОЁМ поле — полупрозрачная версия ─── */
+/* ─── Убитый на СВОЁМ поле — полупрозрачная синяя обводка + полупрозрачные X ─── */
 body.theme_modern #my-board .cell.sunk,
 body.theme_modern #game-board:not(.enemy-board) .cell.sunk {
   background: rgba(242,242,255,.7) !important;
+  border-right:  1px solid #D9D9FF !important;
+  border-bottom: 1px solid #D9D9FF !important;
   outline: 2px solid rgba(0,0,255,.35) !important;
   outline-offset: -1px !important;
-  z-index: 1 !important;
+  z-index: 2 !important;
   position: relative !important;
 }
 body.theme_modern #my-board .cell.sunk::after,
-body.theme_modern #game-board:not(.enemy-board) .cell.sunk::after  { display: none !important; }
+body.theme_modern #game-board:not(.enemy-board) .cell.sunk::after {
+  display: block !important;
+  content: '' !important;
+  position: absolute !important;
+  inset: 0 !important;
+  background: none !important;
+  background-image:
+    linear-gradient(to bottom right,
+      transparent calc(50% - 1.2px),
+      rgba(204,0,0,.35) calc(50% - 1.2px),
+      rgba(204,0,0,.35) calc(50% + 1.2px),
+      transparent calc(50% + 1.2px)),
+    linear-gradient(to bottom left,
+      transparent calc(50% - 1.2px),
+      rgba(204,0,0,.35) calc(50% - 1.2px),
+      rgba(204,0,0,.35) calc(50% + 1.2px),
+      transparent calc(50% + 1.2px)) !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+}
 body.theme_modern #my-board .cell.sunk::before,
 body.theme_modern #game-board:not(.enemy-board) .cell.sunk::before { display: none !important; }
 
@@ -2201,8 +2241,12 @@ body.theme_modern .achievements-title   { color: rgba(0,0,0,.45) !important; }
 body.theme_modern .achievement-card {
   background: rgba(0,0,0,.04) !important;
   border: 1px solid rgba(0,0,0,.1) !important;
+  border-radius: 0 !important;
 }
-body.theme_modern .ach-icon  { background: rgba(0,52,171,.1) !important; }
+body.theme_modern .ach-icon  {
+  background: rgba(0,52,171,.1) !important;
+  border-radius: 0 !important;
+}
 body.theme_modern .ach-name  { color: #000000 !important; }
 body.theme_modern .ach-desc  { color: rgba(0,0,0,.55) !important; }
 body.theme_modern .ach-reward { background: rgba(0,52,171,.12) !important; color: #0034AB !important; }
