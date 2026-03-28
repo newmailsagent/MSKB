@@ -5220,6 +5220,14 @@ function applyEquippedTheme(itemId) {
   } else if (itemId === 'theme_black') {
     document.body.classList.add('theme_black');
   } else if (itemId === 'theme_modern') {
+    // Подгружаем шрифт Wix Madefor Display если ещё не загружен
+    if (!document.getElementById('font-wix-madefor')) {
+      const link = document.createElement('link');
+      link.id   = 'font-wix-madefor';
+      link.rel  = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Wix+Madefor+Display:wght@400;500;600;700;800&display=swap';
+      document.head.appendChild(link);
+    }
     document.body.classList.add('theme_modern');
   }
   // Сюда добавлять новые темы по мере появления:
