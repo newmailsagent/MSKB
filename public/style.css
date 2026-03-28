@@ -1789,10 +1789,10 @@ body.theme_modern {
   --hint:        #555555;
   --link:        #0034AB;
 
-  /* cell-empty = фон пустой клетки = фон клетки промаха */
+  /* cell-empty = фон пустой клетки, cell-miss = D9D9FF */
   --cell-empty:   #f4f4ff;
   --cell-ship:    #b0b0c8;
-  --cell-miss:    #f4f4ff;   /* промах = пустая клетка */
+  --cell-miss:    #D9D9FF;   /* промах */
   --cell-hover:   rgba(0,52,171,.12);
   --cell-preview: rgba(0,52,171,.18);
   --cell-invalid: rgba(220,60,60,.25);
@@ -1927,13 +1927,17 @@ body.theme_modern .cell.ship {
 
 /* ─── Промах — фон как у пустой клетки + маленькая точка ─── */
 body.theme_modern .cell.miss {
-  background: #f4f4ff !important;
+  background: #D9D9FF !important;
 }
 body.theme_modern .cell.miss::before {
   background: #c8cfe8;
   width: 5px;
   height: 5px;
 }
+
+/* Лоадер "МОРСКОЙ БОЙ" — чёрный текст */
+body.theme_modern .loading-text    { color: #000000 !important; }
+body.theme_modern .loading-progress { color: #555555 !important; }
 
 /* ─── Подбитый (hit) — фон пустой клетки + красный крест из диагоналей ─── */
 body.theme_modern .cell.hit {
@@ -2239,7 +2243,7 @@ body.theme_modern .enemy-board .cell.ship {
 }
 /* Промах на поле врага */
 body.theme_modern .enemy-board .cell.miss {
-  background: #ffffff !important;
+  background: #D9D9FF !important;
 }
 
 /* ─── 2. Тоньше обводка раненых и убитых ─── */
