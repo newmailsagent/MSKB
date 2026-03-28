@@ -1930,7 +1930,7 @@ body.theme_modern .cell.miss {
   background: #f4f4ff !important;
 }
 body.theme_modern .cell.miss::before {
-  background: #9090c8;
+  background: #c8cfe8;
   width: 5px;
   height: 5px;
 }
@@ -1977,17 +1977,17 @@ body.theme_modern #game-board:not(.enemy-board) .cell.hit::after {
   opacity: 1 !important;
 }
 
-/* ─── Убитый (sunk) на поле ВРАГА — синяя внешняя обводка #0000FF + красные X + заливка #F2F2FF ─── */
+/* ─── Убитый (sunk) на поле ВРАГА — красная обводка + красные X + заливка #F2F2FF ─── */
 body.theme_modern .enemy-board .cell.sunk {
   background: #F2F2FF !important;
-  border-right:  1px solid #D9D9FF !important;
-  border-bottom: 1px solid #D9D9FF !important;
-  outline: 2px solid #0000FF !important;
+  border-right:  1px solid rgba(204,0,0,.25) !important;
+  border-bottom: 1px solid rgba(204,0,0,.25) !important;
+  outline: 2px solid #cc0000 !important;
   outline-offset: -1px !important;
   z-index: 2 !important;
   position: relative !important;
 }
-/* Красный крест X в каждой клетке убитого корабля (через ::after) */
+/* Красный крест X в каждой клетке убитого корабля */
 body.theme_modern .enemy-board .cell.sunk::after {
   display: block !important;
   content: '' !important;
@@ -2010,13 +2010,13 @@ body.theme_modern .enemy-board .cell.sunk::after {
 }
 body.theme_modern .enemy-board .cell.sunk::before { display: none !important; }
 
-/* ─── Убитый на СВОЁМ поле — полупрозрачная синяя обводка + полупрозрачные X ─── */
+/* ─── Убитый на СВОЁМ поле — светлее красного ─── */
 body.theme_modern #my-board .cell.sunk,
 body.theme_modern #game-board:not(.enemy-board) .cell.sunk {
   background: rgba(242,242,255,.7) !important;
-  border-right:  1px solid #D9D9FF !important;
-  border-bottom: 1px solid #D9D9FF !important;
-  outline: 2px solid rgba(0,0,255,.35) !important;
+  border-right:  1px solid rgba(204,0,0,.15) !important;
+  border-bottom: 1px solid rgba(204,0,0,.15) !important;
+  outline: 2px solid rgba(204,0,0,.4) !important;
   outline-offset: -1px !important;
   z-index: 2 !important;
   position: relative !important;
@@ -2031,13 +2031,13 @@ body.theme_modern #game-board:not(.enemy-board) .cell.sunk::after {
   background-image:
     linear-gradient(to bottom right,
       transparent calc(50% - 1.2px),
-      rgba(204,0,0,.35) calc(50% - 1.2px),
-      rgba(204,0,0,.35) calc(50% + 1.2px),
+      rgba(204,0,0,.3) calc(50% - 1.2px),
+      rgba(204,0,0,.3) calc(50% + 1.2px),
       transparent calc(50% + 1.2px)),
     linear-gradient(to bottom left,
       transparent calc(50% - 1.2px),
-      rgba(204,0,0,.35) calc(50% - 1.2px),
-      rgba(204,0,0,.35) calc(50% + 1.2px),
+      rgba(204,0,0,.3) calc(50% - 1.2px),
+      rgba(204,0,0,.3) calc(50% + 1.2px),
       transparent calc(50% + 1.2px)) !important;
   opacity: 1 !important;
   pointer-events: none !important;
@@ -2148,7 +2148,11 @@ body.theme_modern .turn-countdown       { color: #0034AB; background: rgba(0,52,
 body.theme_modern .turn-countdown.urgent { color: #cc0000; background: rgba(204,0,0,.07); }
 
 /* ─── Achievements / title badges ─── */
-body.theme_modern .title-rank-badge { background: rgba(0,0,0,.07); color: #000; }
+body.theme_modern .title-rank-badge { background: rgba(0,0,0,.07); }
+body.theme_modern .title-rank-badge.title-rank-initial  { color: #4EAA74 !important; background: rgba(78,170,116,.1) !important; }
+body.theme_modern .title-rank-badge.title-rank-medium   { color: #4C7DD7 !important; background: rgba(76,125,215,.1) !important; }
+body.theme_modern .title-rank-badge.title-rank-high     { color: #D43838 !important; background: rgba(212,56,56,.1)  !important; }
+body.theme_modern .title-rank-badge.title-rank-prestige { color: #C261FB !important; background: rgba(194,97,251,.1)  !important; }
 
 /* ─── 1. Убираем все тени с кнопок ─── */
 body.theme_modern .btn,
@@ -2249,7 +2253,12 @@ body.theme_modern .ach-icon  {
 }
 body.theme_modern .ach-name  { color: #000000 !important; }
 body.theme_modern .ach-desc  { color: rgba(0,0,0,.55) !important; }
-body.theme_modern .ach-reward { background: rgba(0,52,171,.12) !important; color: #0034AB !important; }
+body.theme_modern .ach-reward { background: rgba(0,0,0,.06) !important; }
+/* Цвета рангов достижений — сохраняем оригинальные, не перебиваем */
+body.theme_modern .ach-reward.title-rank-initial  { color: #4EAA74 !important; background: rgba(78,170,116,.1) !important; }
+body.theme_modern .ach-reward.title-rank-medium   { color: #4C7DD7 !important; background: rgba(76,125,215,.1) !important; }
+body.theme_modern .ach-reward.title-rank-high     { color: #D43838 !important; background: rgba(212,56,56,.1)  !important; }
+body.theme_modern .ach-reward.title-rank-prestige { color: #C261FB !important; background: rgba(194,97,251,.1)  !important; }
 body.theme_modern .ach-progress-wrap  { background: rgba(0,0,0,.12) !important; }
 body.theme_modern .ach-progress-fill  { background: #0034AB !important; }
 body.theme_modern .ach-progress-nums  { color: rgba(0,0,0,.45) !important; }
