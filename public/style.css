@@ -1930,7 +1930,7 @@ body.theme_modern .cell.ship {
 
 /* ─── Промах — фон D9D9FF осветлённый, точка ─── */
 body.theme_modern .cell.miss {
-  background: #ECE9FF !important;   /* D9D9FF осветлён вдвое */
+  background: #EDEDFF !important;
 }
 body.theme_modern .cell.miss::before {
   background: #b8bedd;
