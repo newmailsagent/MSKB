@@ -2110,6 +2110,132 @@ body.theme_modern .turn-countdown.urgent { color: #cc0000; background: rgba(204,
 /* ─── Achievements / title badges ─── */
 body.theme_modern .title-rank-badge { background: rgba(0,0,0,.07); color: #000; }
 
+/* ─── 1. Убираем все тени с кнопок ─── */
+body.theme_modern .btn,
+body.theme_modern .btn-primary,
+body.theme_modern .btn-primary.btn-large,
+body.theme_modern .btn-secondary,
+body.theme_modern .btn-ghost,
+body.theme_modern .btn-danger,
+body.theme_modern .btn-sound,
+body.theme_modern .btn-burger-menu,
+body.theme_modern .btn-place-random,
+body.theme_modern .shop-item-btn {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ─── Точные цвета из спецификации (первое сообщение) ─── */
+/* Акцентные кнопки #DAF3DA, текст #000000 */
+body.theme_modern .btn-primary {
+  background: #DAF3DA !important;
+  color: #000000 !important;
+  border: 1.5px solid #b5dbb5 !important;
+}
+body.theme_modern .btn-primary.btn-large {
+  background: #DAF3DA !important;
+  color: #000000 !important;
+  border: 1.5px solid #b5dbb5 !important;
+}
+
+/* ─── 2. Боковое меню — текст темнее ─── */
+body.theme_modern .burger-menu-header { color: #444444 !important; border-bottom-color: rgba(0,0,0,.1) !important; }
+body.theme_modern .burger-item { color: #111111 !important; border-bottom-color: rgba(0,0,0,.08) !important; }
+body.theme_modern .burger-item.muted  { color: #555555 !important; }
+body.theme_modern .burger-item.danger { color: #cc0000 !important; }
+body.theme_modern .burger-item:active { background: rgba(0,0,0,.06) !important; }
+body.theme_modern .burger-item-chat   { color: #0034AB !important; background: rgba(0,52,171,.06) !important; border-bottom-color: rgba(0,0,0,.08) !important; }
+body.theme_modern .burger-item-small  { color: #444444 !important; }
+
+/* ─── 3. Красный крест ранения — от угла до угла (inset:0) ─── */
+body.theme_modern .cell.hit::after {
+  content: '' !important;
+  position: absolute !important;
+  inset: 0 !important;
+  background: none !important;
+  background-image:
+    linear-gradient(to bottom right,
+      transparent calc(50% - 1.2px),
+      #cc0000 calc(50% - 1.2px),
+      #cc0000 calc(50% + 1.2px),
+      transparent calc(50% + 1.2px)),
+    linear-gradient(to bottom left,
+      transparent calc(50% - 1.2px),
+      #cc0000 calc(50% - 1.2px),
+      #cc0000 calc(50% + 1.2px),
+      transparent calc(50% + 1.2px)) !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+}
+/* На своём поле — полупрозрачный крест от угла до угла */
+body.theme_modern #my-board .cell.hit::after,
+body.theme_modern #game-board:not(.enemy-board) .cell.hit::after {
+  background-image:
+    linear-gradient(to bottom right,
+      transparent calc(50% - 1.2px),
+      rgba(204,0,0,.42) calc(50% - 1.2px),
+      rgba(204,0,0,.42) calc(50% + 1.2px),
+      transparent calc(50% + 1.2px)),
+    linear-gradient(to bottom left,
+      transparent calc(50% - 1.2px),
+      rgba(204,0,0,.42) calc(50% - 1.2px),
+      rgba(204,0,0,.42) calc(50% + 1.2px),
+      transparent calc(50% + 1.2px)) !important;
+}
+
+/* ─── 4. Рейтинг — мой рекорд: цифры и текст видны ─── */
+body.theme_modern .my-record-card {
+  background: #DAF3DA !important;
+  border: 1.5px solid #b5dbb5 !important;
+}
+body.theme_modern .my-record-val  { color: #0034AB !important; }
+body.theme_modern .my-record-lbl  { color: #444444 !important; }
+body.theme_modern .my-record-name { color: #000000 !important; }
+body.theme_modern .rating-score-badge { background: #0034AB !important; color: #ffffff !important; }
+
+/* ─── 5. Достижения — текст и прогресс-бар читаемы (стиль тёмной темы адаптирован) ─── */
+body.theme_modern .achievements-section { border-top-color: rgba(0,0,0,.1) !important; }
+body.theme_modern .achievements-title   { color: rgba(0,0,0,.45) !important; }
+body.theme_modern .achievement-card {
+  background: rgba(0,0,0,.04) !important;
+  border: 1px solid rgba(0,0,0,.1) !important;
+}
+body.theme_modern .ach-icon  { background: rgba(0,52,171,.1) !important; }
+body.theme_modern .ach-name  { color: #000000 !important; }
+body.theme_modern .ach-desc  { color: rgba(0,0,0,.55) !important; }
+body.theme_modern .ach-reward { background: rgba(0,52,171,.12) !important; color: #0034AB !important; }
+body.theme_modern .ach-progress-wrap  { background: rgba(0,0,0,.12) !important; }
+body.theme_modern .ach-progress-fill  { background: #0034AB !important; }
+body.theme_modern .ach-progress-nums  { color: rgba(0,0,0,.45) !important; }
+body.theme_modern .ach-infinite-count { color: #000000 !important; }
+body.theme_modern .ach-infinite-label { color: rgba(0,0,0,.45) !important; }
+body.theme_modern .achievement-card.new-dot::after { background: #0034AB !important; box-shadow: 0 0 6px rgba(0,52,171,.5) !important; }
+
+/* ─── 6. Инвентарь — кнопка «Применить» с рамкой ─── */
+body.theme_modern .shop-card-action {
+  background: transparent !important;
+  color: #0034AB !important;
+  border: 1.5px solid #0034AB !important;
+}
+body.theme_modern .shop-card-action:active { background: rgba(0,52,171,.07) !important; }
+body.theme_modern .shop-card-action.applied {
+  background: transparent !important;
+  color: rgba(0,0,0,.35) !important;
+  border-color: rgba(0,0,0,.15) !important;
+  cursor: default !important;
+}
+
+/* ─── 7. Магазин на главной — кнопка с фоном ─── */
+body.theme_modern #btn-shop {
+  background: #DAF3DA !important;
+  color: #000000 !important;
+  border: 1.5px solid #b5dbb5 !important;
+  box-shadow: none !important;
+}
+body.theme_modern #btn-shop:active { background: #c6ecc6 !important; }
+
 /* game.js applyEquippedTheme(): document.body.classList.add('theme_modern') */
 
 /* ═══════════════════════════════════════════════════
