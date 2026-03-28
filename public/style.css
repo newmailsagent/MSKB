@@ -2263,6 +2263,27 @@ body.theme_modern .enemy-board .cell.miss {
   background: #EDEDFF !important;
 }
 
+/* Пустые клетки своего поля тоже белые (когда противник бьёт) */
+body.theme_modern #my-board .cell,
+body.theme_modern #game-board:not(.enemy-board) .cell {
+  background: #ffffff !important;
+}
+/* Свои корабли — цвет сохраняем */
+body.theme_modern #my-board .cell.ship,
+body.theme_modern #game-board:not(.enemy-board) .cell.ship {
+  background: #c8c8e0 !important;
+}
+/* Промах на своём поле */
+body.theme_modern #my-board .cell.miss,
+body.theme_modern #game-board:not(.enemy-board) .cell.miss {
+  background: #EDEDFF !important;
+}
+/* Раненый на своём поле */
+body.theme_modern #my-board .cell.hit,
+body.theme_modern #game-board:not(.enemy-board) .cell.hit {
+  background: #ffffff !important;
+}
+
 /* ─── 2. Тоньше обводка раненых и убитых ─── */
 /* Раненый hit — крест стал тоньше */
 body.theme_modern .cell.hit::after,
